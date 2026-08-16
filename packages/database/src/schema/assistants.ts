@@ -1,0 +1,48 @@
+import { relations } from "drizzle-orm";
+import {
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
+
+import { user } from "./auth";
+
+export const hallucinationModeEnum = pgEnum("hallucination_mode", [
+  "strict",
+  "balanced",
+  "flexible",
+]);
+
+export type AssistantSettings = {
+  primaryColor?: string;
+  position?: "bottom-left" | "bottom-right";
+  theme?: "light" | "dark" | "system";
+  iconUrl?: string | null;
+  suggestedQuestions?: string[];
+  showSources?: boolean;
+};
+
+export const assistants = pgTable("assistants", {
+  id: text("id").primaryKey(),
+  publicId: text("public_id").notNull().unique(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  instructions: text("instructions"),
+  welcomeMessage: text("welcome_message").notNull().default("Hi! How can I help you today?"),
+  hallucinationMode: hallucinationModeEnum("hallucination_mode").notNull().default("balanced"),
+  settings: jsonb("settings").$type<AssistantSettings>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const assistantsRelations = relations(assistants, ({ one }) => ({
+  user: one(user, {
+    fields: [assistants.userId],
+    references: [user.id],
+  }),
+}));

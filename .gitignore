@@ -1,0 +1,43 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# builds
+dist
+.next
+out
+build
+.turbo
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# uploads
+uploads
+apps/web/uploads
+.tmp
+
+# ide / os
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# logs / coverage
+*.log
+npm-debug.log*
+pnpm-debug.log*
+coverage
+.nyc_output
+
+# typescript
+*.tsbuildinfo
+
+# cursor
+.cursor
+.cursor/*

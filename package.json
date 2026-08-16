@@ -1,0 +1,32 @@
+{
+  "name": "chatai",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json,yml,yaml}\"",
+    "db:generate": "pnpm --filter @chatai/database db:generate",
+    "db:migrate": "pnpm --filter @chatai/database db:migrate",
+    "db:studio": "pnpm --filter @chatai/database db:studio",
+    "db:push": "pnpm --filter @chatai/database db:push",
+    "migrate": "pnpm --filter @chatai/database migrate:prod",
+    "seed:demo": "node scripts/seed-demo.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "eslint": "^9.22.0",
+    "eslint-config-prettier": "^10.1.1",
+    "postgres": "^3.4.5",
+    "prettier": "^3.5.3",
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.1"
+  },
+  "packageManager": "pnpm@10.21.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
