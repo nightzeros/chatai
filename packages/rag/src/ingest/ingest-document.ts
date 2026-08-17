@@ -3,13 +3,15 @@ import { chunks, documents, eq, type Database } from "@chatai/database";
 import { nanoid } from "nanoid";
 
 import { chunkBlocks } from "./chunk";
-import { extractFromFile, extractFromText } from "./extract";
+import { shouldSkipReembed } from "./hash";
+import { defaultLoaderContext, getLoader, loaderTypeForDocument } from "./loaders";
 
 export async function ingestDocument(opts: {
   documentId: string;
   db: Database;
   embedding: EmbeddingConfig;
-}): Promise<{ chunkCount: number }> {
+  force?: boolean;
+}): Promise<{ chunkCount: number; skipped?: boolean }> {
   const [document] = await opts.db
     .select()
     .from(documents)
@@ -25,17 +27,41 @@ export async function ingestDocument(opts: {
     .set({ status: "processing", error: null, updatedAt: new Date() })
     .where(eq(documents.id, document.id));
 
-  const blocks =
-    document.type === "file"
-      ? await extractFromFile({
-          storagePath: document.storagePath ?? "",
-          mimeType: document.mimeType,
-          name: document.name,
-        })
-      : extractFromText(document.content ?? "");
+  const loader = getLoader(loaderTypeForDocument(document.type));
+  const { blocks, contentHash } = await loader.extract(
+    {
+      key: document.id,
+      name: document.name,
+      url: document.url ?? undefined,
+      mimeType: document.mimeType,
+      storagePath: document.storagePath,
+      content: document.content,
+    },
+    defaultLoaderContext,
+  );
 
   if (blocks.length === 0) {
     throw new Error("No text could be extracted from this document.");
+  }
+
+  if (
+    shouldSkipReembed({
+      storedHash: document.contentHash,
+      nextHash: contentHash,
+      chunkCount: document.chunkCount,
+      force: opts.force,
+    })
+  ) {
+    await opts.db
+      .update(documents)
+      .set({
+        status: "ready",
+        error: null,
+        contentHash,
+        updatedAt: new Date(),
+      })
+      .where(eq(documents.id, document.id));
+    return { chunkCount: document.chunkCount, skipped: true };
   }
 
   const chunked = chunkBlocks(blocks);
@@ -71,6 +97,7 @@ export async function ingestDocument(opts: {
       status: "ready",
       error: null,
       chunkCount: chunked.length,
+      contentHash,
       updatedAt: new Date(),
     })
     .where(eq(documents.id, document.id));

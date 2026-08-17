@@ -1,4 +1,4 @@
-import { chunks, cosineDistance, documents, eq, sql, type Database } from "@chatai/database";
+import { and, chunks, cosineDistance, documents, eq, sql, type Database } from "@chatai/database";
 
 export type RetrievedChunk = {
   chunkId: string;
@@ -29,7 +29,7 @@ export async function retrieveChunks(opts: {
     })
     .from(chunks)
     .innerJoin(documents, eq(documents.id, chunks.documentId))
-    .where(eq(chunks.assistantId, opts.assistantId))
+    .where(and(eq(chunks.assistantId, opts.assistantId), eq(documents.excluded, false)))
     .orderBy(distance)
     .limit(opts.limit ?? 8);
 

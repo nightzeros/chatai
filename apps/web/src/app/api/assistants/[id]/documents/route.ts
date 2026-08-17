@@ -11,6 +11,7 @@ import { enqueueIngest } from "@/lib/enqueue-ingest";
 import { createId } from "@/lib/ids";
 import { requireSession } from "@/lib/session";
 import {
+  ALLOWED_UPLOAD_LABEL,
   isAllowedUpload,
   MAX_UPLOAD_BYTES,
   resolveUploadDir,
@@ -52,7 +53,7 @@ export async function POST(request: Request, context: RouteContext) {
   for (const file of files) {
     if (!isAllowedUpload(file)) {
       return NextResponse.json(
-        { error: `Unsupported file type: ${file.name}. Use PDF, TXT, Markdown, or DOCX.` },
+        { error: `Unsupported file type: ${file.name}. Use ${ALLOWED_UPLOAD_LABEL}.` },
         { status: 400 },
       );
     }
