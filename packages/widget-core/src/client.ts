@@ -34,9 +34,11 @@ export type WidgetConfig = {
 };
 
 export type WidgetMessage = {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   sources?: WidgetSource[];
+  feedback?: "positive" | "negative";
 };
 
 export type WidgetState = {
@@ -244,7 +246,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
             assistantMessage = { ...assistantMessage, content: assistantMessage.content + event.text };
           }
           if (event.type === "meta") {
-            assistantMessage = { ...assistantMessage, sources: event.sources };
+            assistantMessage = { ...assistantMessage, id: event.messageId, sources: event.sources };
             storage?.setItem(conversationKey, event.conversationId);
             state = { ...state, conversationId: event.conversationId };
           }
@@ -269,6 +271,33 @@ export function createWidgetController(options: WidgetControllerOptions) {
           status: "error",
           error: error instanceof Error ? error.message : "Unable to send the message.",
         });
+      }
+    },
+    async sendFeedback(messageId: string, rating: "positive" | "negative") {
+      try {
+        const response = await fetcher(`${apiUrl}/api/v1/feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messageId,
+            rating,
+            visitorId: visitorId(),
+          }),
+        });
+        if (!response.ok) throw new Error(await responseError(response));
+
+        state = {
+          ...state,
+          messages: state.messages.map((message) =>
+            message.id === messageId ? { ...message, feedback: rating } : message,
+          ),
+          error: undefined,
+        };
+        emit();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to save feedback.";
+        setState({ ...state, error: message });
+        throw error;
       }
     },
     destroy() {

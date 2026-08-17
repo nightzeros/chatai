@@ -92,6 +92,10 @@ export function WidgetApp(props: Props) {
     void controller.send(message);
   }
 
+  function rate(messageId: string, rating: "positive" | "negative") {
+    void controller.sendFeedback(messageId, rating).catch(() => undefined);
+  }
+
   return (
     <div
       className={`chatai-widget ${isDark ? "theme-dark" : "theme-light"} ${settings.position === "bottom-left" ? "position-left" : "position-right"} ${props.layout === "contained" ? "layout-contained" : ""}`}
@@ -136,6 +140,27 @@ export function WidgetApp(props: Props) {
                       </li>
                     ))}
                   </ul>
+                ) : null}
+                {message.role === "assistant" && message.id ? (
+                  <div className="chatai-feedback">
+                    <span>Was this helpful?</span>
+                    <button
+                      type="button"
+                      aria-label="Mark response helpful"
+                      aria-pressed={message.feedback === "positive"}
+                      onClick={() => rate(message.id!, "positive")}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Mark response not helpful"
+                      aria-pressed={message.feedback === "negative"}
+                      onClick={() => rate(message.id!, "negative")}
+                    >
+                      ↓
+                    </button>
+                  </div>
                 ) : null}
               </article>
             ))}

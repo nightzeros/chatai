@@ -85,7 +85,74 @@ describe("createWidgetController", () => {
       conversationId: "c1",
     });
     expect(controller.getState().messages).toEqual(
-      expect.arrayContaining([expect.objectContaining({ role: "assistant", content: "Hello" })]),
+      expect.arrayContaining([expect.objectContaining({ id: "m1", role: "assistant", content: "Hello" })]),
     );
+  });
+
+  it("posts a rating for an assistant response using the persistent visitor token", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher: typeof fetch = async (url, init) => {
+      calls.push({ url: String(url), init });
+      if (String(url).endsWith("/config")) {
+        return Response.json({
+          assistantId: "asst_demo",
+          name: "Demo",
+          welcomeMessage: "Welcome",
+          settings: {},
+        });
+      }
+      if (String(url).endsWith("/chat")) {
+        return new Response(
+          'data: {"type":"meta","messageId":"message-1","conversationId":"conversation-1","sources":[],"confidence":0.9,"outcome":"answered_with_context"}\n\ndata: {"type":"done"}\n\n',
+        );
+      }
+      return Response.json({ ok: true, feedback: "positive" });
+    };
+    const controller = createWidgetController({
+      assistantId: "asst_demo",
+      apiUrl: "https://chat.example.com",
+      fetch: fetcher,
+      storage: {
+        getItem: (key) => (key.endsWith(".visitor") ? "visitor-1" : null),
+        setItem: () => undefined,
+      },
+    });
+
+    await controller.load();
+    await controller.send("Hello");
+    await controller.sendFeedback("message-1", "positive");
+
+    expect(calls[2]).toEqual(
+      expect.objectContaining({
+        url: "https://chat.example.com/api/v1/feedback",
+        init: expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ messageId: "message-1", rating: "positive", visitorId: "visitor-1" }),
+        }),
+      }),
+    );
+    expect(controller.getState().messages).toContainEqual(
+      expect.objectContaining({ id: "message-1", feedback: "positive" }),
+    );
+  });
+
+  it("records an error when feedback cannot be saved", async () => {
+    const controller = createWidgetController({
+      assistantId: "asst_demo",
+      apiUrl: "https://chat.example.com",
+      fetch: async () => Response.json({ error: "Not authorized to rate this message." }, { status: 403 }),
+      storage: {
+        getItem: () => "visitor-1",
+        setItem: () => undefined,
+      },
+    });
+
+    await expect(controller.sendFeedback("message-1", "positive")).rejects.toThrow(
+      "Not authorized to rate this message.",
+    );
+    expect(controller.getState()).toMatchObject({
+      status: "loading",
+      error: "Not authorized to rate this message.",
+    });
   });
 });

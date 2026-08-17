@@ -216,6 +216,39 @@
   list-style: none;
 }
 
+.chatai-feedback {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--chatai-border);
+  color: var(--chatai-muted);
+  font-size: 11px;
+}
+
+.chatai-feedback span {
+  margin-right: 2px;
+}
+
+.chatai-feedback button {
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--chatai-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chatai-ink);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.chatai-feedback button[aria-pressed="true"] {
+  border-color: var(--chatai-accent);
+  background: color-mix(in srgb, var(--chatai-accent), transparent 90%);
+  color: var(--chatai-accent);
+}
+
 .chatai-error {
   margin: 0;
   color: #b42318;
