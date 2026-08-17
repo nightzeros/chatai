@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 const tabs = [
   { href: "", label: "Playground" },
   { href: "/knowledge", label: "Knowledge" },
+  { href: "/conversations", label: "Conversations" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/customize", label: "Customize" },
   { href: "/install", label: "Install" },
   { href: "/settings", label: "Settings" },
