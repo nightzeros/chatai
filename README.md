@@ -8,8 +8,10 @@ Open-source platform to **create an AI assistant, give it your knowledge, test i
 2. Upload PDFs, text, Markdown, DOCX, or FAQs  
 3. Ask questions in the playground — get RAG answers with citations  
 4. Customize appearance and install a `<script>` widget (v0.2+)  
+5. Review owner-only conversation transcripts, feedback, and all-time answer analytics (v0.3+)
+6. Turn recurring unanswered questions into queued FAQ knowledge from Analytics
 
-Hallucination modes (Strict / Balanced / Flexible), a RAG debug panel, conversations, feedback, and analytics are on the roadmap.
+Hallucination modes (Strict / Balanced / Flexible) and a RAG debug panel are available. Website crawling, hybrid search, evaluations, and developer APIs are planned next.
 
 ## Stack
 
