@@ -8,17 +8,28 @@ dist
 out
 build
 .turbo
+apps/web/public/widget/chat.js
+examples/html-widget/chat.js
 
 # env
 .env
 .env.local
 .env.*.local
+.env.e2e
 !.env.example
 
 # uploads
 uploads
 apps/web/uploads
 .tmp
+
+# e2e generated static fixtures (from scripts/seed-e2e.mjs)
+apps/web/public/e2e/
+
+# playwright
+test-results/
+playwright-report/
+playwright/.cache/
 
 # ide / os
 .DS_Store

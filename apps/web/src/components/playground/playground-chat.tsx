@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, RotateCcw } from "lucide-react";
+import { ArrowUp, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { DebugPanel } from "@/components/playground/debug-panel";
 import { MarkdownMessage } from "@/components/playground/markdown-message";
@@ -18,6 +18,7 @@ type ChatTurn = {
   streaming: boolean;
   error?: string;
   meta?: Omit<ChatMetaEvent, "type">;
+  feedback?: "positive" | "negative";
 };
 
 function visitorId() {
@@ -42,6 +43,7 @@ export function PlaygroundChat({
   const [draft, setDraft] = useState("");
   const [conversationId, setConversationId] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [ratingMessageId, setRatingMessageId] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -138,6 +140,29 @@ export function PlaygroundChat({
     }
   }
 
+  async function rate(messageId: string, rating: "positive" | "negative") {
+    if (ratingMessageId) return;
+    setRatingMessageId(messageId);
+    try {
+      const response = await fetch("/api/v1/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, rating }),
+      });
+      if (!response.ok) throw new Error("Unable to save feedback.");
+
+      setTurns((current) =>
+        current.map((turn) =>
+          turn.meta?.messageId === messageId ? { ...turn, feedback: rating } : turn,
+        ),
+      );
+    } catch {
+      setError("Could not save feedback.");
+    } finally {
+      setRatingMessageId(undefined);
+    }
+  }
+
   return (
     <div className="flex h-[min(720px,calc(100dvh-16rem))] min-h-[28rem] flex-col overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
@@ -184,6 +209,33 @@ export function PlaygroundChat({
                       confidence={turn.meta.confidence}
                       debug={turn.meta.debug}
                     />
+                    <div className="mt-3 flex items-center gap-1 border-t border-border pt-3">
+                      <span className="mr-1 text-xs text-muted-foreground">Was this helpful?</span>
+                      <Button
+                        type="button"
+                        variant={turn.feedback === "positive" ? "secondary" : "ghost"}
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => void rate(turn.meta!.messageId, "positive")}
+                        aria-label="Mark response helpful"
+                        aria-pressed={turn.feedback === "positive"}
+                        disabled={ratingMessageId === turn.meta.messageId}
+                      >
+                        <ThumbsUp />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={turn.feedback === "negative" ? "secondary" : "ghost"}
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => void rate(turn.meta!.messageId, "negative")}
+                        aria-label="Mark response not helpful"
+                        aria-pressed={turn.feedback === "negative"}
+                        disabled={ratingMessageId === turn.meta.messageId}
+                      >
+                        <ThumbsDown />
+                      </Button>
+                    </div>
                   </>
                 ) : null}
               </div>

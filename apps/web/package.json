@@ -3,16 +3,21 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "predev": "pnpm --filter @chatai/widget build && node ../../scripts/copy-widget.mjs",
+    "prebuild": "pnpm --filter @chatai/widget build && node ../../scripts/copy-widget.mjs",
     "dev": "next dev --turbopack --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@chatai/ai": "workspace:*",
     "@chatai/database": "workspace:*",
     "@chatai/rag": "workspace:*",
+    "@chatai/react": "workspace:*",
+    "@chatai/widget": "workspace:*",
     "better-auth": "^1.6.26",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -35,6 +40,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.23",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

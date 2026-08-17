@@ -1,0 +1,321 @@
+:host {
+  all: initial;
+}
+
+.chatai-widget {
+  --chatai-accent: #0f766e;
+  --chatai-ink: #14241e;
+  --chatai-surface: #f6f6f0;
+  --chatai-panel: #fffef9;
+  --chatai-muted: #6d766f;
+  --chatai-border: #d9ddd7;
+  position: fixed;
+  z-index: 2147483647;
+  bottom: 20px;
+  font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif;
+  color: var(--chatai-ink);
+}
+
+.chatai-widget.position-right {
+  right: 20px;
+}
+
+.chatai-widget.position-left {
+  left: 20px;
+}
+
+.chatai-widget.layout-contained {
+  position: absolute;
+  z-index: 1;
+}
+
+.chatai-widget-host-contained {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.chatai-widget.layout-contained .chatai-panel {
+  width: min(380px, 100%);
+  height: min(570px, calc(100% - 70px));
+}
+
+.chatai-widget.theme-dark {
+  --chatai-ink: #ecf4ec;
+  --chatai-surface: #17231d;
+  --chatai-panel: #101a14;
+  --chatai-muted: #a9b8ad;
+  --chatai-border: #2d4135;
+}
+
+.chatai-widget *,
+.chatai-widget *::before,
+.chatai-widget *::after {
+  box-sizing: border-box;
+}
+
+.chatai-launcher {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50% 50% 14% 50%;
+  background: var(--chatai-accent);
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgb(20 36 30 / 26%);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.chatai-launcher:hover {
+  transform: translateY(-2px) rotate(-3deg);
+  box-shadow: 0 16px 32px rgb(20 36 30 / 34%);
+}
+
+.chatai-launcher:focus-visible,
+.chatai-close:focus-visible,
+.chatai-prompts button:focus-visible,
+.chatai-composer input:focus-visible,
+.chatai-composer button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--chatai-accent), white 55%);
+  outline-offset: 2px;
+}
+
+.chatai-launcher svg,
+.chatai-launcher img {
+  width: 24px;
+  height: 24px;
+}
+
+.chatai-launcher img {
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chatai-panel {
+  display: flex;
+  width: min(380px, calc(100vw - 32px));
+  height: min(570px, calc(100dvh - 104px));
+  margin-bottom: 14px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--chatai-border);
+  border-radius: 24px 24px 8px 24px;
+  background: var(--chatai-panel);
+  box-shadow: 0 24px 70px rgb(20 36 30 / 24%);
+}
+
+.chatai-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--chatai-border);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--chatai-accent), var(--chatai-panel) 90%), var(--chatai-panel));
+}
+
+.chatai-kicker {
+  margin: 0 0 5px;
+  color: var(--chatai-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.chatai-header h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.chatai-close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--chatai-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--chatai-ink);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.chatai-transcript {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 95% 4%, color-mix(in srgb, var(--chatai-accent), transparent 90%), transparent 30%),
+    var(--chatai-surface);
+}
+
+.chatai-message {
+  max-width: 87%;
+  padding: 12px 13px;
+  border-radius: 15px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.chatai-message p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chatai-message.assistant {
+  align-self: flex-start;
+  border: 1px solid var(--chatai-border);
+  border-radius: 5px 15px 15px;
+  background: var(--chatai-panel);
+}
+
+.chatai-message.user {
+  align-self: flex-end;
+  border-radius: 15px 5px 15px 15px;
+  background: var(--chatai-accent);
+  color: #fff;
+}
+
+.chatai-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.chatai-prompts button {
+  border: 1px solid color-mix(in srgb, var(--chatai-accent), var(--chatai-border) 60%);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--chatai-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.chatai-sources {
+  display: flex;
+  margin: 10px 0 0;
+  padding: 9px 0 0;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--chatai-border);
+  color: var(--chatai-muted);
+  font-size: 11px;
+  list-style: none;
+}
+
+.chatai-feedback {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--chatai-border);
+  color: var(--chatai-muted);
+  font-size: 11px;
+}
+
+.chatai-feedback span {
+  margin-right: 2px;
+}
+
+.chatai-feedback button {
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--chatai-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chatai-ink);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.chatai-feedback button[aria-pressed="true"] {
+  border-color: var(--chatai-accent);
+  background: color-mix(in srgb, var(--chatai-accent), transparent 90%);
+  color: var(--chatai-accent);
+}
+
+.chatai-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 12px;
+  text-align: center;
+}
+
+.chatai-composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--chatai-border);
+  background: var(--chatai-panel);
+}
+
+.chatai-composer input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--chatai-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--chatai-ink);
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 11px;
+}
+
+.chatai-composer button {
+  width: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--chatai-accent);
+  color: white;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.chatai-composer button:disabled,
+.chatai-prompts button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.chatai-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .chatai-widget {
+    bottom: 12px;
+  }
+
+  .chatai-widget.position-right {
+    right: 12px;
+  }
+
+  .chatai-widget.position-left {
+    left: 12px;
+  }
+
+  .chatai-panel {
+    width: calc(100vw - 24px);
+    height: min(600px, calc(100dvh - 88px));
+  }
+}

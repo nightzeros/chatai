@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChatAI self-hosted widget example</title>
+  </head>
+  <body>
+    <main>
+      <h1>ChatAI self-hosted widget</h1>
+      <p>
+        Loads a local <code>./chat.js</code> copy. Point
+        <code>data-api-url</code> at your ChatAI origin
+        (<code>CHATAI_ORIGIN</code>) and set
+        <code>data-assistant-id</code> to <code>CHATAI_ASSISTANT_ID</code>.
+        Run <code>pnpm examples:prepare-widget</code> from the repo root first.
+      </p>
+    </main>
+    <script
+      src="./chat.js"
+      data-assistant-id="asst_replace_me"
+      data-api-url="http://localhost:3000"
+      async
+    ></script>
+  </body>
+</html>

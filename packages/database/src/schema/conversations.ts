@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -61,33 +62,41 @@ export type MessageDebug = {
   [key: string]: unknown;
 };
 
-export const conversations = pgTable("conversations", {
-  id: text("id").primaryKey(),
-  assistantId: text("assistant_id")
-    .notNull()
-    .references(() => assistants.id, { onDelete: "cascade" }),
-  /** Anonymous visitor token — not PII */
-  visitorId: text("visitor_id"),
-  source: conversationSourceEnum("source").notNull().default("playground"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: text("id").primaryKey(),
+    assistantId: text("assistant_id")
+      .notNull()
+      .references(() => assistants.id, { onDelete: "cascade" }),
+    /** Anonymous visitor token — not PII */
+    visitorId: text("visitor_id"),
+    source: conversationSourceEnum("source").notNull().default("playground"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("conversations_assistant_id_updated_at_idx").on(table.assistantId, table.updatedAt)],
+);
 
-export const messages = pgTable("messages", {
-  id: text("id").primaryKey(),
-  conversationId: text("conversation_id")
-    .notNull()
-    .references(() => conversations.id, { onDelete: "cascade" }),
-  role: messageRoleEnum("role").notNull(),
-  content: text("content").notNull(),
-  sources: jsonb("sources").$type<MessageSource[]>().default([]),
-  confidence: doublePrecision("confidence"),
-  outcome: messageOutcomeEnum("outcome"),
-  debug: jsonb("debug").$type<MessageDebug>(),
-  feedback: messageFeedbackEnum("feedback"),
-  latencyMs: integer("latency_ms"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const messages = pgTable(
+  "messages",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    role: messageRoleEnum("role").notNull(),
+    content: text("content").notNull(),
+    sources: jsonb("sources").$type<MessageSource[]>().default([]),
+    confidence: doublePrecision("confidence"),
+    outcome: messageOutcomeEnum("outcome"),
+    debug: jsonb("debug").$type<MessageDebug>(),
+    feedback: messageFeedbackEnum("feedback"),
+    latencyMs: integer("latency_ms"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("messages_conversation_id_created_at_idx").on(table.conversationId, table.createdAt)],
+);
 
 export const conversationsRelations = relations(conversations, ({ one, many }) => ({
   assistant: one(assistants, {

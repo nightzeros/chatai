@@ -1,0 +1,26 @@
+{
+  "name": "@chatai/widget",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "node scripts/embed-styles.mjs && vite build && node scripts/check-size.mjs",
+    "test": "vitest run --environment happy-dom",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@chatai/widget-core": "workspace:*",
+    "preact": "^10.27.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "happy-dom": "^17.4.4",
+    "typescript": "^5.8.2",
+    "vite": "^6.3.5",
+    "vitest": "^4.1.10"
+  }
+}

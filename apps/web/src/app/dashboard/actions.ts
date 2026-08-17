@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { getOwnedAssistant } from "@/lib/assistants";
+import { settingsFromFormData } from "@/lib/assistant-settings";
 import { db } from "@/lib/db";
 import { createAssistantPublicId, createId } from "@/lib/ids";
 import { requireSession } from "@/lib/session";
@@ -103,6 +104,40 @@ export async function updateAssistant(_prev: ActionState, formData: FormData): P
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/assistants/${existing.id}`);
+  return { saved: true };
+}
+
+export async function updateAssistantSettings(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await requireSession();
+  const id = String(formData.get("id") ?? "");
+
+  const existing = await getOwnedAssistant(session.user.id, id);
+  if (!existing) {
+    return { error: "Assistant not found." };
+  }
+
+  try {
+    const settings = settingsFromFormData(formData);
+    await db()
+      .update(assistants)
+      .set({
+        settings: { ...existing.settings, ...settings },
+        updatedAt: new Date(),
+      })
+      .where(eq(assistants.id, existing.id));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { error: error.issues[0]?.message ?? "Invalid widget settings." };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/dashboard/assistants/${existing.id}`);
+  revalidatePath(`/dashboard/assistants/${existing.id}/customize`);
+  revalidatePath(`/dashboard/assistants/${existing.id}/install`);
   return { saved: true };
 }
 

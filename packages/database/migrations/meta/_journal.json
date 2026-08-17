@@ -8,6 +8,13 @@
       "when": 1786414452430,
       "tag": "0000_smart_iceman",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786976455306,
+      "tag": "0001_red_carmella_unuscione",
+      "breakpoints": true
     }
   ]
 }
