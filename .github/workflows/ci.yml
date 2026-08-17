@@ -11,8 +11,28 @@ concurrency:
 
 jobs:
   check:
-    name: Lint, typecheck, build
+    name: Release checks
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: chatai
+          POSTGRES_PASSWORD: chatai
+          POSTGRES_DB: chatai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chatai -d chatai"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://chatai:chatai@127.0.0.1:5432/chatai
+      BETTER_AUTH_SECRET: ci-build-secret-at-least-32-chars-long
+      BETTER_AUTH_URL: http://127.0.0.1:3000
+      AI_API_KEY: ${{ secrets.AI_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,10 +57,46 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Unit tests
+        run: pnpm test
+
       - name: Build
         run: pnpm build
-        env:
-          NEXT_TELEMETRY_DISABLED: "1"
-          DATABASE_URL: postgresql://chatai:chatai@localhost:5432/chatai
-          BETTER_AUTH_SECRET: ci-build-secret-at-least-32-chars-long
-          BETTER_AUTH_URL: http://localhost:3000
+
+      - name: Verify hosted widget asset
+        run: pnpm widget:check
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Prepare browser fixtures
+        run: |
+          pnpm migrate
+          pnpm e2e:seed
+
+      - name: Smoke hosted widget over HTTP
+        run: |
+          pnpm --filter @chatai/web start > /tmp/chatai-web.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error \
+              --dump-header /tmp/widget-headers \
+              --output /tmp/widget-chat.js \
+              http://127.0.0.1:3000/widget/chat.js; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Production server did not serve /widget/chat.js" >&2
+              cat /tmp/chatai-web.log >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+          grep -Eiq '^content-type:.*javascript' /tmp/widget-headers
+          pnpm widget:check -- /tmp/widget-chat.js
+
+      - name: Chromium browser tests
+        run: pnpm e2e

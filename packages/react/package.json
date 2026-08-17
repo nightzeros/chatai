@@ -1,0 +1,30 @@
+{
+  "name": "@chatai/react",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --environment happy-dom",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@chatai/widget": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "happy-dom": "^17.4.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.10"
+  }
+}

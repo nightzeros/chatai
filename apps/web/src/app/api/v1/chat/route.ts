@@ -14,6 +14,8 @@ import { chatConfig, embeddingConfig } from "@/lib/ai-config";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { createId } from "@/lib/ids";
+import { publicChatMeta } from "@/lib/public-chat-meta";
+import { getSession } from "@/lib/session";
 
 const bodySchema = z.object({
   assistantId: z.string().min(1, "assistantId is required"),
@@ -53,6 +55,9 @@ export async function POST(request: Request) {
   if (!assistant) {
     return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
   }
+
+  const session = await getSession();
+  const includeDebug = input.source === "playground" && session?.user.id === assistant.userId;
 
   let conversationId = input.conversationId;
   if (conversationId) {
@@ -158,15 +163,14 @@ export async function POST(request: Request) {
           .set({ updatedAt: new Date() })
           .where(eq(conversations.id, conversationId));
 
-        send({
-          type: "meta",
+        send(publicChatMeta({
           messageId: assistantMessageId,
           conversationId,
           sources: final.sources,
           confidence: final.confidence,
           outcome: final.outcome,
           debug: final.debug,
-        });
+        }, source, includeDebug));
         send({ type: "done" });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Model failed.";
@@ -185,15 +189,14 @@ export async function POST(request: Request) {
         });
 
         send({ type: "token", text: "I ran into a problem generating a response. Please try again." });
-        send({
-          type: "meta",
+        send(publicChatMeta({
           messageId: assistantMessageId,
           conversationId,
           sources: [],
           confidence: 0,
           outcome: "model_failure",
           debug: { error: message },
-        });
+        }, source, includeDebug));
         send({ type: "done" });
       } finally {
         controller.close();

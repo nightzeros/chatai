@@ -11,6 +11,9 @@ COPY apps/web/package.json ./apps/web/
 COPY packages/database/package.json ./packages/database/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/rag/package.json ./packages/rag/
+COPY packages/widget-core/package.json ./packages/widget-core/
+COPY packages/widget/package.json ./packages/widget/
+COPY packages/react/package.json ./packages/react/
 RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
