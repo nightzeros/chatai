@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
+import type { RagSettings } from "./rag-settings";
 
 export const hallucinationModeEnum = pgEnum("hallucination_mode", [
   "strict",
@@ -36,6 +37,7 @@ export const assistants = pgTable("assistants", {
   welcomeMessage: text("welcome_message").notNull().default("Hi! How can I help you today?"),
   hallucinationMode: hallucinationModeEnum("hallucination_mode").notNull().default("balanced"),
   settings: jsonb("settings").$type<AssistantSettings>().notNull().default({}),
+  ragSettings: jsonb("rag_settings").$type<RagSettings>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
