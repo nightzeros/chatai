@@ -21,3 +21,18 @@ export async function getOwnedAssistant(userId: string, assistantId: string) {
 
   return assistant ?? null;
 }
+
+export async function getOwnedAssistantByPublicId(userId: string, publicId: string) {
+  const [assistant] = await db()
+    .select()
+    .from(assistants)
+    .where(and(eq(assistants.publicId, publicId), eq(assistants.userId, userId)))
+    .limit(1);
+
+  return assistant ?? null;
+}
+
+/** Resolve an owned assistant by internal id or public id. */
+export async function getOwnedAssistantByRef(userId: string, ref: string) {
+  return (await getOwnedAssistant(userId, ref)) ?? (await getOwnedAssistantByPublicId(userId, ref));
+}
