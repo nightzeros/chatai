@@ -6,7 +6,8 @@ export {
   normalizeSourceStartUrl,
   normalizeWebsiteOriginKey,
 } from "./ingest/crawl/url";
-export { chunkBlocks } from "./ingest/chunk";
+export { chunkBlocks, chunkBlocksParentChild } from "./ingest/chunk";
+export type { ChunkingMode } from "./ingest/chunk";
 export { cleanContent } from "./ingest/clean";
 export { extractFromFile, extractFromText, htmlToMarkdown } from "./ingest/extract";
 export { hashExtractedBlocks, shouldSkipReembed } from "./ingest/hash";

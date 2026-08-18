@@ -2,15 +2,34 @@ import type { Decision } from "./decide";
 import type { RetrievedChunk } from "./retrieve";
 import type { HallucinationMode } from "./thresholds";
 
+export function contextPassage(chunk: Pick<RetrievedChunk, "content" | "parentContent">) {
+  return chunk.parentContent ?? chunk.content;
+}
+
+export function uniqueContextChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
+  const seen = new Set<string>();
+  const unique: RetrievedChunk[] = [];
+
+  for (const chunk of chunks) {
+    const passage = contextPassage(chunk);
+    if (seen.has(passage)) continue;
+    seen.add(passage);
+    unique.push(chunk);
+  }
+
+  return unique;
+}
+
 export function buildContextBlocks(chunks: RetrievedChunk[]): string {
-  if (chunks.length === 0) {
+  const unique = uniqueContextChunks(chunks);
+  if (unique.length === 0) {
     return "(No knowledge base passages were retrieved.)";
   }
 
-  return chunks
+  return unique
     .map((chunk, index) => {
       const page = chunk.page ? `, page ${chunk.page}` : "";
-      return `[${index + 1}] ${chunk.documentName}${page}\n${chunk.content}`;
+      return `[${index + 1}] ${chunk.documentName}${page}\n${contextPassage(chunk)}`;
     })
     .join("\n\n");
 }

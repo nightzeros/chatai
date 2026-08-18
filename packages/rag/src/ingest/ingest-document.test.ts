@@ -35,6 +35,7 @@ function documentRow(overrides: Record<string, unknown> = {}) {
 function createFakeDb(row: ReturnType<typeof documentRow>) {
   const state = {
     document: { ...row },
+    ragSettings: {},
     chunks: [{ id: "c1" }] as unknown[],
     deleted: false,
   };
@@ -42,6 +43,11 @@ function createFakeDb(row: ReturnType<typeof documentRow>) {
   const db = {
     select: () => ({
       from: () => ({
+        innerJoin: () => ({
+          where: () => ({
+            limit: async () => [{ document: state.document, ragSettings: state.ragSettings }],
+          }),
+        }),
         where: () => ({
           limit: async () => [state.document],
         }),
@@ -115,5 +121,36 @@ describe("ingestDocument", () => {
     const source = await import("node:fs/promises").then((mod) => mod.readFile);
     const body = await source(new URL("./ingest-document.ts", import.meta.url), "utf8");
     expect(body).not.toMatch(/type === ["']file["']/);
+  });
+
+  it("stores parentContent when parent_child chunking is enabled", async () => {
+    const longContent = Array.from({ length: 1200 }, () => "policy").join(" ");
+    const { db, state } = createFakeDb(
+      documentRow({
+        content: longContent,
+        contentHash: null,
+        chunkCount: 0,
+      }),
+    );
+    state.ragSettings = { chunkingMode: "parent_child" };
+    embedMany.mockImplementation(async (texts: string[]) => texts.map(() => [0.1, 0.2]));
+
+    await ingestDocument({
+      documentId: "doc-1",
+      db: db as never,
+      embedding,
+      force: true,
+    });
+
+    expect(state.chunks.length).toBeGreaterThan(1);
+    expect(
+      state.chunks.every(
+        (row) =>
+          typeof row === "object" &&
+          row !== null &&
+          "parentContent" in row &&
+          typeof (row as { parentContent?: string | null }).parentContent === "string",
+      ),
+    ).toBe(true);
   });
 });

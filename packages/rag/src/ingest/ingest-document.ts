@@ -1,7 +1,8 @@
 import { embedMany, type EmbeddingConfig } from "@chatai/ai";
-import { chunks, documents, eq, type Database } from "@chatai/database";
+import { assistants, chunks, documents, eq, type Database } from "@chatai/database";
 import { nanoid } from "nanoid";
 
+import { resolveRagSettings } from "../answer/rag-settings";
 import { chunkBlocks } from "./chunk";
 import { shouldSkipReembed } from "./hash";
 import { defaultLoaderContext, getLoader, loaderTypeForDocument } from "./loaders";
@@ -12,11 +13,17 @@ export async function ingestDocument(opts: {
   embedding: EmbeddingConfig;
   force?: boolean;
 }): Promise<{ chunkCount: number; skipped?: boolean }> {
-  const [document] = await opts.db
-    .select()
+  const [row] = await opts.db
+    .select({
+      document: documents,
+      ragSettings: assistants.ragSettings,
+    })
     .from(documents)
+    .innerJoin(assistants, eq(assistants.id, documents.assistantId))
     .where(eq(documents.id, opts.documentId))
     .limit(1);
+
+  const document = row?.document;
 
   if (!document) {
     throw new Error(`Document ${opts.documentId} not found.`);
@@ -64,7 +71,8 @@ export async function ingestDocument(opts: {
     return { chunkCount: document.chunkCount, skipped: true };
   }
 
-  const chunked = chunkBlocks(blocks);
+  const chunkingMode = resolveRagSettings(row?.ragSettings).chunkingMode;
+  const chunked = chunkBlocks(blocks, chunkingMode);
   if (chunked.length === 0) {
     throw new Error("Document produced no chunks.");
   }
@@ -80,16 +88,34 @@ export async function ingestDocument(opts: {
 
   await opts.db.delete(chunks).where(eq(chunks.documentId, document.id));
 
-  await opts.db.insert(chunks).values(
-    chunked.map((chunk, index) => ({
-      id: nanoid(),
+  const parentFirstId = new Map<number, string>();
+  const rows = chunked.map((chunk, index) => {
+    const id = nanoid();
+    const parentIndex = chunk.metadata.parentIndex;
+    let parentChunkId: string | null = null;
+
+    if (parentIndex !== undefined) {
+      const existingParentId = parentFirstId.get(parentIndex);
+      if (existingParentId) {
+        parentChunkId = existingParentId;
+      } else {
+        parentFirstId.set(parentIndex, id);
+      }
+    }
+
+    return {
+      id,
       documentId: document.id,
       assistantId: document.assistantId,
       content: chunk.content,
       embedding: embeddings[index] ?? [],
       metadata: chunk.metadata,
-    })),
-  );
+      parentChunkId,
+      parentContent: chunk.parentContent ?? null,
+    };
+  });
+
+  await opts.db.insert(chunks).values(rows);
 
   await opts.db
     .update(documents)

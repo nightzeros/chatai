@@ -9,5 +9,8 @@ export type Chunk = {
   metadata: {
     page?: number;
     heading?: string;
+    parentIndex?: number;
   };
+  /** Denormalized parent passage used in prompts when parent/child chunking is enabled. */
+  parentContent?: string;
 };
