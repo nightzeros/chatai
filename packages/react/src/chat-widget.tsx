@@ -20,7 +20,7 @@ export function ChatWidget({
   onError,
   assistantId,
   apiUrl,
-  fetch,
+  fetch: fetchImpl,
   storage,
   createId,
   primaryColor,
@@ -47,7 +47,7 @@ export function ChatWidget({
       const instance = mountChatWidget(targetRef.current, {
         assistantId,
         apiUrl,
-        fetch,
+        fetch: fetchImpl,
         storage,
         createId,
         primaryColor,
@@ -66,7 +66,7 @@ export function ChatWidget({
   }, [
     assistantId,
     apiUrl,
-    fetch,
+    fetchImpl,
     storage,
     createId,
     primaryColor,

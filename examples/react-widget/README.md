@@ -35,6 +35,8 @@ Open the printed local URL. The launcher mounts via:
 ```tsx
 <ChatWidget
   assistantId={import.meta.env.VITE_CHATAI_ASSISTANT_ID}
-  apiUrl={import.meta.env.VITE_CHATAI_ORIGIN}
+  apiUrl={import.meta.env.VITE_CHATAI_ORIGIN || "http://localhost:3000"}
 />
 ```
+
+If `.env` is missing, the page now shows setup instructions instead of a blank widget. Vite only reads `.env` on startup, so restart the example after creating that file.

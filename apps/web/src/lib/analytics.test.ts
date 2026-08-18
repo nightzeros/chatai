@@ -16,6 +16,11 @@ describe("analytics outcome semantics", () => {
     expect(isAnsweredOutcome("fallback_no_context")).toBe(false);
   });
 
+  it("treats fallback_no_context as an unanswered knowledge gap, not a successful answer", () => {
+    expect(isAnsweredOutcome("fallback_no_context")).toBe(false);
+    expect(isUnansweredOutcome("fallback_no_context")).toBe(true);
+  });
+
   it("treats fallback and low-confidence answers as unanswered knowledge gaps", () => {
     expect(isUnansweredOutcome("fallback_no_context")).toBe(true);
     expect(isUnansweredOutcome("low_confidence")).toBe(true);
