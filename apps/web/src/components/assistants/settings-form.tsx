@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { CHAT_PROVIDERS, EMBEDDING_PROVIDERS } from "@chatai/ai";
 import { defaultRagSettings } from "@chatai/database/rag-settings";
 
 import { deleteAssistant, updateAssistant } from "@/app/dashboard/actions";
@@ -10,6 +11,35 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
+type InstanceDefaults = {
+  chatProvider: string;
+  chatModel: string;
+  embeddingProvider: string;
+  embeddingModel: string;
+  embeddingDimensions: number;
+};
+
+const CHAT_PROVIDER_LABELS: Record<string, string> = {
+  openai: "OpenAI",
+  "openai-compatible": "OpenAI-compatible",
+  anthropic: "Anthropic",
+  google: "Google Gemini",
+  openrouter: "OpenRouter",
+  azure: "Azure OpenAI",
+  ollama: "Ollama",
+  groq: "Groq",
+};
+
+const EMBEDDING_PROVIDER_LABELS: Record<string, string> = {
+  openai: "OpenAI",
+  "openai-compatible": "OpenAI-compatible",
+  cohere: "Cohere",
+  voyage: "Voyage",
+};
+
+const selectClassName =
+  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 const MODES = [
   {
@@ -43,8 +73,15 @@ const CHUNKING_MODES = [
   },
 ] as const;
 
-export function SettingsForm({ assistant }: { assistant: Assistant }) {
+export function SettingsForm({
+  assistant,
+  instanceDefaults,
+}: {
+  assistant: Assistant;
+  instanceDefaults: InstanceDefaults;
+}) {
   const [state, formAction, pending] = useActionState(updateAssistant, null);
+  const model = assistant.modelSettings ?? {};
   const rag = {
     ...defaultRagSettings,
     ...assistant.ragSettings,
@@ -196,6 +233,70 @@ export function SettingsForm({ assistant }: { assistant: Assistant }) {
                   </span>
                 </span>
               </label>
+            </fieldset>
+            <fieldset className="flex flex-col gap-3">
+              <legend className="text-sm font-medium">Models</legend>
+              <p className="text-sm text-muted-foreground">
+                Override chat and embedding models for this assistant. Leave blank to use instance
+                defaults ({instanceDefaults.chatProvider} / {instanceDefaults.chatModel} for chat,{" "}
+                {instanceDefaults.embeddingProvider} / {instanceDefaults.embeddingModel} for
+                embeddings). Embeddings must match instance width ({instanceDefaults.embeddingDimensions}{" "}
+                dimensions). Changing the embedding model reprocesses all documents.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="chatProvider">Chat provider</Label>
+                  <select
+                    id="chatProvider"
+                    name="chatProvider"
+                    className={selectClassName}
+                    defaultValue={model.chatProvider ?? ""}
+                  >
+                    <option value="">Instance default ({instanceDefaults.chatProvider})</option>
+                    {CHAT_PROVIDERS.map((provider) => (
+                      <option key={provider} value={provider}>
+                        {CHAT_PROVIDER_LABELS[provider] ?? provider}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="chatModel">Chat model</Label>
+                  <Input
+                    id="chatModel"
+                    name="chatModel"
+                    maxLength={120}
+                    placeholder={instanceDefaults.chatModel}
+                    defaultValue={model.chatModel ?? ""}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="embeddingProvider">Embedding provider</Label>
+                  <select
+                    id="embeddingProvider"
+                    name="embeddingProvider"
+                    className={selectClassName}
+                    defaultValue={model.embeddingProvider ?? ""}
+                  >
+                    <option value="">Instance default ({instanceDefaults.embeddingProvider})</option>
+                    {EMBEDDING_PROVIDERS.map((provider) => (
+                      <option key={provider} value={provider}>
+                        {EMBEDDING_PROVIDER_LABELS[provider] ?? provider}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="embeddingModel">Embedding model</Label>
+                  <Input
+                    id="embeddingModel"
+                    name="embeddingModel"
+                    maxLength={120}
+                    placeholder={instanceDefaults.embeddingModel}
+                    defaultValue={model.embeddingModel ?? ""}
+                  />
+                </div>
+              </div>
             </fieldset>
             <div className="flex flex-col gap-2">
               <Label htmlFor="evalSampleRate">Online eval sample rate</Label>

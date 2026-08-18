@@ -1,6 +1,7 @@
-import { createDb, documents, eq, ingestJobs, sql } from "@chatai/database";
+import { createDb, assistants, documents, eq, ingestJobs, sql } from "@chatai/database";
 import { ingestDocument, syncSource } from "@chatai/rag";
 
+import { resolveAssistantModels } from "@/lib/ai-config";
 import { env } from "@/lib/env";
 
 const POLL_MS = 2000;
@@ -28,13 +29,23 @@ function workerDb() {
   return workerClient;
 }
 
-function embeddingConfig() {
-  return {
-    apiKey: env.AI_API_KEY ?? "",
-    baseURL: env.AI_BASE_URL,
-    model: env.EMBEDDING_MODEL,
-    dimensions: env.EMBEDDING_DIMENSIONS,
-  };
+function embeddingForAssistant(assistant: typeof assistants.$inferSelect) {
+  return resolveAssistantModels(assistant).embedding;
+}
+
+async function embeddingForDocument(db: ReturnType<typeof createDb>, documentId: string) {
+  const [row] = await db
+    .select({ assistant: assistants })
+    .from(documents)
+    .innerJoin(assistants, eq(assistants.id, documents.assistantId))
+    .where(eq(documents.id, documentId))
+    .limit(1);
+
+  if (!row) {
+    throw new Error(`Document ${documentId} not found.`);
+  }
+
+  return embeddingForAssistant(row.assistant);
 }
 
 async function claimJob(db: ReturnType<typeof createDb>) {
@@ -95,7 +106,7 @@ async function processOnce() {
       await ingestDocument({
         documentId: job.documentId,
         db,
-        embedding: embeddingConfig(),
+        embedding: await embeddingForDocument(db, job.documentId),
       });
     }
 

@@ -8,7 +8,15 @@ import { z } from "zod";
 import { getOwnedAssistant } from "@/lib/assistants";
 import { settingsFromFormData } from "@/lib/assistant-settings";
 import { db } from "@/lib/db";
+import { enqueueReprocessForAssistant } from "@/lib/enqueue-reprocess";
+import { env } from "@/lib/env";
 import { createAssistantPublicId, createId } from "@/lib/ids";
+import {
+  embeddingSettingsChanged,
+  modelSettingsFromFormData,
+  validateChatModelSettings,
+  validateEmbeddingModelSettings,
+} from "@/lib/model-settings";
 import { requireSession } from "@/lib/session";
 
 export type ActionState = { error: string } | { saved: true } | null;
@@ -106,6 +114,32 @@ export async function updateAssistant(_prev: ActionState, formData: FormData): P
     return { error: "Assistant not found." };
   }
 
+  const modelSettings = modelSettingsFromFormData(formData);
+  const instanceEmbedding = {
+    provider: env.EMBEDDING_PROVIDER ?? "openai",
+    model: env.EMBEDDING_MODEL,
+  };
+
+  const chatError = validateChatModelSettings(modelSettings);
+  if (chatError) {
+    return { error: chatError };
+  }
+
+  const embeddingError = validateEmbeddingModelSettings(
+    modelSettings,
+    env.EMBEDDING_DIMENSIONS,
+    instanceEmbedding,
+  );
+  if (embeddingError) {
+    return { error: embeddingError };
+  }
+
+  const shouldReprocess = embeddingSettingsChanged(
+    existing.modelSettings,
+    modelSettings,
+    instanceEmbedding,
+  );
+
   await db()
     .update(assistants)
     .set({
@@ -128,9 +162,14 @@ export async function updateAssistant(_prev: ActionState, formData: FormData): P
           refuseOnLowConfidence: parsed.data.refuseOnLowConfidence,
         },
       },
+      modelSettings,
       updatedAt: new Date(),
     })
     .where(eq(assistants.id, existing.id));
+
+  if (shouldReprocess) {
+    await enqueueReprocessForAssistant(existing.id);
+  }
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/assistants/${existing.id}`);

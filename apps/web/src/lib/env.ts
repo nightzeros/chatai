@@ -39,12 +39,24 @@ const envSchema = z.object({
   AI_API_KEY: z.string().optional(),
   AI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   AI_MODEL: z.string().default("gpt-4o-mini"),
+  AI_PROVIDER: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
+  AZURE_OPENAI_API_KEY: z.string().optional(),
+  AZURE_OPENAI_RESOURCE: z.string().optional(),
+  OLLAMA_BASE_URL: z.string().url().optional(),
 
+  EMBEDDING_PROVIDER: z.string().optional(),
   EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
   EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1536),
+  VOYAGE_API_KEY: z.string().optional(),
 
   /** Optional Cohere API key for reranking (falls back to LLM listwise rerank). */
   COHERE_API_KEY: z.string().optional(),
+
+  API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(60),
 
   UPLOAD_DIR: z.string().default("./uploads"),
 });
@@ -65,9 +77,20 @@ function loadEnv(): Env {
     AI_API_KEY: process.env.AI_API_KEY,
     AI_BASE_URL: process.env.AI_BASE_URL,
     AI_MODEL: process.env.AI_MODEL,
+    AI_PROVIDER: process.env.AI_PROVIDER,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    AZURE_OPENAI_API_KEY: process.env.AZURE_OPENAI_API_KEY,
+    AZURE_OPENAI_RESOURCE: process.env.AZURE_OPENAI_RESOURCE,
+    OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
+    EMBEDDING_PROVIDER: process.env.EMBEDDING_PROVIDER,
     EMBEDDING_MODEL: process.env.EMBEDDING_MODEL,
     EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS,
+    VOYAGE_API_KEY: process.env.VOYAGE_API_KEY,
     COHERE_API_KEY: process.env.COHERE_API_KEY,
+    API_RATE_LIMIT_PER_MINUTE: process.env.API_RATE_LIMIT_PER_MINUTE,
     UPLOAD_DIR: process.env.UPLOAD_DIR,
   });
 

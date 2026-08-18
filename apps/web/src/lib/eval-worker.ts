@@ -1,4 +1,4 @@
-import { createDb, evalJobs, eq, sql } from "@chatai/database";
+import { createDb, assistants, conversations, eq, evalJobs, evalRuns, messages, sql } from "@chatai/database";
 import {
   evalWorkerVersionLabel,
   EVAL_WORKER_VERSION,
@@ -7,7 +7,7 @@ import {
   runOnlineEvalJob,
 } from "@chatai/evals";
 
-import { chatConfig, embeddingConfig } from "@/lib/ai-config";
+import { resolveAssistantModels } from "@/lib/ai-config";
 import { env } from "@/lib/env";
 
 const POLL_MS = 2000;
@@ -73,6 +73,51 @@ async function claimJob(db: ReturnType<typeof createDb>) {
   return rows[0] ?? null;
 }
 
+async function assistantForMessage(db: ReturnType<typeof createDb>, messageId: string) {
+  const [message] = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
+  if (!message) {
+    throw new Error(`Message ${messageId} was not found.`);
+  }
+
+  const [conversation] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, message.conversationId))
+    .limit(1);
+  if (!conversation) {
+    throw new Error(`Conversation ${message.conversationId} was not found.`);
+  }
+
+  const [assistant] = await db
+    .select()
+    .from(assistants)
+    .where(eq(assistants.id, conversation.assistantId))
+    .limit(1);
+  if (!assistant) {
+    throw new Error(`Assistant ${conversation.assistantId} was not found.`);
+  }
+
+  return assistant;
+}
+
+async function assistantForRun(db: ReturnType<typeof createDb>, runId: string) {
+  const [run] = await db.select().from(evalRuns).where(eq(evalRuns.id, runId)).limit(1);
+  if (!run) {
+    throw new Error(`Eval run ${runId} was not found.`);
+  }
+
+  const [assistant] = await db
+    .select()
+    .from(assistants)
+    .where(eq(assistants.id, run.assistantId))
+    .limit(1);
+  if (!assistant) {
+    throw new Error(`Assistant ${run.assistantId} was not found.`);
+  }
+
+  return assistant;
+}
+
 async function processOnce() {
   const db = workerDb();
   const job = await claimJob(db);
@@ -80,19 +125,23 @@ async function processOnce() {
 
   try {
     if (job.messageId) {
+      const assistant = await assistantForMessage(db, job.messageId);
+      const models = resolveAssistantModels(assistant);
       await runOnlineEvalJob({
         db,
         messageId: job.messageId,
-        chat: chatConfig(),
+        chat: models.chat,
       });
     } else if (job.runId && job.caseId) {
       console.log(`[eval] offline case ${job.caseId} using ${evalWorkerVersionLabel()}`);
+      const assistant = await assistantForRun(db, job.runId);
+      const models = resolveAssistantModels(assistant);
       await runOfflineEvalCase({
         db,
         runId: job.runId,
         caseId: job.caseId,
-        chat: chatConfig(),
-        embedding: embeddingConfig(),
+        chat: models.chat,
+        embedding: models.embedding,
         cohereApiKey: env.COHERE_API_KEY ?? null,
       });
     } else {
