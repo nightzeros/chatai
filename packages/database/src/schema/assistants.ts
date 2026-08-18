@@ -25,6 +25,14 @@ export type AssistantSettings = {
   showSources?: boolean;
 };
 
+/** Per-assistant chat/embedding overrides. Empty object uses instance env defaults. No API keys. */
+export type ModelSettings = {
+  chatProvider?: string;
+  chatModel?: string;
+  embeddingProvider?: string;
+  embeddingModel?: string;
+};
+
 export const assistants = pgTable("assistants", {
   id: text("id").primaryKey(),
   publicId: text("public_id").notNull().unique(),
@@ -38,6 +46,7 @@ export const assistants = pgTable("assistants", {
   hallucinationMode: hallucinationModeEnum("hallucination_mode").notNull().default("balanced"),
   settings: jsonb("settings").$type<AssistantSettings>().notNull().default({}),
   ragSettings: jsonb("rag_settings").$type<RagSettings>().notNull().default({}),
+  modelSettings: jsonb("model_settings").$type<ModelSettings>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
