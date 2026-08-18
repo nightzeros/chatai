@@ -1,6 +1,7 @@
 import type { MessageSource } from "@chatai/database";
 
 import type { RetrievedChunk } from "./retrieve";
+import { uniqueContextChunks } from "./prompt";
 
 export function extractCitationIndexes(answer: string): number[] {
   const indexes = new Set<number>();
@@ -16,11 +17,12 @@ export function extractCitationIndexes(answer: string): number[] {
 }
 
 export function sourcesFromAnswer(answer: string, retrieved: RetrievedChunk[]): MessageSource[] {
+  const contextChunks = uniqueContextChunks(retrieved);
   const cited = extractCitationIndexes(answer)
-    .map((index) => retrieved[index - 1])
+    .map((index) => contextChunks.find((chunk, i) => i + 1 === index) ?? contextChunks[index - 1])
     .filter((chunk): chunk is RetrievedChunk => Boolean(chunk));
 
-  const selected = cited.length > 0 ? cited : retrieved;
+  const selected = cited.length > 0 ? cited : contextChunks;
 
   const seen = new Set<string>();
   const sources: MessageSource[] = [];

@@ -4,6 +4,9 @@ import mammoth from "mammoth";
 import { extractText, getDocumentProxy } from "unpdf";
 
 import { cleanContent } from "./clean";
+import { extractFromCsv } from "./extract-csv";
+import { extractFromHtml, htmlToMarkdown } from "./html-to-markdown";
+import { extractFromJson } from "./extract-json";
 import type { ExtractedBlock } from "./types";
 
 function markdownHeadings(text: string): ExtractedBlock[] {
@@ -33,13 +36,18 @@ function markdownHeadings(text: string): ExtractedBlock[] {
   return blocks;
 }
 
+function fileKind(name: string, mimeType?: string | null) {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  const mime = mimeType ?? "";
+  return { ext, mime };
+}
+
 export async function extractFromFile(input: {
   storagePath: string;
   mimeType?: string | null;
   name: string;
 }): Promise<ExtractedBlock[]> {
-  const ext = input.name.toLowerCase().split(".").pop() ?? "";
-  const mime = input.mimeType ?? "";
+  const { ext, mime } = fileKind(input.name, input.mimeType);
 
   if (ext === "pdf" || mime === "application/pdf") {
     const bytes = await readFile(input.storagePath);
@@ -62,6 +70,19 @@ export async function extractFromFile(input: {
   }
 
   const raw = await readFile(input.storagePath, "utf8");
+
+  if (ext === "csv" || mime === "text/csv") {
+    return extractFromCsv(raw);
+  }
+
+  if (ext === "json" || mime === "application/json") {
+    return extractFromJson(raw);
+  }
+
+  if (ext === "html" || ext === "htm" || mime === "text/html") {
+    return extractFromHtml(raw);
+  }
+
   const content = cleanContent(raw);
   if (!content) return [];
   if (ext === "md" || ext === "markdown" || mime === "text/markdown") {
@@ -74,3 +95,5 @@ export function extractFromText(content: string): ExtractedBlock[] {
   const cleaned = cleanContent(content);
   return cleaned ? markdownHeadings(cleaned) : [];
 }
+
+export { htmlToMarkdown };

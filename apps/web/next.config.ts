@@ -13,7 +13,15 @@ loadEnv({ path: path.join(appDir, "../../.env") });
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  transpilePackages: ["@chatai/database", "@chatai/ai", "@chatai/rag", "@chatai/react", "@chatai/widget", "@chatai/widget-core"],
+  transpilePackages: [
+    "@chatai/database",
+    "@chatai/ai",
+    "@chatai/evals",
+    "@chatai/rag",
+    "@chatai/react",
+    "@chatai/widget",
+    "@chatai/widget-core",
+  ],
   outputFileTracingRoot: path.join(appDir, "../.."),
   serverExternalPackages: ["unpdf", "mammoth"],
   async headers() {

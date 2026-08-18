@@ -8,17 +8,24 @@
     "./answer": "./src/answer/index.ts"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "typescript": "^5.8.2"
+    "@types/turndown": "^5.0.5",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@chatai/ai": "workspace:*",
     "@chatai/database": "workspace:*",
     "mammoth": "^1.12.1",
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.12",
+    "turndown": "^7.2.0",
+    "robots-parser": "^3.0.1",
     "nanoid": "^6.0.1",
     "unpdf": "^1.8.0"
   }

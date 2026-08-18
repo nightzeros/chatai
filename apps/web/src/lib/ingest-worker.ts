@@ -1,5 +1,5 @@
 import { createDb, documents, eq, ingestJobs, sql } from "@chatai/database";
-import { ingestDocument } from "@chatai/rag";
+import { ingestDocument, syncSource } from "@chatai/rag";
 
 import { env } from "@/lib/env";
 
@@ -7,6 +7,14 @@ const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
 
 type GlobalWorker = typeof globalThis & { __chataiIngestWorker?: boolean };
+
+type ClaimedJob = {
+  id: string;
+  kind: "ingest" | "sync";
+  documentId: string | null;
+  sourceId: string | null;
+  attempts: number;
+};
 
 let workerClient: ReturnType<typeof createDb> | null = null;
 
@@ -50,10 +58,15 @@ async function claimJob(db: ReturnType<typeof createDb>) {
       LIMIT 1
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, document_id AS "documentId", attempts
+    RETURNING
+      id,
+      kind,
+      document_id AS "documentId",
+      source_id AS "sourceId",
+      attempts
   `);
 
-  const rows = result as unknown as Array<{ id: string; documentId: string; attempts: number }>;
+  const rows = result as unknown as ClaimedJob[];
   return rows[0] ?? null;
 }
 
@@ -70,11 +83,22 @@ async function processOnce() {
   if (!job) return false;
 
   try {
-    await ingestDocument({
-      documentId: job.documentId,
-      db,
-      embedding: embeddingConfig(),
-    });
+    if (job.kind === "sync") {
+      if (!job.sourceId) {
+        throw new Error("Sync jobs require a sourceId.");
+      }
+      await syncSource({ sourceId: job.sourceId, db });
+    } else {
+      if (!job.documentId) {
+        throw new Error("Ingest jobs require a documentId.");
+      }
+      await ingestDocument({
+        documentId: job.documentId,
+        db,
+        embedding: embeddingConfig(),
+      });
+    }
+
     await db
       .update(ingestJobs)
       .set({
@@ -98,8 +122,12 @@ async function processOnce() {
       })
       .where(eq(ingestJobs.id, job.id));
 
-    await failDocument(db, job.documentId, message);
-    console.error(`[ingest] document ${job.documentId} failed:`, message);
+    if (job.kind === "ingest" && job.documentId) {
+      await failDocument(db, job.documentId, message);
+    }
+
+    const target = job.kind === "sync" ? `source ${job.sourceId}` : `document ${job.documentId}`;
+    console.error(`[ingest] ${target} failed:`, message);
   }
 
   return true;

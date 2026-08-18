@@ -15,6 +15,27 @@
       "when": 1786976455306,
       "tag": "0001_red_carmella_unuscione",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787001816192,
+      "tag": "0002_mean_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787005000000,
+      "tag": "0003_add_source_origin_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787009695311,
+      "tag": "0004_icy_lockheed",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { buildFaqPayload } from "@/lib/add-answer";
 import type { AnalyticsMetrics, TopUnansweredQuestion } from "@/lib/analytics";
+import type { EvalQuality } from "@/lib/eval-quality-metrics";
 import { submitFaq } from "@/lib/submit-faq";
 
 function formatConfidence(value: number | null) {
@@ -49,10 +51,12 @@ export function AnalyticsDashboard({
   assistantId,
   metrics,
   topUnanswered,
+  quality,
 }: {
   assistantId: string;
   metrics: AnalyticsMetrics;
   topUnanswered: TopUnansweredQuestion[];
+  quality: EvalQuality;
 }) {
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
@@ -134,6 +138,69 @@ export function AnalyticsDashboard({
             );
           })}
         </div>
+      </section>
+
+      <section>
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">AI Quality</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Rolling averages from online sampling and offline regressions.
+            </p>
+          </div>
+          <Link
+            href={`/dashboard/assistants/${assistantId}/evals`}
+            className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+          >
+            Manage test sets
+          </Link>
+        </div>
+        {Object.keys(quality.averages).length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center">
+            <p className="text-sm font-medium">No eval scores yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Run a regression on the Evals tab, or raise the online sample rate.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {Object.entries(quality.averages).map(([metric, score]) => (
+              <Card key={metric}>
+                <CardHeader className="gap-2 p-4">
+                  <CardDescription>{metric}</CardDescription>
+                  <CardTitle className="text-2xl tabular-nums">{score.toFixed(2)}</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                  <p className="text-xs text-muted-foreground">Average 0–1 LLM-as-judge score</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+        {quality.lastRun ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Last run: {quality.lastRun.kind} · {quality.lastRun.status} ·{" "}
+            {new Date(quality.lastRun.createdAt).toLocaleString()}
+          </p>
+        ) : null}
+        {quality.recentFailures.length > 0 ? (
+          <div className="mt-4">
+            <h3 className="text-sm font-medium">Recent low scores</h3>
+            <ul className="mt-2 overflow-hidden rounded-xl border border-border">
+              {quality.recentFailures.map((item, index) => (
+                <li
+                  key={`${item.metric}-${item.createdAt}-${index}`}
+                  className="flex items-center justify-between gap-4 border-t border-border px-4 py-2 text-sm first:border-t-0"
+                >
+                  <span>
+                    {item.metric} · {item.kind}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">{item.score.toFixed(2)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <section>

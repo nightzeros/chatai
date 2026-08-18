@@ -5,13 +5,15 @@ Open-source platform to **create an AI assistant, give it your knowledge, test i
 ## What it does
 
 1. Create an assistant with instructions and a welcome message  
-2. Upload PDFs, text, Markdown, DOCX, or FAQs  
+2. Upload PDFs, text, Markdown, DOCX, CSV, HTML, JSON, or FAQs — or crawl a website  
 3. Ask questions in the playground — get RAG answers with citations  
 4. Customize appearance and install a `<script>` widget (v0.2+)  
 5. Review owner-only conversation transcripts, feedback, and all-time answer analytics (v0.3+)
 6. Turn recurring unanswered questions into queued FAQ knowledge from Analytics
+7. Tune retrieval with **hybrid vector + keyword search**, reranking, and query expansion (v0.5+)
+8. Run **offline eval regressions** and optional online quality sampling with LLM-as-judge scorers (v0.5+)
 
-Hallucination modes (Strict / Balanced / Flexible) and a RAG debug panel are available. Website crawling, hybrid search, evaluations, and developer APIs are planned next.
+Hallucination modes (Strict / Balanced / Flexible), answer guardrails with citation verification, and an owner-only RAG debug panel are available. Per-assistant RAG settings control hybrid search, reranking, chunking mode, and eval sample rate.
 
 ## Stack
 
@@ -71,6 +73,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `BETTER_AUTH_SECRET` | Auth signing secret (min 16 chars) |
 | `BETTER_AUTH_URL` | Public app URL (`http://localhost:3000` locally; production origin browsers use for this instance) |
 | `AI_API_KEY` | OpenAI-compatible API key for chat + embeddings |
+| `COHERE_API_KEY` | Optional Cohere rerank API key (falls back to LLM listwise rerank when unset) |
 | `UPLOAD_DIR` | Uploaded files directory (`./uploads` locally, `/app/uploads` in Docker) |
 
 See [.env.example](./.env.example) for all options. Widget embeds should use the same absolute origin as `BETTER_AUTH_URL` (for example `https://your-chatai-instance.example`).
@@ -94,6 +97,7 @@ apps/web              Dashboard + APIs + hosted /widget/chat.js
 packages/database     Schema, migrations, DB client
 packages/ai           LLM + embeddings
 packages/rag          Ingestion + answering
+packages/evals        Offline/online eval scoring + run details
 packages/widget-core  Browser-safe chat client + config loading
 packages/widget       Preact Shadow DOM bundle (IIFE chat.js)
 packages/react        Thin React wrapper (private workspace package)
@@ -197,6 +201,20 @@ Draft changes update the live preview immediately; only **Save** publishes them 
 | CORS errors in the console | API origin mismatch, or a reverse proxy stripping CORS headers on `/api/v1/*` |
 | Styling / settings look wrong | Unsaved Customize draft, or embed still caching an old `chat.js` copy |
 | `Cannot find package '@chatai/react'` | Package is private; use `workspace:*` inside this monorepo until npm publish |
+| Eval run details show empty retrieval / unknown sources on new runs | The background eval worker may be running stale code after HMR; **restart `pnpm dev`** after changes under `packages/evals`. New runs should persist `details.snapshot.retrieval` on every score row. |
+
+## v0.5 status
+
+RAG quality and evaluation tooling:
+
+- Hybrid retrieval (pgvector + `tsvector` with RRF fusion), LLM reranking, optional Cohere rerank
+- Query expansion for short/ambiguous questions; parent/child chunking mode (opt-in, reprocess to activate)
+- Answer verifier with one regenerate attempt; guardrails toggles on Settings
+- `packages/evals` with faithfulness, relevance, and citation scorers
+- Offline eval sets + regression runs; AI Quality section on Analytics; eval run drill-down with retrieved context
+- Public `/api/v1/chat` contract unchanged for widget consumers
+
+Next: v0.6 provider registry / per-assistant model overrides, npm publish of packages, and v0.8 domain allowlists / rate limits.
 
 ## v0.2 status
 
@@ -205,8 +223,6 @@ Widget delivery is in place:
 - Hosted `/widget/chat.js`, self-host copy + `data-api-url`, private `@chatai/react` wrapper  
 - Customize settings with draft preview and Install snippets  
 - Example fixtures under `examples/`  
-
-Next: broader dashboard coverage, npm publish of packages, and v0.8 domain allowlists / rate limits.
 
 ## Contributing
 

@@ -10,11 +10,13 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "pretest": "pnpm run prebuild",
     "test": "vitest run"
   },
   "dependencies": {
     "@chatai/ai": "workspace:*",
     "@chatai/database": "workspace:*",
+    "@chatai/evals": "workspace:*",
     "@chatai/rag": "workspace:*",
     "@chatai/react": "workspace:*",
     "@chatai/widget": "workspace:*",
