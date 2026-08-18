@@ -1,5 +1,6 @@
-import { createOpenAI } from "@ai-sdk/openai";
 import { embedMany as sdkEmbedMany } from "ai";
+
+import { createEmbeddingModel } from "./models";
 
 const BATCH_SIZE = 100;
 
@@ -8,6 +9,7 @@ export type EmbeddingConfig = {
   baseURL: string;
   model: string;
   dimensions: number;
+  provider?: string;
 };
 
 function sleep(ms: number) {
@@ -23,11 +25,7 @@ export async function embedMany(texts: string[], config: EmbeddingConfig): Promi
     return [];
   }
 
-  const openai = createOpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL,
-  });
-
+  const openaiCompatible = !config.provider || config.provider === "openai" || config.provider === "openai-compatible";
   const embeddings: number[][] = [];
 
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
@@ -37,12 +35,16 @@ export async function embedMany(texts: string[], config: EmbeddingConfig): Promi
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
         const result = await sdkEmbedMany({
-          model: openai.embedding(config.model),
+          model: createEmbeddingModel(config),
           values: batch,
           maxRetries: 2,
-          providerOptions: {
-            openai: { dimensions: config.dimensions },
-          },
+          ...(openaiCompatible
+            ? {
+                providerOptions: {
+                  openai: { dimensions: config.dimensions },
+                },
+              }
+            : {}),
         });
         embeddings.push(...result.embeddings);
         lastError = undefined;

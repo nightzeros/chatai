@@ -1,10 +1,12 @@
-import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, streamText } from "ai";
+
+import { createChatLanguageModel } from "./models";
 
 export type ChatConfig = {
   apiKey: string;
   baseURL: string;
   model: string;
+  provider?: string;
 };
 
 export type ChatMessage = {
@@ -18,22 +20,14 @@ function requireKey(config: ChatConfig) {
   }
 }
 
-function provider(config: ChatConfig) {
-  requireKey(config);
-  return createOpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL,
-  });
-}
-
 export function streamChat(opts: {
   config: ChatConfig;
   system: string;
   messages: ChatMessage[];
 }): { textStream: AsyncIterable<string> } {
-  const openai = provider(opts.config);
+  requireKey(opts.config);
   const result = streamText({
-    model: openai.chat(opts.config.model),
+    model: createChatLanguageModel(opts.config),
     system: opts.system,
     messages: opts.messages,
   });
@@ -47,9 +41,9 @@ export async function generateChat(opts: {
   system: string;
   prompt: string;
 }): Promise<string> {
-  const openai = provider(opts.config);
+  requireKey(opts.config);
   const result = await generateText({
-    model: openai.chat(opts.config.model),
+    model: createChatLanguageModel(opts.config),
     system: opts.system,
     prompt: opts.prompt,
   });
