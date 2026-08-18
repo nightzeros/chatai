@@ -43,6 +43,9 @@ const envSchema = z.object({
   EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
   EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1536),
 
+  /** Optional Cohere API key for reranking (falls back to LLM listwise rerank). */
+  COHERE_API_KEY: z.string().optional(),
+
   UPLOAD_DIR: z.string().default("./uploads"),
 });
 

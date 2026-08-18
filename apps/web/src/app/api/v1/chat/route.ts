@@ -7,12 +7,21 @@ import {
   messages,
   type ConversationSource,
 } from "@chatai/database";
-import { finalizeAnswer, prepareAnswer } from "@chatai/rag/answer";
+import {
+  finalizeAnswer,
+  generateVerifiedAnswer,
+  prepareAnswer,
+  resolveRagSettings,
+  withVerifierResult,
+} from "@chatai/rag/answer";
+import { enqueueOnlineEvalJob, shouldSampleEval } from "@chatai/evals";
 import { z } from "zod";
 
 import { chatConfig, embeddingConfig } from "@/lib/ai-config";
+import { startEvalWorker } from "@/lib/eval-worker";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { createId } from "@/lib/ids";
 import { publicChatMeta } from "@/lib/public-chat-meta";
 import { getSession } from "@/lib/session";
@@ -111,7 +120,8 @@ export async function POST(request: Request) {
       const send = (payload: unknown) => controller.enqueue(encoder.encode(sseLine(payload)));
 
       try {
-        const prepared = await prepareAnswer({
+        const rag = resolveRagSettings(assistant.ragSettings);
+        let prepared = await prepareAnswer({
           db: db(),
           assistantId: assistant.id,
           instructions: assistant.instructions,
@@ -120,12 +130,23 @@ export async function POST(request: Request) {
           history,
           embedding: embeddingConfig(),
           chat: chatConfig(),
+          ragSettings: assistant.ragSettings,
+          cohereApiKey: env.COHERE_API_KEY ?? null,
         });
 
         let fullText = prepared.fallbackText;
 
         if (!prepared.shouldGenerate) {
           send({ type: "token", text: prepared.fallbackText });
+        } else if (rag.guardrails.verifyCitations) {
+          const verified = await generateVerifiedAnswer({
+            prepared,
+            question: input.message,
+            chat: chatConfig(),
+          });
+          prepared = withVerifierResult(prepared, verified);
+          fullText = verified.text;
+          send({ type: "token", text: fullText });
         } else {
           fullText = "";
           const result = streamChat({
@@ -157,6 +178,11 @@ export async function POST(request: Request) {
           debug: final.debug,
           latencyMs,
         });
+
+        if (shouldSampleEval(rag.evalSampleRate)) {
+          await enqueueOnlineEvalJob({ db: db(), messageId: assistantMessageId });
+          startEvalWorker();
+        }
 
         await db()
           .update(conversations)

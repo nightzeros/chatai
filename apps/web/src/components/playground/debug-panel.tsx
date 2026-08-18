@@ -32,6 +32,24 @@ export function DebugPanel({
   const sourcesUsed = Array.isArray(debug.sourcesUsed)
     ? debug.sourcesUsed.filter((item): item is string => typeof item === "string")
     : [];
+  const expansion =
+    debug.expansion && typeof debug.expansion === "object"
+      ? (debug.expansion as { enabled?: boolean; expanded?: boolean; queries?: string[]; alternates?: string[] })
+      : null;
+  const rerank =
+    debug.rerank && typeof debug.rerank === "object"
+      ? (debug.rerank as { enabled?: boolean; provider?: string })
+      : null;
+  const hybrid = Array.isArray(debug.hybrid)
+    ? debug.hybrid.filter(
+        (item): item is { chunkId: string; vectorRank?: number; keywordRank?: number; rrfScore?: number } =>
+          typeof item === "object" && item !== null && "chunkId" in item,
+      )
+    : [];
+  const verifier =
+    debug.verifier && typeof debug.verifier === "object"
+      ? (debug.verifier as { passed?: boolean; reason?: string; regenerated?: boolean; enabled?: boolean })
+      : null;
 
   return (
     <details className="group mt-3 border-t border-border pt-3">
@@ -118,6 +136,68 @@ export function DebugPanel({
             </ul>
           )}
         </section>
+
+        {expansion ? (
+          <section>
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Expansion
+            </p>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Enabled</dt>
+              <dd>{expansion.enabled ? "yes" : "no"}</dd>
+              <dt className="text-muted-foreground">Expanded</dt>
+              <dd>{expansion.expanded ? "yes" : "no"}</dd>
+              <dt className="text-muted-foreground">Queries</dt>
+              <dd>{expansion.queries?.join(" · ") || "—"}</dd>
+            </dl>
+          </section>
+        ) : null}
+
+        {rerank ? (
+          <section>
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Rerank
+            </p>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Enabled</dt>
+              <dd>{rerank.enabled ? "yes" : "no"}</dd>
+              <dt className="text-muted-foreground">Provider</dt>
+              <dd>{rerank.provider ?? "—"}</dd>
+            </dl>
+          </section>
+        ) : null}
+
+        {hybrid.length > 0 ? (
+          <section>
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Hybrid ranks
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {hybrid.map((item) => (
+                <li key={item.chunkId}>
+                  {item.chunkId} · v{item.vectorRank ?? "—"} · k{item.keywordRank ?? "—"} · rrf{" "}
+                  {typeof item.rrfScore === "number" ? item.rrfScore.toFixed(4) : "—"}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {verifier ? (
+          <section>
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Verifier
+            </p>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Verdict</dt>
+              <dd>{verifier.passed ? "pass" : "fail"}</dd>
+              <dt className="text-muted-foreground">Regenerated</dt>
+              <dd>{verifier.regenerated ? "yes" : "no"}</dd>
+              <dt className="text-muted-foreground">Reason</dt>
+              <dd>{verifier.reason ?? "—"}</dd>
+            </dl>
+          </section>
+        ) : null}
 
         <section>
           <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

@@ -16,6 +16,7 @@
   "dependencies": {
     "@chatai/ai": "workspace:*",
     "@chatai/database": "workspace:*",
+    "@chatai/evals": "workspace:*",
     "@chatai/rag": "workspace:*",
     "@chatai/react": "workspace:*",
     "@chatai/widget": "workspace:*",

@@ -1,0 +1,177 @@
+import { createDb, evalJobs, eq, sql } from "@chatai/database";
+import {
+  evalWorkerVersionLabel,
+  EVAL_WORKER_VERSION,
+  maybeFinalizeOfflineRun,
+  runOfflineEvalCase,
+  runOnlineEvalJob,
+} from "@chatai/evals";
+
+import { chatConfig, embeddingConfig } from "@/lib/ai-config";
+import { env } from "@/lib/env";
+
+const POLL_MS = 2000;
+const MAX_ATTEMPTS = 3;
+
+type GlobalWorker = typeof globalThis & {
+  __chataiEvalWorker?: {
+    version: string;
+    stop: () => void;
+  };
+};
+
+type ClaimedEvalJob = {
+  id: string;
+  messageId: string | null;
+  runId: string | null;
+  caseId: string | null;
+  attempts: number;
+};
+
+let workerClient: ReturnType<typeof createDb> | null = null;
+
+function workerDb() {
+  if (workerClient) return workerClient;
+  const url = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL is required for the eval worker.");
+  }
+  workerClient = createDb(url, { max: 1 });
+  return workerClient;
+}
+
+async function claimJob(db: ReturnType<typeof createDb>) {
+  const result = await db.execute(sql`
+    UPDATE eval_jobs
+    SET
+      status = 'processing',
+      locked_at = now(),
+      attempts = attempts + 1,
+      updated_at = now()
+    WHERE id = (
+      SELECT id
+      FROM eval_jobs
+      WHERE
+        attempts < ${MAX_ATTEMPTS}
+        AND (
+          status = 'pending'
+          OR (status = 'processing' AND locked_at < now() - interval '2 minutes')
+        )
+      ORDER BY created_at
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING
+      id,
+      message_id AS "messageId",
+      run_id AS "runId",
+      case_id AS "caseId",
+      attempts
+  `);
+
+  const rows = result as unknown as ClaimedEvalJob[];
+  return rows[0] ?? null;
+}
+
+async function processOnce() {
+  const db = workerDb();
+  const job = await claimJob(db);
+  if (!job) return false;
+
+  try {
+    if (job.messageId) {
+      await runOnlineEvalJob({
+        db,
+        messageId: job.messageId,
+        chat: chatConfig(),
+      });
+    } else if (job.runId && job.caseId) {
+      console.log(`[eval] offline case ${job.caseId} using ${evalWorkerVersionLabel()}`);
+      await runOfflineEvalCase({
+        db,
+        runId: job.runId,
+        caseId: job.caseId,
+        chat: chatConfig(),
+        embedding: embeddingConfig(),
+        cohereApiKey: env.COHERE_API_KEY ?? null,
+      });
+    } else {
+      throw new Error("Eval jobs require a messageId or a runId and caseId.");
+    }
+
+    await db
+      .update(evalJobs)
+      .set({
+        status: "completed",
+        error: null,
+        lockedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(evalJobs.id, job.id));
+
+    if (job.runId) {
+      await maybeFinalizeOfflineRun({ db, runId: job.runId });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Eval job failed.";
+    const terminal = job.attempts >= MAX_ATTEMPTS;
+
+    await db
+      .update(evalJobs)
+      .set({
+        status: terminal ? "failed" : "pending",
+        error: message,
+        lockedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(evalJobs.id, job.id));
+
+    if (terminal && job.runId) {
+      await maybeFinalizeOfflineRun({ db, runId: job.runId });
+    }
+
+    const target = job.messageId
+      ? `message ${job.messageId}`
+      : `run ${job.runId} case ${job.caseId}`;
+    console.error(`[eval] ${target} failed:`, message);
+  }
+
+  return true;
+}
+
+export function startEvalWorker() {
+  const g = globalThis as GlobalWorker;
+  if (g.__chataiEvalWorker?.version === EVAL_WORKER_VERSION) return;
+  if (!env.DATABASE_URL) {
+    console.warn("[eval] worker not started: DATABASE_URL is missing");
+    return;
+  }
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  if (g.__chataiEvalWorker) {
+    g.__chataiEvalWorker.stop();
+  }
+
+  let stopped = false;
+  g.__chataiEvalWorker = {
+    version: EVAL_WORKER_VERSION,
+    stop: () => {
+      stopped = true;
+    },
+  };
+
+  console.log(`[eval] worker started (${evalWorkerVersionLabel()})`);
+
+  const tick = async () => {
+    if (stopped) return;
+    try {
+      const processed = await processOnce();
+      setTimeout(tick, processed ? 50 : POLL_MS);
+    } catch (error) {
+      console.error("[eval] worker tick failed:", error);
+      setTimeout(tick, POLL_MS);
+    }
+  };
+
+  void tick();
+}

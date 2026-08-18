@@ -29,6 +29,14 @@ const createSchema = z.object({
 const updateSchema = createSchema.extend({
   id: z.string().min(1),
   hallucinationMode: hallucinationModeSchema,
+  chunkingMode: z.enum(["standard", "parent_child"]),
+  hybridSearch: z.boolean(),
+  rerank: z.boolean(),
+  queryExpansion: z.boolean(),
+  requireContext: z.boolean(),
+  verifyCitations: z.boolean(),
+  refuseOnLowConfidence: z.boolean(),
+  evalSampleRate: z.coerce.number().min(0).max(1),
 });
 
 function emptyToUndefined(value: FormDataEntryValue | null) {
@@ -79,6 +87,14 @@ export async function updateAssistant(_prev: ActionState, formData: FormData): P
     welcomeMessage: emptyToUndefined(formData.get("welcomeMessage")),
     instructions: emptyToUndefined(formData.get("instructions")),
     hallucinationMode: formData.get("hallucinationMode"),
+    chunkingMode: formData.get("chunkingMode"),
+    hybridSearch: formData.get("hybridSearch") === "on",
+    rerank: formData.get("rerank") === "on",
+    queryExpansion: formData.get("queryExpansion") === "on",
+    requireContext: formData.get("requireContext") === "on",
+    verifyCitations: formData.get("verifyCitations") === "on",
+    refuseOnLowConfidence: formData.get("refuseOnLowConfidence") === "on",
+    evalSampleRate: formData.get("evalSampleRate") ?? 0,
   });
 
   if (!parsed.success) {
@@ -98,6 +114,20 @@ export async function updateAssistant(_prev: ActionState, formData: FormData): P
       welcomeMessage: parsed.data.welcomeMessage ?? DEFAULT_WELCOME,
       instructions: parsed.data.instructions ?? DEFAULT_INSTRUCTIONS,
       hallucinationMode: parsed.data.hallucinationMode,
+      ragSettings: {
+        ...existing.ragSettings,
+        chunkingMode: parsed.data.chunkingMode,
+        hybridSearch: parsed.data.hybridSearch,
+        rerank: parsed.data.rerank,
+        queryExpansion: parsed.data.queryExpansion,
+        evalSampleRate: parsed.data.evalSampleRate,
+        guardrails: {
+          ...existing.ragSettings?.guardrails,
+          requireContext: parsed.data.requireContext,
+          verifyCitations: parsed.data.verifyCitations,
+          refuseOnLowConfidence: parsed.data.refuseOnLowConfidence,
+        },
+      },
       updatedAt: new Date(),
     })
     .where(eq(assistants.id, existing.id));
