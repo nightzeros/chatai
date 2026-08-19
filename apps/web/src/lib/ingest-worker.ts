@@ -1,4 +1,5 @@
 import { createDb, assistants, documents, eq, ingestJobs, sql } from "@chatai/database";
+
 import { ingestDocument, syncSource } from "@chatai/rag";
 
 import { resolveAssistantModels } from "@/lib/ai-config";
@@ -107,6 +108,7 @@ async function processOnce() {
         documentId: job.documentId,
         db,
         embedding: await embeddingForDocument(db, job.documentId),
+
       });
     }
 

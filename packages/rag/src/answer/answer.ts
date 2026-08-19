@@ -10,6 +10,7 @@ import { buildContextBlocks, buildSystemPrompt } from "./prompt";
 import { sourcesFromAnswer } from "./citations";
 import { expandQueries } from "./expand-query";
 import { isUnsupportedContextAnswer, resolveFinalOutcome } from "./outcome";
+
 import { resolveRagSettings, type RagSettings } from "./rag-settings";
 import {
   HYBRID_CANDIDATE_LIMIT,

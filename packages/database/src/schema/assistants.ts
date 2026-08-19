@@ -47,6 +47,7 @@ export const assistants = pgTable("assistants", {
   settings: jsonb("settings").$type<AssistantSettings>().notNull().default({}),
   ragSettings: jsonb("rag_settings").$type<RagSettings>().notNull().default({}),
   modelSettings: jsonb("model_settings").$type<ModelSettings>().notNull().default({}),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

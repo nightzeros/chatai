@@ -21,6 +21,7 @@ import { resolveAssistantModels } from "@/lib/ai-config";
 import { usesApiKeyAuth } from "@/lib/api-keys";
 import { getOwnedAssistantByRef } from "@/lib/assistants";
 import { authorizeV1 } from "@/lib/authorize-v1";
+
 import { startEvalWorker } from "@/lib/eval-worker";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
@@ -158,6 +159,7 @@ export async function POST(request: Request) {
           history,
           embedding: models.embedding,
           chat: models.chat,
+
           ragSettings: assistant.ragSettings,
           cohereApiKey: env.COHERE_API_KEY ?? null,
         });
@@ -171,6 +173,7 @@ export async function POST(request: Request) {
             prepared,
             question: input.message,
             chat: models.chat,
+
           });
           prepared = withVerifierResult(prepared, verified);
           fullText = verified.text;

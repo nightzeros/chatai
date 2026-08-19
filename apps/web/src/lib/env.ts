@@ -58,6 +58,9 @@ const envSchema = z.object({
 
   API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(60),
 
+  /** Optional Cohere API key for reranking (falls back to LLM listwise rerank). */
+  COHERE_API_KEY: z.string().optional(),
+
   UPLOAD_DIR: z.string().default("./uploads"),
 });
 

@@ -14,6 +14,7 @@ Open-source platform to **create an AI assistant, give it your knowledge, test i
 8. Run **offline eval regressions** and optional online quality sampling with LLM-as-judge scorers (v0.5+)
 9. Swap LLM/embedding providers, issue hashed API keys, and call a public REST API + TypeScript SDK (v0.6+)
 
+
 Hallucination modes (Strict / Balanced / Flexible), answer guardrails with citation verification, and an owner-only RAG debug panel are available. Per-assistant RAG settings control hybrid search, reranking, chunking mode, and eval sample rate.
 
 ## Stack
@@ -82,6 +83,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `VOYAGE_API_KEY` | Voyage embeddings |
 | `COHERE_API_KEY` | Optional Cohere rerank + Cohere embeddings |
 | `API_RATE_LIMIT_PER_MINUTE` | Per-API-key REST rate limit (default `60`; widget chat is not limited here) |
+
 | `UPLOAD_DIR` | Uploaded files directory (`./uploads` locally, `/app/uploads` in Docker) |
 
 See [.env.example](./.env.example) for all options. Widget embeds should use the same absolute origin as `BETTER_AUTH_URL` (for example `https://your-chatai-instance.example`).
@@ -107,6 +109,7 @@ packages/ai           LLM + embeddings
 packages/rag          Ingestion + answering
 packages/evals        Offline/online eval scoring + run details
 packages/sdk          TypeScript REST client + OpenAPI document
+
 packages/widget-core  Browser-safe chat client + config loading
 packages/widget       Preact Shadow DOM bundle (IIFE chat.js)
 packages/react        Thin React wrapper (private workspace package)
@@ -281,6 +284,7 @@ RAG quality and evaluation tooling:
 - `packages/evals` with faithfulness, relevance, and citation scorers
 - Offline eval sets + regression runs; AI Quality section on Analytics; eval run drill-down with retrieved context
 - Public `/api/v1/chat` contract unchanged for widget consumers
+
 
 ## v0.2 status
 

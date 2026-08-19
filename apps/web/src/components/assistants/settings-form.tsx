@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { CHAT_PROVIDERS, EMBEDDING_PROVIDERS } from "@chatai/ai";
+
 import { defaultRagSettings } from "@chatai/database/rag-settings";
 
 import { deleteAssistant, updateAssistant } from "@/app/dashboard/actions";
@@ -82,6 +83,7 @@ export function SettingsForm({
 }) {
   const [state, formAction, pending] = useActionState(updateAssistant, null);
   const model = assistant.modelSettings ?? {};
+
   const rag = {
     ...defaultRagSettings,
     ...assistant.ragSettings,
@@ -298,6 +300,7 @@ export function SettingsForm({
                 </div>
               </div>
             </fieldset>
+
             <div className="flex flex-col gap-2">
               <Label htmlFor="evalSampleRate">Online eval sample rate</Label>
               <Input

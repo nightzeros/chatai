@@ -163,6 +163,7 @@ export async function updateAssistant(_prev: ActionState, formData: FormData): P
         },
       },
       modelSettings,
+
       updatedAt: new Date(),
     })
     .where(eq(assistants.id, existing.id));
