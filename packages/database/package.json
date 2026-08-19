@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./rag-settings": "./src/schema/rag-settings.ts"
+    "./rag-settings": "./src/schema/rag-settings.ts",
+    "./api-key-scopes": "./src/schema/api-key-scopes.ts"
+
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

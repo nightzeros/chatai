@@ -17,13 +17,18 @@ import {
 import { enqueueOnlineEvalJob, shouldSampleEval } from "@chatai/evals";
 import { z } from "zod";
 
-import { chatConfig, embeddingConfig } from "@/lib/ai-config";
+import { resolveAssistantModels } from "@/lib/ai-config";
+import { usesApiKeyAuth } from "@/lib/api-keys";
+import { getOwnedAssistantByRef } from "@/lib/assistants";
+import { authorizeV1 } from "@/lib/authorize-v1";
+
 import { startEvalWorker } from "@/lib/eval-worker";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { createId } from "@/lib/ids";
 import { publicChatMeta } from "@/lib/public-chat-meta";
+import { consumeApiKeyRateLimit } from "@/lib/rate-limit";
 import { getSession } from "@/lib/session";
 
 const bodySchema = z.object({
@@ -55,11 +60,33 @@ export async function POST(request: Request) {
   const source: ConversationSource = input.source ?? "api";
   const started = Date.now();
 
-  const [assistant] = await db()
-    .select()
-    .from(assistants)
-    .where(eq(assistants.publicId, input.assistantId))
-    .limit(1);
+  let assistant;
+  if (usesApiKeyAuth(request)) {
+    const auth = await authorizeV1(request, ["chat"]);
+    if (!auth.ok) {
+      return jsonWithCors({ error: auth.error }, { status: auth.status });
+    }
+
+    const limited = await consumeApiKeyRateLimit(auth.apiKeyId);
+    if (!limited.ok) {
+      return jsonWithCors(
+        { error: "Rate limit exceeded." },
+        { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+      );
+    }
+
+    assistant = await getOwnedAssistantByRef(auth.userId, input.assistantId);
+    if (!assistant) {
+      return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
+    }
+  } else {
+    const [row] = await db()
+      .select()
+      .from(assistants)
+      .where(eq(assistants.publicId, input.assistantId))
+      .limit(1);
+    assistant = row;
+  }
 
   if (!assistant) {
     return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
@@ -119,6 +146,8 @@ export async function POST(request: Request) {
     async start(controller) {
       const send = (payload: unknown) => controller.enqueue(encoder.encode(sseLine(payload)));
 
+      const models = resolveAssistantModels(assistant);
+
       try {
         const rag = resolveRagSettings(assistant.ragSettings);
         let prepared = await prepareAnswer({
@@ -128,8 +157,9 @@ export async function POST(request: Request) {
           mode: assistant.hallucinationMode,
           message: input.message,
           history,
-          embedding: embeddingConfig(),
-          chat: chatConfig(),
+          embedding: models.embedding,
+          chat: models.chat,
+
           ragSettings: assistant.ragSettings,
           cohereApiKey: env.COHERE_API_KEY ?? null,
         });
@@ -142,7 +172,8 @@ export async function POST(request: Request) {
           const verified = await generateVerifiedAnswer({
             prepared,
             question: input.message,
-            chat: chatConfig(),
+            chat: models.chat,
+
           });
           prepared = withVerifierResult(prepared, verified);
           fullText = verified.text;
@@ -150,7 +181,7 @@ export async function POST(request: Request) {
         } else {
           fullText = "";
           const result = streamChat({
-            config: chatConfig(),
+            config: models.chat,
             system: prepared.system,
             messages: [{ role: "user", content: input.message }],
           });
@@ -164,7 +195,7 @@ export async function POST(request: Request) {
         const latencyMs = Date.now() - started;
         const final = finalizeAnswer(fullText, {
           ...prepared,
-          debug: { ...prepared.debug, latencyMs, model: chatConfig().model },
+          debug: { ...prepared.debug, latencyMs, model: models.chat.model, provider: models.chat.provider },
         });
 
         await db().insert(messages).values({
@@ -210,7 +241,7 @@ export async function POST(request: Request) {
           sources: [],
           confidence: 0,
           outcome: "model_failure",
-          debug: { model: chatConfig().model, latencyMs, error: message },
+          debug: { model: models.chat.model, provider: models.chat.provider, latencyMs, error: message },
           latencyMs,
         });
 

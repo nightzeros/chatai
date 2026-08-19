@@ -9,6 +9,8 @@ import { applyGuardrails } from "./guardrails";
 import { buildContextBlocks, buildSystemPrompt } from "./prompt";
 import { sourcesFromAnswer } from "./citations";
 import { expandQueries } from "./expand-query";
+import { isUnsupportedContextAnswer, resolveFinalOutcome } from "./outcome";
+
 import { resolveRagSettings, type RagSettings } from "./rag-settings";
 import {
   HYBRID_CANDIDATE_LIMIT,
@@ -241,10 +243,15 @@ export async function prepareAnswer(opts: {
 
 export function finalizeAnswer(fullText: string, prepared: PreparedAnswer): FinalAnswer {
   const answer = fullText.trim() || prepared.fallbackText;
+  const outcome = resolveFinalOutcome({
+    preparedOutcome: prepared.outcome,
+    answer,
+    fallbackText: prepared.fallbackText,
+  });
   const usedFallback =
-    prepared.outcome === "fallback_no_context" ||
-    prepared.outcome === "retrieval_failure" ||
-    answer === prepared.fallbackText;
+    outcome === "fallback_no_context" ||
+    outcome === "retrieval_failure" ||
+    isUnsupportedContextAnswer(answer, prepared.fallbackText);
 
   const sources = usedFallback ? [] : sourcesFromAnswer(answer, prepared.retrieved);
 
@@ -252,7 +259,7 @@ export function finalizeAnswer(fullText: string, prepared: PreparedAnswer): Fina
     answer,
     sources,
     confidence: prepared.confidence,
-    outcome: prepared.outcome,
+    outcome,
     debug: {
       ...prepared.debug,
       sourcesUsed: sources.map((source) => source.documentName),

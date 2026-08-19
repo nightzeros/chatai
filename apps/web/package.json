@@ -19,6 +19,7 @@
     "@chatai/evals": "workspace:*",
     "@chatai/rag": "workspace:*",
     "@chatai/react": "workspace:*",
+    "@chatai/sdk": "workspace:*",
     "@chatai/widget": "workspace:*",
     "better-auth": "^1.6.26",
     "class-variance-authority": "^0.7.1",

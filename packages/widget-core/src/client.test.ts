@@ -41,6 +41,20 @@ describe("createSseParser", () => {
 });
 
 describe("createWidgetController", () => {
+  it("records a load error instead of throwing when the API URL is missing", async () => {
+    const controller = createWidgetController({
+      assistantId: "asst_demo",
+      apiUrl: undefined as unknown as string,
+    });
+
+    await controller.load();
+
+    expect(controller.getState()).toMatchObject({
+      status: "error",
+      error: expect.stringMatching(/absolute URL/i),
+    });
+  });
+
   it("loads public config then posts widget chat with persistent visitor state", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const storage = new Map<string, string>();
@@ -74,6 +88,8 @@ describe("createWidgetController", () => {
 
     expect(calls[0]?.url).toBe("https://chat.example.com/api/v1/assistants/asst_demo/config");
     expect(calls[1]?.url).toBe("https://chat.example.com/api/v1/chat");
+    expect(calls[1]?.init?.headers).toEqual({ "Content-Type": "application/json" });
+    expect(JSON.stringify(calls[1]?.init?.headers ?? {})).not.toMatch(/authorization/i);
     expect(JSON.parse(String(calls[1]?.init?.body))).toMatchObject({
       assistantId: "asst_demo",
       message: "Hello",

@@ -157,7 +157,6 @@ function responseError(response: Response) {
 }
 
 export function createWidgetController(options: WidgetControllerOptions) {
-  const apiUrl = resolveApiUrl(options.apiUrl);
   const fetcher = options.fetch ?? globalThis.fetch;
   const storage = options.storage ?? defaultStorage();
   const createId = options.createId ?? randomId;
@@ -165,6 +164,8 @@ export function createWidgetController(options: WidgetControllerOptions) {
   const conversationKey = `chatai.widget.${options.assistantId}.conversation`;
   const listeners = new Set<(state: WidgetState) => void>();
   let state: WidgetState = { status: "loading", messages: [] };
+
+  const origin = () => resolveApiUrl(options.apiUrl);
 
   const emit = () => listeners.forEach((listener) => listener(state));
   const setState = (next: WidgetState) => {
@@ -190,6 +191,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
     async load() {
       setState({ ...state, status: "loading", error: undefined });
       try {
+        const apiUrl = origin();
         const response = await fetcher(
           `${apiUrl}/api/v1/assistants/${encodeURIComponent(options.assistantId)}/config`,
         );
@@ -223,6 +225,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
       });
 
       try {
+        const apiUrl = origin();
         const response = await fetcher(`${apiUrl}/api/v1/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -275,6 +278,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
     },
     async sendFeedback(messageId: string, rating: "positive" | "negative") {
       try {
+        const apiUrl = origin();
         const response = await fetcher(`${apiUrl}/api/v1/feedback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

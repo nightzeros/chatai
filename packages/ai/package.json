@@ -7,15 +7,21 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.39",
+    "@ai-sdk/cohere": "^4.0.27",
+    "@ai-sdk/google": "^4.0.44",
     "@ai-sdk/openai": "^4.0.40",
+    "@ai-sdk/voyage": "^2.0.27",
     "ai": "^7.0.62"
   }
 }
