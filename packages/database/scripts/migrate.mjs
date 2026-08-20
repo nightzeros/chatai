@@ -1,5 +1,7 @@
 /* global console, process */
 
+import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,7 +21,51 @@ const migrationsFolder = path.join(pkgRoot, "migrations");
 const client = postgres(url, { max: 1, prepare: false });
 const db = drizzle(client);
 
+/**
+ * Old Docker entrypoint applied only 0000 via psql (no drizzle journal).
+ * Stamp that migration so `migrate()` can apply 0001+ without re-running 0000.
+ */
+async function baselineLegacyDockerBootstrap() {
+  const assistants = await client`
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'assistants'
+    LIMIT 1
+  `;
+  if (assistants.length === 0) return;
+
+  await client`CREATE SCHEMA IF NOT EXISTS drizzle`;
+  await client`
+    CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
+      id SERIAL PRIMARY KEY,
+      hash text NOT NULL,
+      created_at bigint
+    )
+  `;
+
+  const existing = await client`SELECT id FROM drizzle.__drizzle_migrations LIMIT 1`;
+  if (existing.length > 0) return;
+
+  const journalPath = path.join(migrationsFolder, "meta/_journal.json");
+  const journal = JSON.parse(fs.readFileSync(journalPath, "utf8"));
+  const first = journal.entries?.[0];
+  if (!first?.tag || first.when == null) {
+    throw new Error("[migrate] Cannot baseline legacy install: journal entry 0 is missing");
+  }
+
+  const sqlPath = path.join(migrationsFolder, `${first.tag}.sql`);
+  const query = fs.readFileSync(sqlPath, "utf8");
+  const hash = crypto.createHash("sha256").update(query).digest("hex");
+
+  await client`
+    INSERT INTO drizzle.__drizzle_migrations ("hash", "created_at")
+    VALUES (${hash}, ${first.when})
+  `;
+  console.log(`[migrate] Baselined legacy Docker bootstrap as ${first.tag}`);
+}
+
 try {
+  await baselineLegacyDockerBootstrap();
   await migrate(db, { migrationsFolder });
   console.log("[migrate] Applied migrations from", migrationsFolder);
 } finally {
