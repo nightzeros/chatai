@@ -27,6 +27,9 @@ VITE_CHATAI_ASSISTANT_ID=asst_replace_me
 ## Run
 
 ```bash
+cp examples/react-widget/.env.example examples/react-widget/.env
+# set VITE_CHATAI_ASSISTANT_ID (publicId from Dashboard → Install)
+
 pnpm --filter @chatai/example-react-widget dev
 ```
 
@@ -38,5 +41,7 @@ Open the printed local URL. The launcher mounts via:
   apiUrl={import.meta.env.VITE_CHATAI_ORIGIN || "http://localhost:3000"}
 />
 ```
+
+`apiUrl` must be the absolute ChatAI origin (same as `BETTER_AUTH_URL` / widget API host).
 
 If `.env` is missing, the page now shows setup instructions instead of a blank widget. Vite only reads `.env` on startup, so restart the example after creating that file.

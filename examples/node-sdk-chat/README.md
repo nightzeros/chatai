@@ -23,3 +23,5 @@ pnpm start -- "What is your refund policy?"
 Optional: `CHATAI_API_URL` (default `http://localhost:3000`).
 
 OpenAPI for this instance: `GET /api/v1/openapi.json`.
+
+Docs: [TypeScript SDK](../../apps/docs/content/docs/sdk.mdx) (site: `pnpm docs:dev` → SDK).

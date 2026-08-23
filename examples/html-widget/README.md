@@ -18,7 +18,7 @@ The committed fixtures use `http://localhost:3000` and `asst_replace_me`. Edit t
 
 ## Hosted script (`index.html`)
 
-Serves the widget from ChatAI:
+Matches the Dashboard → **Install** tab (hosted bundle). Serves the widget from ChatAI:
 
 ```html
 <script
@@ -28,7 +28,7 @@ Serves the widget from ChatAI:
 ></script>
 ```
 
-Replace the origin in `src` with `CHATAI_ORIGIN` and `data-assistant-id` with `CHATAI_ASSISTANT_ID`. Open the file (or any static server) while ChatAI is running.
+Replace the origin in `src` with `CHATAI_ORIGIN` and `data-assistant-id` with `CHATAI_ASSISTANT_ID`. Do **not** set `data-api-url` for the hosted case — the API origin is derived from the script URL. Open the file (or any static server) while ChatAI is running.
 
 ## Self-hosted script (`self-host.html`)
 
