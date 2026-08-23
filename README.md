@@ -47,7 +47,34 @@ pnpm seed:demo
 # demo@chatai.local / DemoPass123!
 ```
 
+Or for a throwaway Docker demo only:
+
+```bash
+# in .env: SEED_DEMO_ON_START=1
+docker compose up --build
+```
+
 Then sign in, open the Support Bot playground, and ask about refunds (once `AI_API_KEY` is set and ingestion finishes).
+
+### Offline / local models (Ollama)
+
+Run Postgres + the app + [Ollama](https://ollama.com) with the Compose `local-models` profile:
+
+```bash
+cp .env.example .env
+# Prefer hybrid: AI_PROVIDER=ollama + keep 1536-d embeddings (see .env.example)
+
+docker compose --profile local-models up --build
+docker compose --profile local-models exec ollama ollama pull llama3.2
+```
+
+Ollama listens on [http://localhost:11434](http://localhost:11434). Inside Compose use `OLLAMA_BASE_URL=http://ollama:11434/v1`.
+
+**Note:** Fully local `nomic-embed-text` (768-d) does not match the fixed `vector(1536)` schema — ingest fails. Use Ollama for **chat** and keep 1536-d embeddings, or see the docs.
+
+GPU is optional; CPU Ollama works but is slow. Skip the profile smoke in CI/environments without the models pulled.
+
+Docs: [Local models (Ollama)](./apps/docs/content/docs/self-hosting/ollama.mdx) (site: `pnpm docs:dev` → Self-hosting).
 
 ## Quick start (development)
 
@@ -91,7 +118,7 @@ See [.env.example](./.env.example) for all options. Widget embeds should use the
 ## Database
 
 - **Neon** (cloud/dev): pgvector enabled; use pooled `DATABASE_URL` and direct `DATABASE_URL_UNPOOLED` for migrations.  
-- **Docker Compose**: `db` + `app` services; app overrides `DATABASE_URL` to `db:5432` internally.
+- **Docker Compose**: `db` + `app` services; app overrides `DATABASE_URL` to `db:5432` internally. Optional `ollama` via `--profile local-models`.
 
 ```bash
 pnpm db:generate   # create migration from schema changes
@@ -104,6 +131,7 @@ pnpm db:studio     # Drizzle Studio
 
 ```text
 apps/web              Dashboard + APIs + hosted /widget/chat.js
+apps/docs             Documentation site (Fumadocs) — pnpm docs:dev → :3001
 packages/database     Schema, migrations, DB client
 packages/ai           LLM + embeddings
 packages/rag          Ingestion + answering
@@ -115,6 +143,7 @@ packages/widget       Preact Shadow DOM bundle (IIFE chat.js)
 packages/react        Thin React wrapper (private workspace package)
 examples/html-widget  Hosted + self-host script fixtures
 examples/react-widget Vite demo using workspace:* @chatai/react
+examples/nextjs-portfolio App Router portfolio + @chatai/react
 examples/node-sdk-chat Node script using workspace:* @chatai/sdk
 ```
 
@@ -262,6 +291,18 @@ Draft changes update the live preview immediately; only **Save** publishes them 
 | REST `429` | Per-key rate limit; wait for `Retry-After` seconds |
 | Eval run details show empty retrieval / unknown sources on new runs | The background eval worker may be running stale code after HMR; **restart `pnpm dev`** after changes under `packages/evals`. New runs should persist `details.snapshot.retrieval` on every score row. |
 
+## v0.7 status
+
+Self-hosting, documentation site, and example apps:
+
+- Docker: Drizzle migrate on boot, `GET /api/health`, Compose healthchecks
+- Optional Compose profile `local-models` (Ollama) — hybrid chat recommended; 768-d local embeddings not schema-compatible yet
+- Optional `SEED_DEMO_ON_START=1` for demo seed after health (dev/demo only)
+- `apps/docs` Fumadocs site (`pnpm docs:dev` on :3001) — install, self-hosting, product, API (Scalar), SDK
+- Examples: html-widget, react-widget, nextjs-portfolio, node-sdk-chat; support-bot walkthrough via `pnpm seed:demo`
+
+Next: npm publish of packages; v0.8 domain allowlists and visitor rate limits.
+
 ## v0.6 status
 
 Developer platform:
@@ -271,8 +312,6 @@ Developer platform:
 - Hashed API keys, scoped Bearer REST, Postgres per-key rate limits
 - Dual-auth chat: widget `publicId` stays keyless; SDK uses `sk_` + `chat` scope
 - OpenAPI at `/api/v1/openapi.json`, private `@chatai/sdk`, `examples/node-sdk-chat`
-
-Next: v0.7 example apps / docs site; npm publish of packages; v0.8 domain allowlists and visitor rate limits.
 
 ## v0.5 status
 
