@@ -8,6 +8,7 @@ dist
 out
 build
 .turbo
+.source
 apps/web/public/widget/chat.js
 examples/html-widget/chat.js
 

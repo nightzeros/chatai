@@ -1,0 +1,85 @@
+---
+title: Backup and upgrades
+description: Back up Postgres and uploads, then upgrade ChatAI safely.
+---
+
+## What to back up
+
+| Data | Location | Notes |
+| --- | --- | --- |
+| Database | Compose volume `chatai_pgdata` | Assistants, chunks, conversations, API keys |
+| Uploads | Compose volume `chatai_uploads` | Original files under `/app/uploads` |
+| Config | Your `.env` / secrets store | Not in the image |
+
+## Database dump
+
+With Compose running:
+
+```bash
+docker compose exec -T db pg_dump -U chatai -d chatai -Fc > chatai-$(date +%Y%m%d).dump
+```
+
+Plain SQL:
+
+```bash
+docker compose exec -T db pg_dump -U chatai -d chatai > chatai-$(date +%Y%m%d).sql
+```
+
+### Restore
+
+```bash
+# Example: custom format dump into a fresh volume
+docker compose up -d db
+docker compose exec -T db pg_restore -U chatai -d chatai --clean --if-exists < chatai-YYYYMMDD.dump
+```
+
+Prefer restoring into an empty database or a new volume. Coordinate with app downtime so ingest workers are not writing mid-restore.
+
+## Uploads volume
+
+Copy the named volume or bind-mount contents. Example with a temporary Alpine container:
+
+```bash
+docker run --rm \
+  -v chatai-v07-self-hosting-docs_chatai_uploads:/data \
+  -v "$PWD:/backup" \
+  alpine tar czf /backup/chatai-uploads-$(date +%Y%m%d).tgz -C /data .
+```
+
+Adjust the volume name to match `docker volume ls` on your host (Compose prefixes the project name).
+
+## Upgrade flow
+
+1. **Back up** Postgres and uploads
+2. **Pull / rebuild** the app image:
+
+   ```bash
+   git pull
+   docker compose build app
+   ```
+
+3. **Restart** so the entrypoint runs migrations:
+
+   ```bash
+   docker compose up -d app
+   ```
+
+   Migrations run automatically via `node /app/packages/database/scripts/migrate.mjs` on boot. You do not need to apply `0000_*.sql` by hand.
+
+4. **Smoke health:**
+
+   ```bash
+   curl -s http://localhost:3000/api/health
+   # {"status":"ok","db":"ok"}
+   ```
+
+5. Sign in, open an assistant playground, and send a short test message.
+
+### Existing databases
+
+If an older install only applied the first SQL file and skipped later migrations, restarting the current image applies pending Drizzle migrations (`0001`–…) on boot.
+
+## Related
+
+- [Docker](/docs/self-hosting/docker)
+- [Environment reference](/docs/self-hosting/env-reference)

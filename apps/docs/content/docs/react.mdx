@@ -1,0 +1,66 @@
+---
+title: React
+description: Use the ChatWidget React package in your app.
+---
+
+`@chatai/react` is a **private workspace package** (not on npm yet). Use it inside this monorepo with `workspace:*`. Peer dependency: React 18 or 19.
+
+```json
+{
+  "dependencies": {
+    "@chatai/react": "workspace:*"
+  }
+}
+```
+
+## Basic usage
+
+```tsx
+import { ChatWidget } from "@chatai/react";
+
+export function SupportChat() {
+  return (
+    <ChatWidget
+      assistantId="asst_your_public_id"
+      apiUrl="https://your-chatai-instance.example"
+    />
+  );
+}
+```
+
+`apiUrl` must be the absolute ChatAI origin (same as `BETTER_AUTH_URL` / widget API host).
+
+## Props
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `assistantId` | `string` | Required — `publicId` |
+| `apiUrl` | `string` | Required — ChatAI origin |
+| `className` | `string` | Optional wrapper class |
+| `theme` | `"light" \| "dark" \| "system"` | Optional |
+| `primaryColor` | `string` | Optional |
+| `position` | `"bottom-left" \| "bottom-right"` | Optional |
+| `iconUrl` | `string \| null` | Optional |
+| `suggestedQuestions` | `string[]` | Optional |
+| `showSources` | `boolean` | Optional |
+| `layout` | `"fixed" \| "contained"` | Optional |
+| `onReady` / `onError` | callbacks | Optional |
+
+Low-level: `mountChatWidget(element, options)` from the same package.
+
+## Example app
+
+```bash
+# examples/react-widget/.env
+VITE_CHATAI_ORIGIN=http://localhost:3000
+VITE_CHATAI_ASSISTANT_ID=asst_your_public_id
+
+pnpm --filter @chatai/example-react-widget dev
+```
+
+See [Examples](/docs/examples).
+
+## Related
+
+- [Widget](/docs/widget) — script tag path
+- [Assistants](/docs/assistants)

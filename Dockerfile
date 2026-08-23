@@ -8,6 +8,10 @@ RUN corepack enable && corepack prepare pnpm@10.21.0 --activate
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/web/package.json ./apps/web/
+COPY apps/docs/package.json ./apps/docs/
+COPY apps/docs/source.config.ts ./apps/docs/
+# fumadocs-mdx postinstall needs the content dir to exist
+RUN mkdir -p apps/docs/content/docs
 COPY packages/database/package.json ./packages/database/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/rag/package.json ./packages/rag/
@@ -18,6 +22,7 @@ COPY packages/widget/package.json ./packages/widget/
 COPY packages/react/package.json ./packages/react/
 COPY examples/react-widget/package.json ./examples/react-widget/
 COPY examples/node-sdk-chat/package.json ./examples/node-sdk-chat/
+COPY examples/nextjs-portfolio/package.json ./examples/nextjs-portfolio/
 RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
@@ -61,6 +66,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/
 COPY --from=builder /app/packages/database/migrations ./packages/database/migrations
 COPY --from=builder /app/packages/database/scripts/migrate.mjs ./packages/database/scripts/migrate.mjs
 COPY --from=migrate-deps /migrate/node_modules ./packages/database/node_modules
+# Seed resolves `postgres` from packages/database/node_modules (ESM walks up from script path)
+COPY scripts/seed-demo.mjs ./packages/database/scripts/seed-demo.mjs
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 
 RUN chmod +x /app/docker-entrypoint.sh

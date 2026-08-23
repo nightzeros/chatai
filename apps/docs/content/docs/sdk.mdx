@@ -1,0 +1,74 @@
+---
+title: TypeScript SDK
+description: Thin @chatai/sdk client for streaming chat and owner REST routes.
+---
+
+`@chatai/sdk` is a **private workspace package** (not on npm yet). Use it inside this monorepo with `workspace:*`.
+
+```json
+{
+  "dependencies": {
+    "@chatai/sdk": "workspace:*"
+  }
+}
+```
+
+It wraps Bearer REST + SSE chat. OpenAPI for the same surface: [REST API](/docs/api).
+
+## Setup
+
+1. Run ChatAI (`pnpm dev` or Docker)
+2. Create an assistant and knowledge (or `pnpm seed:demo`)
+3. In **Account**, create an API key with at least the **chat** scope; copy `sk_live_…`
+4. Note the assistant **public id** (`asst_…`)
+
+## Streaming chat
+
+```ts
+import { ChatAI } from "@chatai/sdk";
+
+const client = new ChatAI({
+  apiKey: process.env.CHATAI_API_KEY!,
+  baseUrl: process.env.CHATAI_API_URL ?? "http://localhost:3000",
+});
+
+const result = await client.chat({
+  assistantId: process.env.CHATAI_ASSISTANT_ID!,
+  message: "What is your refund policy?",
+  onToken: (text) => process.stdout.write(text),
+});
+
+console.log("\n", result.outcome, result.sources);
+```
+
+## Owner REST helpers
+
+| Method | Scope (typical) |
+| --- | --- |
+| `listAssistants` / `getAssistant` / `createAssistant` / `updateAssistant` / `deleteAssistant` | `assistants:*` |
+| `listDocuments` / `getDocument` / `deleteDocument` / `reprocessDocument` | `documents:*` |
+| `listConversations` / `getConversation` | `conversations:read` |
+| `getAnalytics` | `analytics:read` |
+
+Document **upload** remains dashboard-only (no multipart REST yet).
+
+## Example script
+
+```bash
+cd examples/node-sdk-chat
+CHATAI_API_KEY=sk_live_... \
+CHATAI_ASSISTANT_ID=asst_... \
+pnpm start -- "What is your refund policy?"
+```
+
+Optional: `CHATAI_API_URL` (default `http://localhost:3000`).
+
+## Errors
+
+`ChatAIError` exposes HTTP status and body message for 4xx/5xx. Respect **429** `Retry-After` when rate limited.
+
+## Related
+
+- [REST API](/docs/api)
+- [Examples](/docs/examples)
+- [Providers](/docs/providers)

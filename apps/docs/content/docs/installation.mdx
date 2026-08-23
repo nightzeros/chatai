@@ -1,0 +1,94 @@
+---
+title: Installation
+description: Run ChatAI locally with Docker, pnpm + Neon/Postgres, or deploy to common hosts.
+---
+
+## Quick start (Docker)
+
+Fastest path with Postgres included:
+
+```bash
+cp .env.example .env
+# Set BETTER_AUTH_SECRET (openssl rand -base64 32) and AI_API_KEY
+
+docker compose up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000). Migrations run on app startup. Details: [Docker self-hosting](/docs/self-hosting/docker).
+
+Optional demo data after health is green:
+
+```bash
+pnpm seed:demo
+# demo@chatai.local / DemoPass123!
+```
+
+Docker demo shortcut (not for production): set `SEED_DEMO_ON_START=1` in `.env` before `docker compose up --build`.
+
+## Quick start (development)
+
+```bash
+cp .env.example .env
+# DATABASE_URL — Neon pooled URL, or local Docker Postgres
+# BETTER_AUTH_SECRET, AI_API_KEY
+
+# Local Postgres only (skip if using Neon):
+docker compose up -d db
+
+pnpm install
+pnpm db:migrate   # or: pnpm migrate
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### Neon
+
+1. Create a Neon project with **pgvector** enabled
+2. Set `DATABASE_URL` to the **pooled** connection string
+3. Set `DATABASE_URL_UNPOOLED` to the **direct** URL for migrations
+4. Run `pnpm db:migrate` then `pnpm dev`
+
+Keep Compose `db` for fully local offline work.
+
+## Local models (Ollama)
+
+```bash
+docker compose --profile local-models up --build
+```
+
+See [Ollama](/docs/self-hosting/ollama) for hybrid chat (recommended) vs fully offline embedding limits.
+
+## Deployment stubs
+
+These are short checklists — same env vars as local, plus a public `BETTER_AUTH_URL`.
+
+### Vercel + Neon
+
+1. Neon: pooled `DATABASE_URL`, direct `DATABASE_URL_UNPOOLED`, pgvector on
+2. Vercel project from this monorepo; root directory / build for `apps/web` (or your monorepo settings)
+3. Set `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (production origin), `AI_API_KEY`, and other provider keys
+4. Run migrations against Neon (`pnpm migrate` / `DATABASE_URL_UNPOOLED`) in CI or a one-off job — the Docker entrypoint migrator is for the Compose image, not Vercel serverless cold starts
+5. Configure durable upload storage if you outgrow ephemeral disk (`UPLOAD_DIR`)
+
+### Railway
+
+1. Add a Postgres (pgvector) plugin or external Neon URL
+2. Deploy from the Dockerfile or connect the repo and set the start command to the image entrypoint
+3. Set env vars from [Environment reference](/docs/self-hosting/env-reference)
+4. Map public HTTPS to port `3000`; set `BETTER_AUTH_URL` to that origin
+5. Confirm `GET /api/health` after deploy
+
+### Fly.io
+
+1. Create an app and a Postgres volume or attach Managed Postgres with pgvector
+2. Use the repo `Dockerfile`; allocate a volume for uploads if needed
+3. Set secrets (`fly secrets set …`) for auth and AI keys
+4. Set `BETTER_AUTH_URL` to `https://<app>.fly.dev` (or custom domain)
+5. Smoke `curl https://<app>.fly.dev/api/health`
+
+## Related
+
+- [Environment reference](/docs/self-hosting/env-reference)
+- [Backup and upgrades](/docs/self-hosting/backup-upgrade)
+- [Getting started](/docs)

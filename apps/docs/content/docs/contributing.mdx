@@ -1,0 +1,73 @@
+---
+title: Contributing
+description: Develop ChatAI in the monorepo — scripts, migrations, and PR checklist.
+---
+
+Thanks for contributing. Prefer small, focused PRs. The canonical guide lives in the repo root [`CONTRIBUTING.md`](https://github.com/master-tecs/chatai/blob/main/CONTRIBUTING.md); this page summarizes day-to-day workflows.
+
+## Prerequisites
+
+- Node.js 20+ (22 recommended)
+- pnpm 10+
+- Docker optional if you use Neon for Postgres
+
+## Setup
+
+```bash
+git clone <repo-url>
+cd chatAI
+cp .env.example .env
+pnpm install
+```
+
+Database:
+
+- **Neon:** pooled `DATABASE_URL` + direct `DATABASE_URL_UNPOOLED`
+- **Local:** `docker compose up -d db` and the default URL from `.env.example`
+
+```bash
+pnpm db:migrate
+pnpm dev                 # apps/web → http://localhost:3000
+pnpm docs:dev            # apps/docs → http://localhost:3001
+```
+
+## Useful scripts
+
+| Script | Purpose |
+| --- | --- |
+| `pnpm dev` | Turbo dev (web) |
+| `pnpm docs:dev` / `pnpm docs:build` | Documentation site |
+| `pnpm lint` / `pnpm typecheck` / `pnpm test` / `pnpm build` | Quality gates |
+| `pnpm db:generate` | Create Drizzle migration from schema |
+| `pnpm db:migrate` | Apply migrations (drizzle-kit) |
+| `pnpm migrate` | Runtime migrator (also used in Docker entrypoint) |
+| `pnpm seed:demo` | Demo user + support bot + refund FAQ |
+| `pnpm widget:build` | Build embeddable `chat.js` |
+| `pnpm examples:prepare-widget` | Copy widget into HTML examples |
+
+## Migrations
+
+1. Edit schema under `packages/database/src/schema`
+2. `pnpm db:generate` → review SQL under `packages/database/migrations`
+3. Apply with `pnpm db:migrate` (dev) or rely on Docker boot (`migrate.mjs`)
+4. Embedding column width is fixed at `vector(1536)` today — do not assume `EMBEDDING_DIMENSIONS` alone changes storage
+
+## Coding standards
+
+- TypeScript strict; explicit types at package boundaries
+- Prettier + ESLint (`pnpm format`, `pnpm lint`)
+- No secrets in git (`.env`, API keys)
+- Keep diffs scoped to the task
+
+## Pull requests
+
+1. Issue first for larger features
+2. Branch from `main` (or the active version branch)
+3. Ensure `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass (include `pnpm docs:build` when touching docs)
+4. Fill the PR template (summary + test plan)
+
+## Related
+
+- [Architecture](/docs/architecture)
+- [Installation](/docs/installation)
+- [Environment reference](/docs/self-hosting/env-reference)

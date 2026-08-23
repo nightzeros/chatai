@@ -1,0 +1,73 @@
+---
+title: Widget
+description: Embed ChatAI with a script tag (hosted or self-hosted chat.js).
+---
+
+The embeddable widget is an IIFE bundle (`chat.js`) with a Shadow DOM launcher. Copy the exact snippet from the assistant **Install** tab.
+
+Browser baseline: modern evergreen browsers with Shadow DOM and `fetch` / streaming support.
+
+## Hosted script (recommended)
+
+Load `chat.js` from your ChatAI origin. The widget derives the API origin from the script URL — do **not** set `data-api-url`.
+
+```html
+<script
+  src="https://your-chatai-instance.example/widget/chat.js"
+  data-assistant-id="asst_your_public_id"
+  async
+></script>
+```
+
+Locally:
+
+```html
+<script
+  src="http://localhost:3000/widget/chat.js"
+  data-assistant-id="asst_your_public_id"
+  async
+></script>
+```
+
+## Self-hosted script
+
+Serve `chat.js` from your static origin and point API calls at ChatAI:
+
+```html
+<script
+  src="https://static.example.com/chat.js"
+  data-assistant-id="asst_your_public_id"
+  data-api-url="https://your-chatai-instance.example"
+  async
+></script>
+```
+
+From this monorepo:
+
+```bash
+pnpm examples:prepare-widget
+# writes examples/html-widget/chat.js
+```
+
+Open [`examples/html-widget/self-host.html`](https://github.com/master-tecs/chatai/blob/main/examples/html-widget/self-host.html).
+
+If `data-api-url` is missing or wrong, the launcher may appear while config/chat fail (CORS, 404, wrong host).
+
+## Data attributes
+
+| Attribute | Required | Meaning |
+| --- | --- | --- |
+| `data-assistant-id` | Yes | Assistant `publicId` |
+| `data-api-url` | Self-host only | Absolute ChatAI API origin |
+
+Appearance (colors, position, suggested questions) is controlled from **Customize** on the assistant and loaded at runtime — keep Customize **saved** so embeds match the draft preview.
+
+## Auth model
+
+Widget chat uses `publicId` in the request body and **no API key**. REST SDK access uses Bearer `sk_` keys — see [API](/docs/api) and [SDK](/docs/sdk).
+
+## Related
+
+- [React](/docs/react)
+- [Examples](/docs/examples)
+- [Assistants](/docs/assistants)

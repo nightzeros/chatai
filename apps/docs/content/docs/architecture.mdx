@@ -1,0 +1,68 @@
+---
+title: Architecture
+description: How the monorepo packages fit together.
+---
+
+ChatAI is a pnpm + Turborepo monorepo. The production Docker image runs `apps/web` (Next.js) with an in-process ingest worker and Postgres + pgvector.
+
+```mermaid
+flowchart LR
+  subgraph clients [Clients]
+    browser[Dashboard / Playground]
+    widget[Widget / React]
+    sdk[SDK / REST]
+  end
+
+  subgraph web [apps/web]
+    api[API routes]
+    worker[Ingest + eval workers]
+  end
+
+  subgraph packages [Packages]
+    rag["@chatai/rag"]
+    ai["@chatai/ai"]
+    db["@chatai/database"]
+    evals["@chatai/evals"]
+  end
+
+  pg[(Postgres + pgvector)]
+
+  browser --> api
+  widget --> api
+  sdk --> api
+  api --> rag
+  api --> ai
+  api --> db
+  worker --> rag
+  worker --> evals
+  rag --> ai
+  rag --> db
+  evals --> db
+  db --> pg
+  ai --> providers[LLM / embedding providers]
+```
+
+## Package roles
+
+| Package / app | Role |
+| --- | --- |
+| `apps/web` | Dashboard, auth, APIs, hosted `/widget/chat.js`, workers |
+| `apps/docs` | Fumadocs documentation site (this site) |
+| `packages/database` | Drizzle schema, migrations, DB client |
+| `packages/ai` | Provider registry, chat + embeddings |
+| `packages/rag` | Ingest, chunk, retrieve, answer |
+| `packages/evals` | Offline / online quality scoring |
+| `packages/sdk` | TypeScript REST client + OpenAPI document |
+| `packages/widget` / `widget-core` / `react` | Embeddable UI |
+
+## Runtime notes
+
+- Migrations on Docker boot: `packages/database/scripts/migrate.mjs`
+- Health: `GET /api/health`
+- Dual auth on chat: widget `publicId` (keyless) vs Bearer `sk_` for SDK/REST
+
+## Related
+
+- [Installation](/docs/installation)
+- [Docker](/docs/self-hosting/docker)
+- [Contributing](/docs/contributing)

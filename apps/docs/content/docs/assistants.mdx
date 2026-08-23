@@ -1,0 +1,63 @@
+---
+title: Assistants
+description: Create and configure assistants, instructions, hallucination modes, and model overrides.
+---
+
+An **assistant** is the unit you customize, give knowledge to, and embed. Each assistant has a private dashboard id and a public `publicId` (looks like `asst_…`) used by the widget and public chat API.
+
+## Create and manage
+
+1. Sign up / sign in
+2. Open **Dashboard** → create an assistant (name, description, welcome message, instructions)
+3. Configure **Settings**, **Knowledge**, **Customize**, and **Install**
+
+`publicId` is a **public capability**, not a secret. Anyone who knows it can open the widget and chat against that assistant (domain allowlists land in a later release).
+
+## Instructions and welcome
+
+| Field | Role |
+| --- | --- |
+| Welcome message | First bubble visitors see |
+| Instructions | System guidance for answers (tone, what to refuse, citation style) |
+
+Keep instructions concrete (“Answer only from the knowledge base. Cite with [1].”) rather than vague.
+
+## Hallucination modes
+
+| Mode | Behavior |
+| --- | --- |
+| **Strict** | Prefer refusal when context is thin |
+| **Balanced** | Default middle ground |
+| **Flexible** | Allow more extrapolation when retrieval is weak |
+
+Tune with RAG guardrails on Settings (require context, verify citations, refuse on low confidence).
+
+## Model overrides (v0.6+)
+
+Instance defaults come from env (`AI_PROVIDER`, `AI_MODEL`, `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`). Per assistant you can override **chat** and **embedding** provider/model in Settings when credentials exist on the instance.
+
+Constraints:
+
+- Embedding overrides must keep the same **dimension width** as the instance (`EMBEDDING_DIMENSIONS`, default `1536`, matching `chunks.embedding`)
+- Missing provider credentials → chat/ingest returns **503**
+
+See [Providers](/docs/providers).
+
+## RAG settings
+
+Per-assistant toggles (defaults favor quality):
+
+- Hybrid search (vector + keyword)
+- Reranking
+- Query expansion
+- Chunking mode (`standard` or `parent_child` — reprocess after changing)
+- Online eval sample rate
+- Guardrails
+
+Details: [RAG and debugger](/docs/rag-debugger).
+
+## Next steps
+
+- [Knowledge](/docs/knowledge) — upload and crawl
+- [Widget](/docs/widget) / [React](/docs/react) — embed
+- [Examples](/docs/examples) — runnable fixtures

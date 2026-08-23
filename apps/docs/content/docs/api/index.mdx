@@ -1,0 +1,72 @@
+---
+title: REST API
+description: Bearer-authenticated /api/v1 routes, dual-auth chat, rate limits, and OpenAPI.
+full: true
+---
+
+Public HTTP API under `/api/v1`. The OpenAPI document is generated from `@chatai/sdk` (`getOpenApiDocument()`).
+
+- Live instance: `GET {CHATAI_ORIGIN}/api/v1/openapi.json`
+- This docs site: `GET /api/openapi` (same generator, no running app required)
+
+Optional: set `NEXT_PUBLIC_CHATAI_DOCS_API_URL` when building/running docs to point the explorer at a live instance instead.
+
+## Authentication
+
+### Bearer API keys (owner REST)
+
+Create keys in **Account** (dashboard). Secrets look like `sk_live_…` and are shown once. Send:
+
+```http
+Authorization: Bearer sk_live_...
+```
+
+Keys are hashed at rest. Scopes:
+
+| Scope | Access |
+| --- | --- |
+| `chat` | `POST /api/v1/chat` as the key owner |
+| `assistants:read` / `assistants:write` | List/create/update/delete assistants |
+| `documents:read` / `documents:write` | List/delete/reprocess documents (upload stays dashboard-only) |
+| `conversations:read` | List/get conversations |
+| `analytics:read` | Assistant analytics |
+
+Missing/invalid key → **401**. Missing scope → **403**.
+
+### Dual-auth chat
+
+`POST /api/v1/chat` accepts either:
+
+| Client | Auth | `assistantId` |
+| --- | --- | --- |
+| Widget / playground | **No** Bearer header | Public `asst_…` id |
+| SDK / integrations | Bearer `sk_` with `chat` scope | Public or internal id owned by the key |
+
+Widget `publicId` is a public capability, not a secret.
+
+## Rate limits
+
+Per-API-key limits are stored in Postgres (`API_RATE_LIMIT_PER_MINUTE`, default `60`). Exceeded requests return **429** with a `Retry-After` header (seconds).
+
+Widget/`publicId` chat is **not** limited by this bucket (visitor rate limits are a later release).
+
+## Common errors
+
+| Status | Meaning |
+| --- | --- |
+| 400 | Invalid body / validation |
+| 401 | Missing or invalid API key |
+| 403 | Missing scope or not owner |
+| 404 | Assistant/document/conversation not found |
+| 429 | Rate limit |
+| 503 | Selected AI provider not configured |
+
+## Interactive reference
+
+<OpenApiExplorer />
+
+## Related
+
+- [TypeScript SDK](/docs/sdk)
+- [Examples](/docs/examples) — `node-sdk-chat`
+- [Widget](/docs/widget) — keyless embed path

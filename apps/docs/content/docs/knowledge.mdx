@@ -1,0 +1,49 @@
+---
+title: Knowledge Bases
+description: Upload files, crawl websites, manage sources, and reprocess documents.
+---
+
+Knowledge powers RAG answers. Documents are chunked, embedded, and stored in Postgres + pgvector. Ingestion runs in a background worker inside the web app process.
+
+## Supported inputs
+
+| Type | Notes |
+| --- | --- |
+| Files | PDF, text, Markdown, DOCX, CSV, HTML, JSON |
+| Text / FAQ | Paste or FAQ pairs from the UI |
+| Website crawl | URL / sitemap-style source with sync jobs |
+
+## Upload flow
+
+1. Open the assistant → **Knowledge**
+2. Upload a file or add text/FAQ
+3. Status moves from processing → ready (chunk count shown when done)
+4. Ask in the **Playground** once status is ready
+
+Failed jobs show an error on the document (for example embedding dimension mismatches — see [Ollama](/docs/self-hosting/ollama)).
+
+## Website sources
+
+Add a website source, configure crawl limits/exclusions, then sync. Sync upserts URL documents and enqueues ingest jobs. Re-sync after content changes; scheduled cron refresh is deferred.
+
+## Reprocess
+
+Use reprocess after:
+
+- Changing chunking mode (`standard` ↔ `parent_child`)
+- Changing embedding model (same dimensions only)
+- Fixing a failed ingest
+
+Reprocess rebuilds chunks and embeddings for that document.
+
+## Tips
+
+- Prefer a few clear documents over huge noisy dumps
+- FAQs work well for short policy answers
+- After `pnpm seed:demo`, wait for the refund policy document to reach **ready** before testing
+
+## Related
+
+- [Assistants](/docs/assistants)
+- [RAG and debugger](/docs/rag-debugger)
+- [Providers](/docs/providers) — embedding dimensions

@@ -1,0 +1,120 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+@layer base {
+  html {
+    background-color: var(--color-fd-background);
+    color: var(--color-fd-foreground);
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-fd-background);
+    color: var(--color-fd-foreground);
+  }
+
+  #nd-docs-layout,
+  #nd-home-layout {
+    background-color: var(--color-fd-background);
+    color: var(--color-fd-foreground);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Docs layout — unified shell, clean collapsed sidebar                       */
+/* -------------------------------------------------------------------------- */
+
+#nd-docs-layout {
+  background-color: var(--color-fd-background);
+}
+
+/* Sidebar matches page chrome (not a contrasting card slab) */
+#nd-sidebar {
+  background-color: color-mix(in oklab, var(--color-fd-background) 92%, var(--color-fd-muted));
+  border-inline-end: 1px solid var(--color-fd-border);
+  box-shadow: none;
+}
+
+.dark #nd-sidebar {
+  background-color: color-mix(in oklab, var(--color-fd-background) 88%, var(--color-fd-muted));
+}
+
+/* Collapsed: drop the dead left gutter (Fumadocs keeps sidebar-width margin) */
+#nd-docs-layout:has(#nd-sidebar[data-collapsed="true"]) {
+  margin-inline-start: 0 !important;
+}
+
+/* Hide the 16px peek strip; use the floating control or hover to reopen */
+#nd-sidebar[data-collapsed="true"] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+#nd-sidebar[data-collapsed="true"]:not(:hover):not(:focus-within) {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+/* Hover / focus flyout when collapsed */
+#nd-sidebar[data-collapsed="true"]:hover,
+#nd-sidebar[data-collapsed="true"]:focus-within {
+  opacity: 1 !important;
+  pointer-events: auto;
+  background-color: var(--color-fd-popover);
+  border: 1px solid var(--color-fd-border);
+  border-radius: 0.75rem;
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.08),
+    0 12px 28px -4px rgb(0 0 0 / 0.12);
+}
+
+.dark #nd-sidebar[data-collapsed="true"]:hover,
+.dark #nd-sidebar[data-collapsed="true"]:focus-within {
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.35),
+    0 12px 28px -4px rgb(0 0 0 / 0.5);
+}
+
+/* Floating reopen control (search + expand pill) */
+#nd-docs-layout:has(#nd-sidebar[data-collapsed="true"]) > .fixed.shadow-lg.animate-fd-fade-in {
+  background-color: var(--color-fd-background);
+  border-color: var(--color-fd-border);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.06),
+    0 4px 12px rgb(0 0 0 / 0.08);
+}
+
+.dark #nd-docs-layout:has(#nd-sidebar[data-collapsed="true"]) > .fixed.shadow-lg.animate-fd-fade-in {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.2),
+    0 4px 16px rgb(0 0 0 / 0.35);
+}
+
+#nd-page {
+  background-color: transparent;
+}
+
+/* Prose fences rendered without Shiki dual-theme backgrounds */
+.dark .prose :where(pre):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  background-color: var(--color-fd-card);
+  border: 1px solid var(--color-fd-border);
+  color: var(--color-fd-foreground);
+}
+
+.dark .prose :where(thead):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  background-color: var(--color-fd-muted);
+}
+
+.dark .prose :where(th, td):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  border-color: var(--color-fd-border);
+}
+
+/* Keep Scalar styles scoped to the explorer card */
+.openapi-explorer {
+  background-color: var(--color-fd-card);
+}

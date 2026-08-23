@@ -1,0 +1,83 @@
+---
+title: Environment reference
+description: Full environment variable reference for ChatAI self-hosting and development.
+---
+
+Copy [`.env.example`](https://github.com/master-tecs/chatai/blob/main/.env.example) to `.env` and fill in values. Docker Compose loads `.env` for the `app` service and overrides `DATABASE_URL` / `BETTER_AUTH_URL` / `UPLOAD_DIR` as needed.
+
+## Core
+
+| Variable | Required | Default / example | Purpose |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Yes (runtime) | `postgresql://chatai:chatai@localhost:5432/chatai` | Pooled or direct Postgres URL for the app |
+| `DATABASE_URL_UNPOOLED` | Neon migrations | — | Direct (non-pooler) Neon URL for migrations |
+| `BETTER_AUTH_SECRET` | Yes | — | Auth signing secret (min 16 chars) |
+| `BETTER_AUTH_URL` | Yes | `http://localhost:3000` | Public origin browsers use for this instance |
+| `UPLOAD_DIR` | No | `./uploads` (Docker: `/app/uploads`) | File upload storage |
+| `SEED_DEMO_ON_START` | No | — | When `1`, Docker entrypoint seeds demo user after health (dev/demo only) |
+| `SEED_DEMO_EMAIL` / `SEED_DEMO_PASSWORD` | No | `demo@chatai.local` / `DemoPass123!` | Overrides for demo seed |
+
+## Auth (optional)
+
+| Variable | Purpose |
+| --- | --- |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Enable GitHub OAuth; leave blank to disable |
+
+## Chat providers
+
+| Variable | Purpose |
+| --- | --- |
+| `AI_PROVIDER` | `openai`, `openai-compatible`, `anthropic`, `google`, `openrouter`, `azure`, `ollama`, `groq` |
+| `AI_API_KEY` | Default OpenAI-compatible key; Ollama accepts a placeholder like `ollama` |
+| `AI_BASE_URL` | OpenAI-compatible base URL (default `https://api.openai.com/v1`) |
+| `AI_MODEL` | Default chat model (e.g. `gpt-4o-mini`, `llama3.2`) |
+| `OLLAMA_BASE_URL` | Ollama OpenAI-compatible endpoint (Compose: `http://ollama:11434/v1`) |
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Google Gemini |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `GROQ_API_KEY` | Groq |
+| `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_RESOURCE` | Azure OpenAI |
+
+Missing credentials for the selected provider return **503** (`provider X is not configured on this instance`).
+
+## Embeddings
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `EMBEDDING_PROVIDER` | `openai` | `openai`, `openai-compatible`, `cohere`, `voyage` |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model id |
+| `EMBEDDING_DIMENSIONS` | `1536` | **Must match** `chunks.embedding` (`vector(1536)`) |
+| `VOYAGE_API_KEY` | — | Voyage embeddings |
+| `COHERE_API_KEY` | — | Cohere embeddings and optional rerank |
+
+Changing embedding width on an existing database requires a full reprocess strategy; the column width is fixed in schema migrations today.
+
+## Rate limits and quality
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `API_RATE_LIMIT_PER_MINUTE` | `60` | Per-API-key REST limit (widget `publicId` chat is not limited here) |
+| `COHERE_API_KEY` | — | Prefer Cohere rerank when set |
+
+## Ollama Compose profile
+
+See [Local models (Ollama)](/docs/self-hosting/ollama). Summary:
+
+- Profile: `docker compose --profile local-models up`
+- Prefer **hybrid**: Ollama for chat, 1536-d embeddings elsewhere
+- Fully local `nomic-embed-text` (768-d) is **not** compatible with `vector(1536)` yet
+
+## Playwright e2e (local / CI)
+
+| Variable | Purpose |
+| --- | --- |
+| `E2E_EMAIL` / `E2E_PASSWORD` | Seeded e2e user (`pnpm e2e:seed`) |
+| `E2E_ASSISTANT_ID` | Seeded assistant public id |
+| `E2E_BASE_URL` | App origin under test |
+
+Do not commit `.env.e2e`.
+
+## Related
+
+- [Docker](/docs/self-hosting/docker)
+- [Providers](/docs/providers)

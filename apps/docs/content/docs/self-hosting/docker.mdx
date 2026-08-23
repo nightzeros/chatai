@@ -1,0 +1,105 @@
+---
+title: Docker
+description: Production Docker Compose for ChatAI, Postgres, volumes, and reverse proxies.
+---
+
+## Quick start
+
+```bash
+cp .env.example .env
+# Set BETTER_AUTH_SECRET (openssl rand -base64 32) and AI_API_KEY
+
+docker compose up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000). The app:
+
+1. Waits for Postgres to be healthy
+2. Runs Drizzle migrations via `packages/database/scripts/migrate.mjs`
+3. Serves the Next.js app on port `3000`
+4. Exposes `GET /api/health` for load balancers (`200` when DB is reachable)
+
+## Services and volumes
+
+| Compose service | Role | Named volume |
+| --- | --- | --- |
+| `db` | Postgres 17 + pgvector | `chatai_pgdata` |
+| `app` | ChatAI web + API + ingest worker | `chatai_uploads` |
+
+Uploads are stored under `/app/uploads` inside the container (`UPLOAD_DIR`). Keep both volumes on durable disks in production.
+
+The Compose file overrides `DATABASE_URL` for the `app` service to `postgresql://chatai:chatai@db:5432/chatai` on the internal network. Your host `.env` `DATABASE_URL` is still used for local `pnpm` tools talking to published port `5432`.
+
+## Healthchecks
+
+- **db:** `pg_isready`
+- **app:** `wget` → `http://127.0.0.1:3000/api/health`
+
+Smoke after boot:
+
+```bash
+curl -s http://localhost:3000/api/health
+# {"status":"ok","db":"ok"}
+```
+
+## Public URL and auth
+
+Set `BETTER_AUTH_URL` to the **exact origin browsers use** (scheme + host + port, no path):
+
+```bash
+BETTER_AUTH_URL=https://chatai.example.com
+```
+
+Widget embeds, `data-api-url`, and React `apiUrl` must use the same origin. Mismatches cause CORS failures or broken auth cookies.
+
+## Reverse proxy and TLS
+
+Terminate TLS at nginx, Caddy, Traefik, or a cloud load balancer, then proxy to `app:3000`.
+
+Checklist:
+
+- Forward `Host` and `X-Forwarded-Proto` (or equivalent) so the app sees HTTPS
+- Allow long-lived connections for SSE chat streams
+- Do not strip CORS headers on `/api/v1/*`
+- Keep WebSocket upgrade headers if your proxy requires them for streaming
+
+Example Caddy snippet:
+
+```text
+chatai.example.com {
+  reverse_proxy localhost:3000
+}
+```
+
+## Secrets
+
+- Generate a long `BETTER_AUTH_SECRET` (min 16 characters; prefer 32+ random bytes)
+- Never commit `.env`
+- Prefer a secrets manager or Compose `secrets:` in production instead of a world-readable env file
+
+## Optional local models
+
+See [Local models (Ollama)](/docs/self-hosting/ollama) for the Compose `local-models` profile.
+
+## Demo data
+
+After the app is healthy:
+
+```bash
+pnpm seed:demo
+# demo@chatai.local / DemoPass123!
+```
+
+Docker-only convenience (dev/demo — **do not use in production**):
+
+```bash
+SEED_DEMO_ON_START=1 docker compose up --build
+```
+
+The entrypoint waits for `/api/health`, then runs the same idempotent seed script. Prefer `pnpm seed:demo` when developing against Neon or a long-lived container.
+
+## Related
+
+- [Environment reference](/docs/self-hosting/env-reference)
+- [Backup and upgrades](/docs/self-hosting/backup-upgrade)
+- [Installation](/docs/installation)

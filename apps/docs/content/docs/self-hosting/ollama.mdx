@@ -1,0 +1,104 @@
+---
+title: Local models (Ollama)
+description: Optional Compose profile for Ollama chat (and embedding caveats).
+---
+
+ChatAI can talk to a local [Ollama](https://ollama.com) instance via the Compose profile `local-models`. Models are **not** baked into the image — pull them once after the service starts.
+
+## Start the stack
+
+```bash
+cp .env.example .env
+# Configure the offline / hybrid block (see below)
+
+docker compose --profile local-models up --build
+```
+
+This starts `db`, `app`, and `ollama` (port `11434`). Default `docker compose up` leaves Ollama off.
+
+## Pull models
+
+```bash
+docker compose --profile local-models exec ollama ollama pull llama3.2
+# Optional — see embedding caveat before using for RAG:
+docker compose --profile local-models exec ollama ollama pull nomic-embed-text
+```
+
+List models:
+
+```bash
+docker compose --profile local-models exec ollama ollama list
+```
+
+## Recommended: hybrid (Ollama chat + 1536 embeddings)
+
+The Postgres schema stores chunk embeddings as **`vector(1536)`**. Instance `EMBEDDING_DIMENSIONS` must match that width.
+
+**Supported offline-friendly setup today:**
+
+| Concern | Setting |
+| --- | --- |
+| Chat | `AI_PROVIDER=ollama`, `AI_MODEL=llama3.2`, `OLLAMA_BASE_URL=http://ollama:11434/v1` |
+| Embeddings | Keep a **1536-d** provider (e.g. OpenAI `text-embedding-3-small`) |
+| API key for Ollama chat | `AI_API_KEY=ollama` is enough for the Ollama path; keep a real key for embeddings |
+
+Example `.env` fragment (Compose network):
+
+```bash
+AI_PROVIDER=ollama
+AI_MODEL=llama3.2
+AI_API_KEY=sk-...your-openai-key...   # still required for default OpenAI embeddings
+OLLAMA_BASE_URL=http://ollama:11434/v1
+# EMBEDDING_PROVIDER=openai
+# EMBEDDING_MODEL=text-embedding-3-small
+# EMBEDDING_DIMENSIONS=1536
+```
+
+From the host (`pnpm dev` + local Ollama), use `http://127.0.0.1:11434/v1` instead of `http://ollama:11434/v1`.
+
+## Fully offline embeddings (not schema-compatible yet)
+
+`nomic-embed-text` returns **768** dimensions. Pointing embeddings at Ollama with:
+
+```bash
+EMBEDDING_PROVIDER=openai-compatible
+EMBEDDING_MODEL=nomic-embed-text
+EMBEDDING_DIMENSIONS=768
+AI_BASE_URL=http://ollama:11434/v1
+```
+
+will call Ollama successfully, then **fail ingest** with:
+
+```text
+expected 1536 dimensions, not 768
+```
+
+because `chunks.embedding` is fixed at `vector(1536)`. Do not use this path for RAG until the schema supports configurable widths.
+
+## Provider matrix
+
+| Variable | Chat via Ollama | Embeddings via OpenAI (hybrid) | Embeddings via Ollama (blocked) |
+| --- | --- | --- | --- |
+| `AI_PROVIDER` | `ollama` | (same) | `ollama` |
+| `OLLAMA_BASE_URL` | `http://ollama:11434/v1` | (same) | (same) |
+| `AI_BASE_URL` | unused for chat | OpenAI default OK | `http://ollama:11434/v1` |
+| `EMBEDDING_PROVIDER` | `openai` (default) | `openai` | `openai-compatible` |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | (same) | `nomic-embed-text` |
+| `EMBEDDING_DIMENSIONS` | `1536` | `1536` | `768` (mismatches DB) |
+
+## Verify traffic
+
+With hybrid or chat-only Ollama configured:
+
+```bash
+curl -s http://localhost:3000/api/health
+docker compose logs ollama --since 5m | grep -E 'chat/completions|/v1/embeddings'
+```
+
+Chat completions should show `POST /v1/chat/completions` from the app container when you send a playground or `/api/v1/chat` message.
+
+## Related
+
+- [Docker](/docs/self-hosting/docker)
+- [Environment reference](/docs/self-hosting/env-reference)
+- [Providers](/docs/providers)

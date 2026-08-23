@@ -1,0 +1,108 @@
+---
+title: Examples
+description: Runnable examples under /examples.
+---
+
+All examples expect a running ChatAI instance (default `http://localhost:3000`) and an assistant `publicId`. From the repo root: `pnpm install`.
+
+| Example | Path | One-liner |
+| --- | --- | --- |
+| HTML widget | `examples/html-widget` | Open `index.html` or `self-host.html` |
+| React widget | `examples/react-widget` | `pnpm --filter @chatai/example-react-widget dev` |
+| Next.js portfolio | `examples/nextjs-portfolio` | `pnpm --filter @chatai/example-nextjs-portfolio dev` |
+| Node SDK chat | `examples/node-sdk-chat` | `pnpm start -- "…"` with `CHATAI_API_KEY` |
+| Support bot walkthrough | — | `pnpm seed:demo` + playground / widget |
+
+## HTML widget
+
+Path: `examples/html-widget`
+
+| File | Purpose |
+| --- | --- |
+| `index.html` | Hosted `/widget/chat.js` (same pattern as Dashboard → Install) |
+| `self-host.html` | Local `./chat.js` + `data-api-url` |
+
+```bash
+# edit asst_replace_me → your publicId
+open examples/html-widget/index.html
+
+pnpm examples:prepare-widget
+open examples/html-widget/self-host.html
+```
+
+Details: [Widget](/docs/widget).
+
+## React widget
+
+Path: `examples/react-widget` (Vite + `workspace:*` `@chatai/react`)
+
+```bash
+cp examples/react-widget/.env.example examples/react-widget/.env
+# set VITE_CHATAI_ASSISTANT_ID + optional VITE_CHATAI_ORIGIN
+
+pnpm --filter @chatai/example-react-widget dev
+```
+
+| Variable | Maps to |
+| --- | --- |
+| `VITE_CHATAI_ORIGIN` | `<ChatWidget apiUrl />` |
+| `VITE_CHATAI_ASSISTANT_ID` | `<ChatWidget assistantId />` (`publicId`) |
+
+Details: [React](/docs/react).
+
+## Next.js portfolio
+
+Path: `examples/nextjs-portfolio` — App Router portfolio shell with `@chatai/react`.
+
+```bash
+cp examples/nextjs-portfolio/.env.example examples/nextjs-portfolio/.env.local
+# set NEXT_PUBLIC_CHATAI_ASSISTANT_ID (+ NEXT_PUBLIC_CHATAI_API_URL)
+
+pnpm --filter @chatai/example-nextjs-portfolio dev
+```
+
+Opens [http://localhost:3002](http://localhost:3002). Env names use the `NEXT_PUBLIC_` prefix required by Next client components; they correspond to `CHATAI_API_URL` / `CHATAI_ASSISTANT_ID` in the product plan.
+
+## Node SDK chat
+
+Path: `examples/node-sdk-chat`
+
+Requires an API key with the **chat** scope from Account settings.
+
+```bash
+cd examples/node-sdk-chat
+CHATAI_API_KEY=sk_live_... \
+CHATAI_ASSISTANT_ID=asst_... \
+pnpm start -- "What is your refund policy?"
+```
+
+Optional: `CHATAI_API_URL` (default `http://localhost:3000`).  
+OpenAPI: `GET /api/v1/openapi.json`.
+
+Details: [SDK](/docs/sdk).
+
+## Customer support walkthrough (`pnpm seed:demo`)
+
+Dogfood a support-style assistant without a separate example app:
+
+1. Start ChatAI (`pnpm dev` or `docker compose up --build`)
+2. Seed demo data:
+
+   ```bash
+   pnpm seed:demo
+   # demo@chatai.local / DemoPass123!
+   ```
+
+3. Sign in, open **Support Bot** in the dashboard
+4. Wait until the **Refund policy** document is **ready** (ingestion finished)
+5. In the playground, ask: *“How long do refunds take?”* — expect an answer grounded in the seeded FAQ
+6. Optional embeds:
+   - Copy `publicId` from **Install** into `examples/html-widget` or `examples/react-widget`
+   - Or set `NEXT_PUBLIC_CHATAI_ASSISTANT_ID` for the Next.js portfolio example
+
+This is the v0.7 “customer support bot” path — docs-only walkthrough on top of `scripts/seed-demo.mjs`.
+
+## Related
+
+- [Getting started](/docs)
+- [Widget](/docs/widget) / [React](/docs/react) / [API](/docs/api)

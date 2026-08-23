@@ -1,0 +1,22 @@
+{
+  "title": "ChatAI",
+  "pages": [
+    "index",
+    "installation",
+    "---Self-hosting---",
+    "...self-hosting",
+    "---Product---",
+    "assistants",
+    "knowledge",
+    "rag-debugger",
+    "widget",
+    "react",
+    "providers",
+    "---Developers---",
+    "api",
+    "sdk",
+    "examples",
+    "architecture",
+    "contributing"
+  ]
+}

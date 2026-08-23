@@ -1,0 +1,57 @@
+---
+title: Providers
+description: Swap LLM and embedding providers via env and per-assistant overrides.
+---
+
+ChatAI resolves chat and embeddings through a small registry in `@chatai/ai`. Instance defaults come from environment variables; assistants may override provider/model when keys exist on the instance.
+
+## Chat providers
+
+| Id | Typical env |
+| --- | --- |
+| `openai` | `AI_API_KEY`, optional `AI_BASE_URL` / `AI_MODEL` |
+| `openai-compatible` | `AI_API_KEY`, `AI_BASE_URL` |
+| `anthropic` | `ANTHROPIC_API_KEY` |
+| `google` | `GOOGLE_GENERATIVE_AI_API_KEY` |
+| `openrouter` | `OPENROUTER_API_KEY` |
+| `azure` | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_RESOURCE` |
+| `ollama` | `OLLAMA_BASE_URL` (key optional / placeholder) |
+| `groq` | `GROQ_API_KEY` |
+
+Set `AI_PROVIDER` to one of the ids above. Missing credentials for the selected provider → **503**.
+
+## Embedding providers
+
+| Id | Typical env |
+| --- | --- |
+| `openai` | `AI_API_KEY` |
+| `openai-compatible` | `AI_API_KEY`, `AI_BASE_URL` |
+| `cohere` | `COHERE_API_KEY` |
+| `voyage` | `VOYAGE_API_KEY` |
+
+`EMBEDDING_MODEL` defaults to `text-embedding-3-small`. Optional `COHERE_API_KEY` also enables Cohere rerank before LLM listwise fallback.
+
+## Dimension constraint
+
+`EMBEDDING_DIMENSIONS` (default **1536**) must match the Postgres column `chunks.embedding` (`vector(1536)`).
+
+- Per-assistant embedding overrides that change native width are rejected
+- Local models like `nomic-embed-text` (**768-d**) are **not** compatible without a schema change — see [Ollama](/docs/self-hosting/ollama)
+
+## Ollama hybrid
+
+Recommended pattern for local chat:
+
+```bash
+AI_PROVIDER=ollama
+AI_MODEL=llama3.2
+OLLAMA_BASE_URL=http://ollama:11434/v1   # or http://127.0.0.1:11434/v1 on the host
+# keep OpenAI (or another 1536-d) embeddings
+EMBEDDING_DIMENSIONS=1536
+```
+
+## Related
+
+- [Environment reference](/docs/self-hosting/env-reference)
+- [Assistants](/docs/assistants) — per-assistant overrides
+- [API](/docs/api) — REST errors

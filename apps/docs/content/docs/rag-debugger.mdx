@@ -1,0 +1,44 @@
+---
+title: RAG and debugger
+description: Hybrid search, reranking, guardrails, and the playground debug panel.
+---
+
+ChatAI answers with retrieval-augmented generation: embed the question, retrieve chunks, optionally rerank, then stream an answer with citations.
+
+## Pipeline (v0.5+)
+
+1. **Retrieve** — hybrid fusion of pgvector similarity and Postgres `tsvector` keyword search (RRF), when hybrid is enabled
+2. **Expand** — optional query expansion for short/ambiguous questions
+3. **Rerank** — LLM listwise rerank; Cohere rerank when `COHERE_API_KEY` is set
+4. **Generate** — streamed chat with source markers
+5. **Guardrails** — optional require-context, citation verify, refuse on low confidence (one regenerate attempt when verifying)
+
+Chunking modes:
+
+| Mode | Use when |
+| --- | --- |
+| `standard` | Default fixed-size chunks |
+| `parent_child` | Retrieve small children, expand to parent context (reprocess to activate) |
+
+## Outcomes
+
+Public chat metadata can include outcomes such as answered / low confidence / refused depending on retrieval quality and guardrails. Empty `sources` usually means retrieval found nothing useful (missing knowledge, failed ingest, or overly strict mode).
+
+## Playground debugger
+
+Owners get a **RAG debug panel** on the playground (not exposed to widget visitors). Use it to inspect:
+
+- Retrieved chunks and ranks
+- Hybrid vector vs keyword contributions
+- Rerank / guardrail decisions
+- Timing and model metadata when present
+
+## Eval sampling
+
+Per-assistant `evalSampleRate` (0–1) can enqueue async quality scoring for a fraction of production answers. Offline eval sets and the Analytics **AI Quality** section cover regressions. Restart `pnpm dev` after changing `packages/evals` so the worker picks up new code.
+
+## Related
+
+- [Knowledge](/docs/knowledge)
+- [Assistants](/docs/assistants)
+- [Providers](/docs/providers)
