@@ -43,6 +43,20 @@ services:
       retries: 5
       start_period: 40s
 
+  # Optional offline LLM + embeddings. Start with:
+  #   docker compose --profile local-models up --build
+  # Then pull models (see README / .env.example offline block).
+  ollama:
+    profiles: [local-models]
+    image: ollama/ollama
+    container_name: chatai-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
 volumes:
   chatai_pgdata:
   chatai_uploads:
+  ollama_data:
