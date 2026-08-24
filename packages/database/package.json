@@ -7,8 +7,9 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
     "./rag-settings": "./src/schema/rag-settings.ts",
+    "./security-settings": "./src/schema/security-settings.ts",
+    "./privacy-settings": "./src/schema/privacy-settings.ts",
     "./api-key-scopes": "./src/schema/api-key-scopes.ts"
-
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
