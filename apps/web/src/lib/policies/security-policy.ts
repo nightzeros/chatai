@@ -2,6 +2,10 @@ import type { SecuritySettings } from "@chatai/database";
 
 import type { Env } from "@/lib/env";
 
+import {
+  isOriginAllowed,
+  requestOriginHostname,
+} from "./checks/domain-allowlist";
 import type { PolicyViolation, WidgetRequestContext } from "./policy-violation";
 import {
   resolveSecurityPolicy,
@@ -16,8 +20,8 @@ export type SecurityPolicyAssistant = {
 };
 
 /**
- * Shared widget security gate. Task 1 skeleton: `enforceWidgetRequest` is a no-op
- * pass-through. Tasks 2–5 add domain → rate limit → bot → signature checks.
+ * Shared widget security gate.
+ * Task 2: domain allowlist. Later tasks chain rate limit → bot → signature.
  */
 export class SecurityPolicy {
   readonly assistantId: string;
@@ -47,12 +51,27 @@ export class SecurityPolicy {
 
   /**
    * Returns `null` when the request is allowed.
-   * Currently always allows (Task 1 stub). Later tasks chain checks here.
+   * Skips checks for playground traffic (owner dashboard).
    */
   async enforceWidgetRequest(
-    _request: Request,
-    _ctx: WidgetRequestContext,
+    request: Request,
+    ctx: WidgetRequestContext,
   ): Promise<PolicyViolation | null> {
+    if (ctx.source === "playground") {
+      return null;
+    }
+
+    const hostname = requestOriginHostname(request);
+    if (!isOriginAllowed(hostname, this.resolved.allowedDomains)) {
+      return {
+        status: 403,
+        message: "Origin not allowed.",
+        reason: hostname
+          ? `origin_denied:${hostname}`
+          : "origin_missing_or_malformed",
+      };
+    }
+
     return null;
   }
 }

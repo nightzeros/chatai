@@ -10,3 +10,9 @@ export {
   type ResolvedPrivacyPolicy,
 } from "./resolve-privacy-policy";
 export type { PolicyViolation, WidgetRequestContext } from "./policy-violation";
+export { policyViolationResponse } from "./policy-response";
+export {
+  isOriginAllowed,
+  parseAllowedDomain,
+  requestOriginHostname,
+} from "./checks/domain-allowlist";

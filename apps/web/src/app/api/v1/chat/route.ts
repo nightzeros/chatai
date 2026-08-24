@@ -27,6 +27,8 @@ import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { createId } from "@/lib/ids";
+import { policyViolationResponse } from "@/lib/policies/policy-response";
+import { SecurityPolicy } from "@/lib/policies/security-policy";
 import { publicChatMeta } from "@/lib/public-chat-meta";
 import { consumeApiKeyRateLimit } from "@/lib/rate-limit";
 import { getSession } from "@/lib/session";
@@ -90,6 +92,18 @@ export async function POST(request: Request) {
 
   if (!assistant) {
     return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
+  }
+
+  if (!usesApiKeyAuth(request)) {
+    const security = SecurityPolicy.fromAssistant(assistant, env);
+    const violation = await security.enforceWidgetRequest(request, {
+      visitorId: input.visitorId,
+      message: input.message,
+      source,
+    });
+    if (violation) {
+      return policyViolationResponse(violation);
+    }
   }
 
   const session = await getSession();
