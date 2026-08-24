@@ -36,6 +36,11 @@ const envSchema = z.object({
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
 
+  /** Optional Resend API key for password-reset (and future) transactional email */
+  RESEND_API_KEY: z.string().optional(),
+  /** From address for Resend (e.g. ChatAI <noreply@yourdomain.com>) */
+  EMAIL_FROM: z.string().optional(),
+
   AI_API_KEY: z.string().optional(),
   AI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   AI_MODEL: z.string().default("gpt-4o-mini"),
@@ -74,6 +79,8 @@ function loadEnv(): Env {
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
     GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
     GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
     AI_API_KEY: process.env.AI_API_KEY,
     AI_BASE_URL: process.env.AI_BASE_URL,
     AI_MODEL: process.env.AI_MODEL,

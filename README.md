@@ -101,6 +101,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `DATABASE_URL_UNPOOLED` | Direct Neon URL for migrations (optional locally) |
 | `BETTER_AUTH_SECRET` | Auth signing secret (min 16 chars) |
 | `BETTER_AUTH_URL` | Public app URL (`http://localhost:3000` locally; production origin browsers use for this instance) |
+| `RESEND_API_KEY` | Optional; send password-reset emails via Resend. Without it, reset links are logged to the server console |
+| `EMAIL_FROM` | Optional Resend from address (e.g. `ChatAI <noreply@yourdomain.com>`) |
 | `AI_API_KEY` | OpenAI-compatible API key for chat + embeddings (default provider) |
 | `AI_PROVIDER` | Chat provider id (`openai`, `openai-compatible`, `anthropic`, `google`, `openrouter`, `azure`, `ollama`, `groq`) |
 | `AI_MODEL` / `AI_BASE_URL` | Default chat model and OpenAI-compatible base URL |
@@ -114,6 +116,10 @@ Open [http://localhost:3000](http://localhost:3000).
 | `UPLOAD_DIR` | Uploaded files directory (`./uploads` locally, `/app/uploads` in Docker) |
 
 See [.env.example](./.env.example) for all options. Widget embeds should use the same absolute origin as `BETTER_AUTH_URL` (for example `https://your-chatai-instance.example`).
+
+### Password reset
+
+Sign-in includes **Forgot password?** (`/forgot-password`). With `RESEND_API_KEY` set, ChatAI emails a one-hour reset link. Without it, the link is logged on the server (`[email] RESEND_API_KEY not set…`) so local/self-host operators can still recover accounts. Successful resets revoke other sessions.
 
 ## Database
 

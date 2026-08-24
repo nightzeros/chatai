@@ -5,7 +5,11 @@ export async function middleware(request: NextRequest) {
   const sessionCookie = getSessionCookie(request);
   const { pathname } = request.nextUrl;
 
-  const isAuthPage = pathname === "/login" || pathname === "/signup";
+  const isAuthPage =
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password";
   const isDashboard = pathname.startsWith("/dashboard");
 
   if (isDashboard && !sessionCookie) {
@@ -22,5 +26,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/signup"],
+  matcher: ["/dashboard/:path*", "/login", "/signup", "/forgot-password", "/reset-password"],
 };

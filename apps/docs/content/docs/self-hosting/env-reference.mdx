@@ -22,6 +22,8 @@ Copy [`.env.example`](https://github.com/master-tecs/chatai/blob/main/.env.examp
 | Variable | Purpose |
 | --- | --- |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Enable GitHub OAuth; leave blank to disable |
+| `RESEND_API_KEY` | Send password-reset emails via [Resend](https://resend.com). Without it, reset links are logged to the server console |
+| `EMAIL_FROM` | From address for Resend (e.g. `ChatAI <noreply@yourdomain.com>`; defaults to Resend sandbox from-address) |
 
 ## Chat providers
 

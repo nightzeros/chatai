@@ -30,6 +30,7 @@ Vitest, jsdom, Next.js App Router, Tailwind CSS.
 ### Task 1: Extend widget mount options for preview overrides
 
 **Files:**
+
 - Modify: `packages/widget/src/app.tsx`
 - Modify: `packages/widget/src/mount.tsx`
 - Modify: `packages/widget/src/styles.css`
@@ -37,6 +38,7 @@ Vitest, jsdom, Next.js App Router, Tailwind CSS.
 - Test: `packages/widget/src/mount.test.ts`
 
 **Interfaces:**
+
 - Produces `WidgetMountOptions`, exported from `@chatai/widget`.
 - `WidgetMountOptions` includes controller options, `primaryColor`, `position`,
   `theme`, `iconUrl`, `suggestedQuestions`, `showSources`, and
@@ -108,6 +110,7 @@ Expected: PASS with no failed tests.
 ### Task 2: Add the thin React wrapper
 
 **Files:**
+
 - Create: `packages/react/package.json`
 - Create: `packages/react/tsconfig.json`
 - Create: `packages/react/src/client.ts`
@@ -116,6 +119,7 @@ Expected: PASS with no failed tests.
 - Test: `packages/react/src/chat-widget.test.tsx`
 
 **Interfaces:**
+
 - Consumes `mountWidget`, `WidgetInstance`, and `WidgetMountOptions` from
   `@chatai/widget`.
 - Produces `mountChatWidget(element, options): WidgetInstance`.
@@ -125,7 +129,9 @@ Expected: PASS with no failed tests.
 
 ```tsx
 it("mounts once and destroys its widget on unmount", () => {
-  const { unmount } = render(<ChatWidget assistantId="asst_demo" apiUrl="https://chat.example.com" />);
+  const { unmount } = render(
+    <ChatWidget assistantId="asst_demo" apiUrl="https://chat.example.com" />,
+  );
   expect(mountWidget).toHaveBeenCalledTimes(1);
   unmount();
   expect(destroy).toHaveBeenCalledTimes(1);
@@ -133,9 +139,13 @@ it("mounts once and destroys its widget on unmount", () => {
 
 it("remounts only after a supported widget option changes", () => {
   const view = render(<ChatWidget assistantId="asst_demo" apiUrl="https://chat.example.com" />);
-  view.rerender(<ChatWidget assistantId="asst_demo" apiUrl="https://chat.example.com" className="shell" />);
+  view.rerender(
+    <ChatWidget assistantId="asst_demo" apiUrl="https://chat.example.com" className="shell" />,
+  );
   expect(mountWidget).toHaveBeenCalledTimes(1);
-  view.rerender(<ChatWidget assistantId="asst_demo" apiUrl="https://chat.example.com" theme="dark" />);
+  view.rerender(
+    <ChatWidget assistantId="asst_demo" apiUrl="https://chat.example.com" theme="dark" />,
+  );
   expect(mountWidget).toHaveBeenCalledTimes(2);
 });
 ```
@@ -151,16 +161,19 @@ Expected: FAIL because package `@chatai/react` and its exports do not exist.
 export function ChatWidget({ className, onReady, onError, ...options }: ChatWidgetProps) {
   const targetRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!targetRef.current) return;
-    try {
-      const instance = mountChatWidget(targetRef.current, options);
-      onReady?.();
-      return () => instance.destroy();
-    } catch (error) {
-      onError?.(error instanceof Error ? error : new Error("Widget mount failed."));
-    }
-  }, [/* supported WidgetMountOptions only */]);
+  useEffect(
+    () => {
+      if (!targetRef.current) return;
+      try {
+        const instance = mountChatWidget(targetRef.current, options);
+        onReady?.();
+        return () => instance.destroy();
+      } catch (error) {
+        onError?.(error instanceof Error ? error : new Error("Widget mount failed."));
+      }
+    },
+    [/* supported WidgetMountOptions only */],
+  );
 
   return <div ref={targetRef} className={className} />;
 }
@@ -177,6 +190,7 @@ Expected: PASS with no TypeScript errors.
 ### Task 3: Replace the Customize mock with an isolated draft preview
 
 **Files:**
+
 - Create: `apps/web/src/components/assistants/widget-preview.tsx`
 - Modify: `apps/web/src/components/assistants/customize-form.tsx`
 - Modify: `apps/web/src/app/dashboard/assistants/[id]/customize/page.tsx`
@@ -184,6 +198,7 @@ Expected: PASS with no TypeScript errors.
 - Modify: `apps/web/package.json`
 
 **Interfaces:**
+
 - Consumes `ChatWidget` from `@chatai/react`.
 - `WidgetPreview` accepts `assistantId`, `apiUrl`, assistant name, and a full
   local `AssistantSettings` draft.
@@ -223,11 +238,7 @@ Expected: FAIL because `WidgetPreview` does not exist.
 ```tsx
 const [draft, setDraft] = useState<AssistantSettings>(assistant.settings);
 
-<WidgetPreview
-  assistantId={assistant.publicId}
-  apiUrl={apiUrl}
-  settings={draft}
-/>
+<WidgetPreview assistantId={assistant.publicId} apiUrl={apiUrl} settings={draft} />;
 ```
 
 Replace `defaultValue` and `defaultChecked` fields with controlled inputs.
@@ -244,6 +255,7 @@ Expected: PASS with no test failures or TypeScript errors.
 ### Task 4: Run integrated verification
 
 **Files:**
+
 - Modify: `.cursor/plans/v0.2-widget-delivery_4377be0c.plan.md`
 
 - [ ] **Step 1: Run focused package and dashboard tests**

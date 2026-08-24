@@ -4,6 +4,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 
+import { sendEmail } from "@/lib/email";
 import { env } from "@/lib/env";
 
 function requireEnv(value: string | undefined, name: string): string {
@@ -32,6 +33,15 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      await sendEmail({
+        to: user.email,
+        subject: "Reset your ChatAI password",
+        text: `Reset your password (link expires in 1 hour):\n\n${url}\n`,
+        html: `<p>Reset your password (expires in 1 hour):</p><p><a href="${url}">${url}</a></p>`,
+      });
+    },
   },
   ...(githubEnabled
     ? {

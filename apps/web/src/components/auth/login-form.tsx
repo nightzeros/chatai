@@ -69,7 +69,15 @@ export function LoginForm({ githubEnabled }: { githubEnabled: boolean }) {
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Link
+                className="text-xs font-medium text-muted-foreground underline-offset-4 hover:underline"
+                href="/forgot-password"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <Input
               id="password"
               type="password"

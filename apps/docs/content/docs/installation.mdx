@@ -42,6 +42,10 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Password reset
+
+From the sign-in page, use **Forgot password?**. Set `RESEND_API_KEY` (and preferably `EMAIL_FROM`) to email reset links. Without Resend, the server logs the reset URL so you can recover accounts in local or self-hosted setups.
+
 ### Neon
 
 1. Create a Neon project with **pgvector** enabled
