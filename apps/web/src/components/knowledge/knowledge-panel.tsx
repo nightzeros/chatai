@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,18 +41,33 @@ type SourceDetail = {
 
 type Tab = "sources" | "file" | "text" | "faq";
 
-function statusLabel(doc: Pick<DocumentRow, "status" | "chunkCount" | "error">) {
-  if (doc.status === "pending" || doc.status === "processing") return "Processing…";
-  if (doc.status === "ready") return `Ready · ${doc.chunkCount} chunk${doc.chunkCount === 1 ? "" : "s"}`;
-  return doc.error ? `Failed · ${doc.error}` : "Failed";
+function DocStatusBadge({ doc }: { doc: Pick<DocumentRow, "status" | "chunkCount" | "error" | "excluded"> }) {
+  if (doc.excluded) return <Badge variant="secondary">Excluded</Badge>;
+  if (doc.status === "pending" || doc.status === "processing") {
+    return <Badge variant="info">Processing</Badge>;
+  }
+  if (doc.status === "ready") {
+    return (
+      <Badge variant="success">
+        Ready · {doc.chunkCount} chunk{doc.chunkCount === 1 ? "" : "s"}
+      </Badge>
+    );
+  }
+  return <Badge variant="danger">{doc.error ? `Failed · ${doc.error}` : "Failed"}</Badge>;
 }
 
-function sourceStatusLabel(source: SourceRow) {
-  if (source.status === "pending" || source.status === "syncing") return "Syncing…";
-  if (source.status === "ready") {
-    return source.lastSyncedAt ? `Ready · synced ${new Date(source.lastSyncedAt).toLocaleString()}` : "Ready";
+function SourceStatusBadge({ source }: { source: SourceRow }) {
+  if (source.status === "pending" || source.status === "syncing") {
+    return <Badge variant="info">Syncing</Badge>;
   }
-  return source.error ? `Failed · ${source.error}` : "Failed";
+  if (source.status === "ready") {
+    return (
+      <Badge variant="success">
+        {source.lastSyncedAt ? `Ready · ${new Date(source.lastSyncedAt).toLocaleString()}` : "Ready"}
+      </Badge>
+    );
+  }
+  return <Badge variant="danger">{source.error ? `Failed · ${source.error}` : "Failed"}</Badge>;
 }
 
 export function KnowledgePanel({
@@ -278,10 +295,16 @@ export function KnowledgePanel({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex gap-1 rounded-lg border border-border p-1 w-fit flex-wrap">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Knowledge</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Documents, websites, pasted text, and FAQs. Failed or processing items are labeled clearly.
+        </p>
+      </div>
+      <div className="flex w-fit flex-wrap gap-1 rounded-lg border border-border p-1">
         {(
           [
-            ["sources", "Sources"],
+            ["sources", "Websites"],
             ["file", "Documents"],
             ["text", "Text"],
             ["faq", "FAQs"],
@@ -437,22 +460,22 @@ export function KnowledgePanel({
       {tab === "sources" ? (
         <div className="flex flex-col gap-4">
           {sources.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No websites yet.</p>
+            <EmptyState
+              title="No websites yet"
+              description="Crawl a docs site or knowledge base to pull pages into this assistant."
+              className="py-10"
+            />
           ) : (
             sources.map(({ source, pages }) => (
               <div key={source.id} className="rounded-xl border border-border p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{source.name}</p>
-                    <p className="mt-1 truncate text-sm text-muted-foreground">{source.config.startUrl}</p>
-                    <p
-                      className={cn(
-                        "mt-1 text-sm",
-                        source.status === "failed" ? "text-destructive" : "text-muted-foreground",
-                      )}
-                    >
-                      {sourceStatusLabel(source)}
-                    </p>
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate font-medium">{source.name}</p>
+                      <Badge variant="outline">Website</Badge>
+                      <SourceStatusBadge source={source} />
+                    </div>
+                    <p className="truncate text-sm text-muted-foreground">{source.config.startUrl}</p>
                   </div>
                   <div className="flex gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => void syncSource(source.id)}>
@@ -475,18 +498,10 @@ export function KnowledgePanel({
                           page.excluded ? "opacity-60" : undefined,
                         )}
                       >
-                        <div className="min-w-0">
+                        <div className="min-w-0 space-y-2">
                           <p className="truncate font-medium">{page.name}</p>
-                          <p className="mt-1 truncate text-sm text-muted-foreground">{page.url}</p>
-                          <p
-                            className={cn(
-                              "mt-1 text-sm",
-                              page.status === "failed" ? "text-destructive" : "text-muted-foreground",
-                            )}
-                          >
-                            {page.excluded ? "Excluded · " : null}
-                            {statusLabel(page)}
-                          </p>
+                          <p className="truncate text-sm text-muted-foreground">{page.url}</p>
+                          <DocStatusBadge doc={page} />
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <Button type="button" variant="outline" size="sm" onClick={() => void toggleExclude(page.id)}>
@@ -510,21 +525,27 @@ export function KnowledgePanel({
       ) : (
         <div className="flex flex-col gap-3">
           {visible.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing in this tab yet.</p>
+            <EmptyState
+              title={
+                tab === "file" ? "No documents yet" : tab === "text" ? "No text entries yet" : "No FAQs yet"
+              }
+              description="Add knowledge above. Processing status appears here with failures highlighted."
+              className="py-10"
+            />
           ) : (
             visible.map((doc) => (
-              <div key={doc.id} className="flex flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{doc.name}</p>
-                  <p
-                    className={cn(
-                      "mt-1 text-sm",
-                      doc.status === "failed" ? "text-destructive" : "text-muted-foreground",
-                    )}
-                  >
-                    {doc.status === "ready" ? "✓ " : null}
-                    {statusLabel(doc)}
-                  </p>
+              <div
+                key={doc.id}
+                className="flex flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate font-medium">{doc.name}</p>
+                    <Badge variant="outline">
+                      {doc.type === "file" ? "Document" : doc.type === "text" ? "Text" : "FAQ"}
+                    </Badge>
+                  </div>
+                  <DocStatusBadge doc={doc} />
                 </div>
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => void reprocess(doc.id)}>

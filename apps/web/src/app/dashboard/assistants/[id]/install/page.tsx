@@ -22,5 +22,10 @@ export default async function InstallPage({ params }: { params: Promise<{ id: st
     requireWidgetSigning: Boolean(assistant.securitySettings?.requireWidgetSigning),
   });
 
-  return <InstallSnippetsPanel snippets={snippets} />;
+  return (
+    <InstallSnippetsPanel
+      snippets={snippets}
+      requireWidgetSigning={Boolean(assistant.securitySettings?.requireWidgetSigning)}
+    />
+  );
 }

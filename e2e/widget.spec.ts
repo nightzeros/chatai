@@ -22,10 +22,14 @@ test("draft preview updates and settings save", async ({ page }) => {
   await expect(page.getByText("Widget settings saved.")).toBeVisible();
 });
 
-test("hosted widget loads and sends one message", async ({ page }) => {
+test("hosted widget opens, closes with Escape, and sends one message", async ({ page }) => {
   await page.goto("/e2e/hosted.html");
   // Playwright pierces open shadow roots; `chatai-widget-host` is the mount target.
   const host = page.locator("chatai-widget-host");
+  await host.getByRole("button", { name: "Open chat" }).click();
+  await expect(host.getByRole("dialog")).toBeVisible();
+  await host.getByPlaceholder("Ask a question…").press("Escape");
+  await expect(host.getByRole("dialog")).toHaveCount(0);
   await host.getByRole("button", { name: "Open chat" }).click();
   await host.getByPlaceholder("Ask a question…").fill("What is the refund period?");
   await host.getByRole("button", { name: "Send message" }).click();

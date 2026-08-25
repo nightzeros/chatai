@@ -41,6 +41,8 @@ export function ChatWidget({
     setMounted(true);
   }, []);
 
+  const suggestedQuestionsKey = JSON.stringify(suggestedQuestions ?? []);
+
   useEffect(() => {
     if (!mounted || !targetRef.current) return;
 
@@ -76,7 +78,7 @@ export function ChatWidget({
     position,
     theme,
     iconUrl,
-    suggestedQuestions,
+    suggestedQuestionsKey,
     showSources,
     layout,
     mounted,

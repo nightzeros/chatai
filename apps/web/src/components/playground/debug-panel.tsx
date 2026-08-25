@@ -58,7 +58,7 @@ export function DebugPanel({
           <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>
             ▸
           </span>
-          Debug
+          Inspect
         </span>
         <span className="flex min-w-0 items-center gap-2 font-mono normal-case tracking-normal">
           <OutcomeBadge outcome={outcome} />
@@ -68,9 +68,12 @@ export function DebugPanel({
       </summary>
 
       <div className="mt-3 flex flex-col gap-4 font-mono text-xs">
+        <p className="font-sans text-xs text-muted-foreground normal-case tracking-normal">
+          Retrieval decision, scores, and pipeline detail for this answer. Collapsed by default.
+        </p>
         {failed ? (
-          <section className="rounded-lg border border-border bg-muted/40 p-3">
-            <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <section className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-destructive">
               Failure
             </p>
             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">

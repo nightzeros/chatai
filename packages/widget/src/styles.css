@@ -70,6 +70,10 @@
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
+.chatai-launcher[aria-expanded="true"] {
+  transform: rotate(8deg) scale(0.96);
+}
+
 .chatai-launcher:hover {
   transform: translateY(-2px) rotate(-3deg);
   box-shadow: 0 16px 32px rgb(20 36 30 / 34%);
@@ -106,6 +110,40 @@
   border-radius: 24px 24px 8px 24px;
   background: var(--chatai-panel);
   box-shadow: 0 24px 70px rgb(20 36 30 / 24%);
+  transform-origin: bottom right;
+  animation: chatai-panel-in 180ms ease-out;
+}
+
+.chatai-widget.position-left .chatai-panel {
+  transform-origin: bottom left;
+}
+
+.chatai-panel.is-closing {
+  animation: chatai-panel-out 140ms ease-in forwards;
+}
+
+@keyframes chatai-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes chatai-panel-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
 }
 
 .chatai-header {
@@ -250,10 +288,77 @@
 }
 
 .chatai-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #b42318, var(--chatai-border) 55%);
+  border-radius: 12px;
+  background: color-mix(in srgb, #b42318, transparent 92%);
   color: #b42318;
   font-size: 12px;
   text-align: center;
+}
+
+.chatai-error p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.chatai-retry {
+  border: 1px solid color-mix(in srgb, #b42318, var(--chatai-border) 40%);
+  border-radius: 8px;
+  background: var(--chatai-panel);
+  color: #b42318;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+}
+
+.chatai-retry:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.chatai-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 1.2em;
+}
+
+.chatai-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chatai-muted);
+  animation: chatai-typing-dot 1s ease-in-out infinite;
+}
+
+.chatai-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.chatai-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes chatai-typing-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
 }
 
 .chatai-composer {
@@ -317,5 +422,24 @@
   .chatai-panel {
     width: calc(100vw - 24px);
     height: min(600px, calc(100dvh - 88px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatai-launcher,
+  .chatai-launcher:hover,
+  .chatai-launcher[aria-expanded="true"] {
+    transition: none;
+    transform: none;
+  }
+
+  .chatai-panel,
+  .chatai-panel.is-closing {
+    animation: none;
+  }
+
+  .chatai-typing span {
+    animation: none;
+    opacity: 0.7;
   }
 }
