@@ -164,13 +164,18 @@ export function PlaygroundChat({
   }
 
   return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-display text-lg font-semibold tracking-tight">Playground</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Chat through the public API and inspect retrieval under each answer.
+        </p>
+      </div>
     <div className="flex h-[min(720px,calc(100dvh-16rem))] min-h-[28rem] flex-col overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium">Playground</p>
-          <p className="truncate text-xs text-muted-foreground">
-            Talking to {name} through the public chat API
-          </p>
+          <p className="text-sm font-medium">{name}</p>
+          <p className="truncate text-xs text-muted-foreground">Public chat API · playground source</p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={resetChat} disabled={busy}>
           <RotateCcw />
@@ -274,6 +279,7 @@ export function PlaygroundChat({
         </div>
         <p className="mt-2 px-1 text-xs text-muted-foreground">Enter to send · Shift+Enter for a new line</p>
       </form>
+    </div>
     </div>
   );
 }

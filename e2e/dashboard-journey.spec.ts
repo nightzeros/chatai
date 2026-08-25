@@ -14,7 +14,8 @@ test("dashboard journey covers Overview through Configure", async ({ page }) => 
   await expect(page.getByRole("button", { name: "Websites" })).toBeVisible();
 
   await page.getByRole("link", { name: "Playground" }).first().click();
-  await expect(page.getByText("Talking to")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Playground" })).toBeVisible();
+  await expect(page.getByText("Public chat API")).toBeVisible();
 
   await page.getByRole("link", { name: "Customize" }).first().click();
   await expect(page.getByRole("heading", { name: "Customize" })).toBeVisible();

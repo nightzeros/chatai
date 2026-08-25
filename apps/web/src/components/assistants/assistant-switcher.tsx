@@ -2,6 +2,14 @@
 
 import { useRouter } from "next/navigation";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 export function AssistantSwitcher({
   currentId,
   assistants,
@@ -14,22 +22,25 @@ export function AssistantSwitcher({
   if (assistants.length <= 1) return null;
 
   return (
-    <label className="mt-2 block">
+    <div className="mt-2">
       <span className="sr-only">Switch assistant</span>
-      <select
-        className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+      <Select
         value={currentId}
-        aria-label="Switch assistant"
-        onChange={(e) => {
-          router.push(`/dashboard/assistants/${e.target.value}`);
+        onValueChange={(id) => {
+          router.push(`/dashboard/assistants/${id}`);
         }}
       >
-        {assistants.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.name}
-          </option>
-        ))}
-      </select>
-    </label>
+        <SelectTrigger className="h-8 w-full text-xs" aria-label="Switch assistant">
+          <SelectValue placeholder="Switch assistant" />
+        </SelectTrigger>
+        <SelectContent>
+          {assistants.map((a) => (
+            <SelectItem key={a.id} value={a.id} className="text-xs">
+              {a.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

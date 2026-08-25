@@ -32,6 +32,16 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
     hasSigningSecret,
   } = overview;
 
+  const settings = assistant.settings ?? {};
+  const customized =
+    Boolean(settings.primaryColor) ||
+    Boolean(settings.iconUrl) ||
+    (settings.suggestedQuestions?.filter(Boolean).length ?? 0) > 0 ||
+    settings.theme === "dark" ||
+    settings.theme === "light" ||
+    settings.position === "bottom-left" ||
+    settings.showSources === false;
+
   const checklist = [
     {
       done: knowledgeTotal > 0,
@@ -46,17 +56,17 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
       hint: "Ask a question and inspect retrieval",
     },
     {
-      done: Boolean(assistant.settings && Object.keys(assistant.settings as object).length > 0),
+      done: customized,
       label: "Customize the widget",
       href: `/dashboard/assistants/${assistant.id}/customize`,
       hint: "Colors, theme, and suggested questions",
     },
     {
-      done: true,
+      done: false,
+      optional: true,
       label: "Copy the install snippet",
       href: `/dashboard/assistants/${assistant.id}/install`,
-      hint: "Embed on your site",
-      forcePending: false,
+      hint: "Embed on your site when you are ready",
     },
     {
       done: requireWidgetSigning ? hasSigningSecret : false,

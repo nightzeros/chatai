@@ -1,14 +1,10 @@
-import Link from "next/link";
-
+import { AuthShell } from "@/components/auth/auth-shell";
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
 
 export default function ForgotPasswordPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-6 py-12">
-      <Link href="/" className="text-sm font-medium tracking-wide text-muted-foreground uppercase">
-        ChatAI
-      </Link>
+    <AuthShell title="Reset password" description="We will email you a link if an account exists.">
       <ForgotPasswordForm />
-    </main>
+    </AuthShell>
   );
 }

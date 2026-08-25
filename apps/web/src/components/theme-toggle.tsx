@@ -13,7 +13,7 @@ const options = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
-export function ThemeToggle() {
+export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -22,7 +22,32 @@ export function ThemeToggle() {
   }, []);
 
   if (!mounted) {
-    return <div className="h-9 w-full max-w-xs rounded-md border border-border bg-muted/40" aria-hidden />;
+    return (
+      <div
+        className={cn(
+          "rounded-md border border-border bg-muted/40",
+          compact ? "size-9" : "h-9 w-full max-w-xs",
+        )}
+        aria-hidden
+      />
+    );
+  }
+
+  if (compact) {
+    const current = options.find((o) => o.value === theme) ?? options[0];
+    const nextIndex = (options.findIndex((o) => o.value === theme) + 1) % options.length;
+    const NextIcon = options[nextIndex]!.icon;
+    return (
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-label={`Theme: ${current.label}. Click to switch.`}
+        onClick={() => setTheme(options[nextIndex]!.value)}
+      >
+        <NextIcon className="size-4" />
+      </Button>
+    );
   }
 
   return (

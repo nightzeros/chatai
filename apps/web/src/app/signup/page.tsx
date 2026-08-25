@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { AuthShell } from "@/components/auth/auth-shell";
 import { SignupForm } from "@/components/auth/signup-form";
 import { env } from "@/lib/env";
 
@@ -7,11 +6,8 @@ export default function SignupPage() {
   const githubEnabled = Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-6 py-12">
-      <Link href="/" className="text-sm font-medium tracking-wide text-muted-foreground uppercase">
-        ChatAI
-      </Link>
+    <AuthShell title="Create your account" description="Start building assistants on your knowledge.">
       <SignupForm githubEnabled={githubEnabled} />
-    </main>
+    </AuthShell>
   );
 }

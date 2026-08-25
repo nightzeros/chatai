@@ -1,4 +1,4 @@
-import { AssistantCard } from "@/components/assistants/assistant-card";
+import { AssistantCard, AssistantsEmptyIcon } from "@/components/assistants/assistant-card";
 import { CreateAssistantDialog } from "@/components/assistants/create-assistant-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -16,11 +16,12 @@ export default async function DashboardPage() {
       <PageHeader
         title="Assistants"
         description="Create an assistant, add knowledge, then embed it on your site."
-        actions={<CreateAssistantDialog />}
+        actions={assistants.length > 0 ? <CreateAssistantDialog /> : undefined}
       />
 
       {assistants.length === 0 ? (
         <EmptyState
+          icon={<AssistantsEmptyIcon />}
           title="No assistants yet"
           description="Create one to start uploading documents and testing chat."
           action={<CreateAssistantDialog />}

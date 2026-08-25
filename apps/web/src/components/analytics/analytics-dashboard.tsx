@@ -138,7 +138,7 @@ export function AnalyticsDashboard({
             Repeated questions where the assistant fell back or had low confidence — close these gaps
             first.
           </p>
-          {success ? <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{success}</p> : null}
+          {success ? <p className="mt-2 text-sm text-success">{success}</p> : null}
         </div>
         {topUnanswered.length === 0 ? (
           <EmptyState
