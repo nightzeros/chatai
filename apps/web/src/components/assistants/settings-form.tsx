@@ -77,9 +77,11 @@ const CHUNKING_MODES = [
 export function SettingsForm({
   assistant,
   instanceDefaults,
+  section = "general",
 }: {
   assistant: Assistant;
   instanceDefaults: InstanceDefaults;
+  section?: "general" | "models";
 }) {
   const [state, formAction, pending] = useActionState(updateAssistant, null);
   const model = assistant.modelSettings ?? {};
@@ -93,16 +95,25 @@ export function SettingsForm({
     },
   };
 
+  const showGeneral = section === "general";
+  const showModels = section === "models";
+
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <Card>
+      <Card className="shadow-none">
         <CardHeader>
-          <CardTitle>Assistant</CardTitle>
-          <CardDescription>Public ID: {assistant.publicId}</CardDescription>
+          <CardTitle>{showModels ? "Models & providers" : "General"}</CardTitle>
+          <CardDescription>
+            {showModels
+              ? "Override chat and embedding models for this assistant."
+              : `Public ID: ${assistant.publicId}`}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form action={formAction} className="flex flex-col gap-4">
             <input type="hidden" name="id" value={assistant.id} />
+            {showGeneral ? (
+              <>
             <div className="flex flex-col gap-2">
               <Label htmlFor="name">Name</Label>
               <Input id="name" name="name" required maxLength={80} defaultValue={assistant.name} />
@@ -236,14 +247,75 @@ export function SettingsForm({
                 </span>
               </label>
             </fieldset>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="evalSampleRate">Online eval sample rate</Label>
+              <Input
+                id="evalSampleRate"
+                name="evalSampleRate"
+                type="number"
+                min={0}
+                max={1}
+                step={0.01}
+                defaultValue={rag.evalSampleRate}
+              />
+              <p className="text-sm text-muted-foreground">
+                Fraction of production answers to score asynchronously (0–1). Uses your AI API key.
+              </p>
+            </div>
+            <fieldset className="flex flex-col gap-3">
+              <legend className="text-sm font-medium">Chunking mode</legend>
+              <p className="text-sm text-muted-foreground">
+                Changing chunking mode only affects newly processed documents. Use Reprocess in
+                Knowledge to rebuild existing content.
+              </p>
+              {CHUNKING_MODES.map((mode) => (
+                <label
+                  key={mode.value}
+                  className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground"
+                >
+                  <input
+                    type="radio"
+                    name="chunkingMode"
+                    value={mode.value}
+                    defaultChecked={rag.chunkingMode === mode.value}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">{mode.title}</span>
+                    <span className="block text-sm text-muted-foreground">{mode.description}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+              </>
+            ) : null}
+
+            {showModels ? (
+              <>
+                {/* Preserve non-model fields so updateAssistant validation still receives them */}
+                <input type="hidden" name="name" value={assistant.name} />
+                <input type="hidden" name="description" value={assistant.description ?? ""} />
+                <input type="hidden" name="welcomeMessage" value={assistant.welcomeMessage} />
+                <input type="hidden" name="instructions" value={assistant.instructions ?? ""} />
+                <input type="hidden" name="hallucinationMode" value={assistant.hallucinationMode} />
+                <input type="hidden" name="chunkingMode" value={rag.chunkingMode} />
+                <input type="hidden" name="evalSampleRate" value={rag.evalSampleRate} />
+                {rag.hybridSearch ? <input type="hidden" name="hybridSearch" value="on" /> : null}
+                {rag.rerank ? <input type="hidden" name="rerank" value="on" /> : null}
+                {rag.queryExpansion ? <input type="hidden" name="queryExpansion" value="on" /> : null}
+                {rag.guardrails.requireContext ? <input type="hidden" name="requireContext" value="on" /> : null}
+                {rag.guardrails.verifyCitations ? <input type="hidden" name="verifyCitations" value="on" /> : null}
+                {rag.guardrails.refuseOnLowConfidence ? (
+                  <input type="hidden" name="refuseOnLowConfidence" value="on" />
+                ) : null}
             <fieldset className="flex flex-col gap-3">
               <legend className="text-sm font-medium">Models</legend>
               <p className="text-sm text-muted-foreground">
-                Override chat and embedding models for this assistant. Leave blank to use instance
-                defaults ({instanceDefaults.chatProvider} / {instanceDefaults.chatModel} for chat,{" "}
-                {instanceDefaults.embeddingProvider} / {instanceDefaults.embeddingModel} for
-                embeddings). Embeddings must match instance width ({instanceDefaults.embeddingDimensions}{" "}
-                dimensions). Changing the embedding model reprocesses all documents.
+                Leave blank to use instance defaults ({instanceDefaults.chatProvider} /{" "}
+                {instanceDefaults.chatModel} for chat, {instanceDefaults.embeddingProvider} /{" "}
+                {instanceDefaults.embeddingModel} for embeddings). Embeddings must match instance
+                width ({instanceDefaults.embeddingDimensions} dimensions). Changing the embedding
+                model reprocesses all documents.
               </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-2">
@@ -300,47 +372,16 @@ export function SettingsForm({
                 </div>
               </div>
             </fieldset>
+              </>
+            ) : (
+              <>
+                <input type="hidden" name="chatProvider" value={model.chatProvider ?? ""} />
+                <input type="hidden" name="chatModel" value={model.chatModel ?? ""} />
+                <input type="hidden" name="embeddingProvider" value={model.embeddingProvider ?? ""} />
+                <input type="hidden" name="embeddingModel" value={model.embeddingModel ?? ""} />
+              </>
+            )}
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="evalSampleRate">Online eval sample rate</Label>
-              <Input
-                id="evalSampleRate"
-                name="evalSampleRate"
-                type="number"
-                min={0}
-                max={1}
-                step={0.01}
-                defaultValue={rag.evalSampleRate}
-              />
-              <p className="text-sm text-muted-foreground">
-                Fraction of production answers to score asynchronously (0–1). Uses your AI API key.
-              </p>
-            </div>
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-sm font-medium">Chunking mode</legend>
-              <p className="text-sm text-muted-foreground">
-                Changing chunking mode only affects newly processed documents. Use Reprocess in
-                Knowledge to rebuild existing content.
-              </p>
-              {CHUNKING_MODES.map((mode) => (
-                <label
-                  key={mode.value}
-                  className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground"
-                >
-                  <input
-                    type="radio"
-                    name="chunkingMode"
-                    value={mode.value}
-                    defaultChecked={rag.chunkingMode === mode.value}
-                    className="mt-1"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium">{mode.title}</span>
-                    <span className="block text-sm text-muted-foreground">{mode.description}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
             {state && "error" in state ? <p className="text-sm text-destructive">{state.error}</p> : null}
             {state && "saved" in state ? <p className="text-sm text-muted-foreground">Saved.</p> : null}
             <Button type="submit" disabled={pending} className="w-fit">
@@ -350,7 +391,8 @@ export function SettingsForm({
         </CardContent>
       </Card>
 
-      <Card className="border-destructive/40">
+      {showGeneral ? (
+      <Card className="border-destructive/40 shadow-none">
         <CardHeader>
           <CardTitle className="text-destructive">Danger zone</CardTitle>
           <CardDescription>
@@ -373,6 +415,7 @@ export function SettingsForm({
           </form>
         </CardContent>
       </Card>
+      ) : null}
     </div>
   );
 }
