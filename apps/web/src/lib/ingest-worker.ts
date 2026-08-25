@@ -30,8 +30,8 @@ function workerDb() {
   return workerClient;
 }
 
-function embeddingForAssistant(assistant: typeof assistants.$inferSelect) {
-  return resolveAssistantModels(assistant).embedding;
+async function embeddingForAssistant(assistant: typeof assistants.$inferSelect) {
+  return (await resolveAssistantModels(assistant)).embedding;
 }
 
 async function embeddingForDocument(db: ReturnType<typeof createDb>, documentId: string) {
@@ -46,7 +46,7 @@ async function embeddingForDocument(db: ReturnType<typeof createDb>, documentId:
     throw new Error(`Document ${documentId} not found.`);
   }
 
-  return embeddingForAssistant(row.assistant);
+  return await embeddingForAssistant(row.assistant);
 }
 
 async function claimJob(db: ReturnType<typeof createDb>) {

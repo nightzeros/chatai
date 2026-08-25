@@ -126,7 +126,7 @@ async function processOnce() {
   try {
     if (job.messageId) {
       const assistant = await assistantForMessage(db, job.messageId);
-      const models = resolveAssistantModels(assistant);
+      const models = await resolveAssistantModels(assistant);
       await runOnlineEvalJob({
         db,
         messageId: job.messageId,
@@ -135,7 +135,7 @@ async function processOnce() {
     } else if (job.runId && job.caseId) {
       console.log(`[eval] offline case ${job.caseId} using ${evalWorkerVersionLabel()}`);
       const assistant = await assistantForRun(db, job.runId);
-      const models = resolveAssistantModels(assistant);
+      const models = await resolveAssistantModels(assistant);
       await runOfflineEvalCase({
         db,
         runId: job.runId,

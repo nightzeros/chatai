@@ -160,7 +160,7 @@ export async function POST(request: Request) {
     async start(controller) {
       const send = (payload: unknown) => controller.enqueue(encoder.encode(sseLine(payload)));
 
-      const models = resolveAssistantModels(assistant);
+      const models = await resolveAssistantModels(assistant);
 
       try {
         const rag = resolveRagSettings(assistant.ragSettings);

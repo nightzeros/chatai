@@ -3,6 +3,10 @@ import { resolveChatConfigFromEnv, resolveEmbeddingConfigFromEnv } from "@chatai
 import type { ModelSettings } from "@chatai/database";
 
 import { env } from "@/lib/env";
+import {
+  getDecryptedProviderSecrets,
+  type DecryptedProviderSecrets,
+} from "./secrets/provider-secrets";
 
 export function providerEnv(): ProviderEnv {
   return {
@@ -48,30 +52,59 @@ export function embeddingConfig(): EmbeddingConfig {
   };
 }
 
-export function resolveAssistantModels(assistant: { modelSettings?: ModelSettings | null }) {
+export type ResolveAssistantModelsOptions = {
+  /**
+   * Inject decrypted secrets (tests). When omitted and `assistant.id` is set,
+   * secrets are loaded and decrypted server-side from `assistant_provider_secrets`.
+   */
+  decryptedSecrets?: DecryptedProviderSecrets;
+};
+
+/**
+ * Resolve chat + embedding configs for an assistant.
+ * Per-assistant API keys are decrypted only here (server-side) and never serialized
+ * back to clients. Keys apply when the stored secret's provider matches the resolved provider.
+ */
+export async function resolveAssistantModels(
+  assistant: { id?: string; modelSettings?: ModelSettings | null },
+  options: ResolveAssistantModelsOptions = {},
+) {
   const settings = assistant.modelSettings ?? {};
-  const chat = resolveChatConfigFromEnv(providerEnv(), {
+  const secrets =
+    options.decryptedSecrets ??
+    (assistant.id
+      ? await getDecryptedProviderSecrets(assistant.id, env)
+      : {});
+
+  const chatResolved = resolveChatConfigFromEnv(providerEnv(), {
     provider: settings.chatProvider,
     model: settings.chatModel,
   });
-  const embedding = resolveEmbeddingConfigFromEnv(providerEnv(), {
+  const embeddingResolved = resolveEmbeddingConfigFromEnv(providerEnv(), {
     provider: settings.embeddingProvider,
     model: settings.embeddingModel,
   });
 
-  return {
-    chat: {
-      provider: chat.provider,
-      apiKey: chat.apiKey,
-      baseURL: chat.baseURL,
-      model: chat.model,
-    } satisfies ChatConfig,
-    embedding: {
-      provider: embedding.provider,
-      apiKey: embedding.apiKey,
-      baseURL: embedding.baseURL,
-      model: embedding.model,
-      dimensions: embedding.dimensions,
-    } satisfies EmbeddingConfig,
+  const chat: ChatConfig = {
+    provider: chatResolved.provider,
+    apiKey: chatResolved.apiKey,
+    baseURL: chatResolved.baseURL,
+    model: chatResolved.model,
   };
+  if (secrets.chat && secrets.chat.provider === chat.provider) {
+    chat.apiKey = secrets.chat.apiKey;
+  }
+
+  const embedding: EmbeddingConfig = {
+    provider: embeddingResolved.provider,
+    apiKey: embeddingResolved.apiKey,
+    baseURL: embeddingResolved.baseURL,
+    model: embeddingResolved.model,
+    dimensions: embeddingResolved.dimensions,
+  };
+  if (secrets.embedding && secrets.embedding.provider === embedding.provider) {
+    embedding.apiKey = secrets.embedding.apiKey;
+  }
+
+  return { chat, embedding };
 }
