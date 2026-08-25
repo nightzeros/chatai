@@ -9,15 +9,22 @@ export function NavLink({
   href,
   children,
   exact = false,
+  match,
   className,
 }: {
   href: string;
   children: React.ReactNode;
   exact?: boolean;
+  /** When set, overrides default prefix matching. */
+  match?: (pathname: string) => boolean;
   className?: string;
 }) {
   const pathname = usePathname();
-  const active = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+  const active = match
+    ? match(pathname)
+    : exact
+      ? pathname === href
+      : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <Link
