@@ -31,6 +31,8 @@ export type WidgetConfig = {
   name: string;
   welcomeMessage: string;
   settings: Record<string, unknown>;
+  /** When true, chat/feedback require X-ChatAI-Signature from the sign endpoint. */
+  requireWidgetSigning?: boolean;
 };
 
 export type WidgetMessage = {
@@ -57,6 +59,11 @@ export type WidgetControllerOptions = {
   fetch?: typeof fetch;
   storage?: StorageLike;
   createId?: () => string;
+  /**
+   * Absolute URL for POST /api/v1/widget/sign.
+   * Defaults to `${apiUrl}/api/v1/widget/sign` when config.requireWidgetSigning is true.
+   */
+  signEndpoint?: string;
 };
 
 export function resolveApiUrl(value: string): string {
@@ -181,6 +188,38 @@ export function createWidgetController(options: WidgetControllerOptions) {
     return created;
   };
 
+  const resolveSignEndpoint = () => {
+    if (options.signEndpoint?.trim()) {
+      return options.signEndpoint.trim();
+    }
+    if (state.config?.requireWidgetSigning) {
+      return `${origin()}/api/v1/widget/sign`;
+    }
+    return null;
+  };
+
+  const fetchSignatureHeader = async (vid: string): Promise<string | null> => {
+    const endpoint = resolveSignEndpoint();
+    if (!endpoint) return null;
+
+    const response = await fetcher(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assistantId: options.assistantId,
+        visitorId: vid,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(await responseError(response));
+    }
+    const body = (await response.json()) as { signature?: string };
+    if (!body.signature) {
+      throw new Error("Widget sign endpoint returned no signature.");
+    }
+    return body.signature;
+  };
+
   return {
     getState() {
       return state;
@@ -227,14 +266,21 @@ export function createWidgetController(options: WidgetControllerOptions) {
 
       try {
         const apiUrl = origin();
+        const vid = visitorId();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        const signature = await fetchSignatureHeader(vid);
+        if (signature) {
+          headers["X-ChatAI-Signature"] = signature;
+        }
+
         const response = await fetcher(`${apiUrl}/api/v1/chat`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             assistantId: options.assistantId,
             message: content,
             conversationId: state.conversationId,
-            visitorId: visitorId(),
+            visitorId: vid,
             source: "widget",
           }),
         });
@@ -280,13 +326,20 @@ export function createWidgetController(options: WidgetControllerOptions) {
     async sendFeedback(messageId: string, rating: "positive" | "negative") {
       try {
         const apiUrl = origin();
+        const vid = visitorId();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        const signature = await fetchSignatureHeader(vid);
+        if (signature) {
+          headers["X-ChatAI-Signature"] = signature;
+        }
+
         const response = await fetcher(`${apiUrl}/api/v1/feedback`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             messageId,
             rating,
-            visitorId: visitorId(),
+            visitorId: vid,
           }),
         });
         if (!response.ok) throw new Error(await responseError(response));

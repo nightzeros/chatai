@@ -11,4 +11,6 @@ export type WidgetRequestContext = {
   visitorId?: string | null;
   message?: string;
   source?: "playground" | "widget" | "api";
+  /** Sign endpoint issues signatures — do not require one on that request. */
+  skipSignatureCheck?: boolean;
 };

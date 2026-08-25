@@ -18,6 +18,8 @@ function policy(
     allowedDomains?: string[];
     widgetRateLimitPerVisitor?: number | null;
     widgetRateLimitPerAssistant?: number | null;
+    requireWidgetSigning?: boolean;
+    widgetSigningSecret?: string | null;
   } = {},
 ) {
   return SecurityPolicy.fromAssistant(
@@ -223,5 +225,63 @@ describe("SecurityPolicy", () => {
       { consumeRateLimits: allowAllRateLimits },
     );
     expect(violation).toBeNull();
+  });
+
+  it("rejects unsigned chat when requireWidgetSigning is enabled", async () => {
+    const violation = await policy({
+      requireWidgetSigning: true,
+      widgetSigningSecret: "test-secret",
+    }).enforceWidgetRequest(
+      requestWithOrigin("https://example.com"),
+      { source: "widget", message: "Hello", visitorId: "visitor01" },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots },
+    );
+    expect(violation).toMatchObject({
+      status: 403,
+      message: "Request blocked.",
+      reason: "widget_signature_missing_or_malformed",
+    });
+  });
+
+  it("accepts a valid signature when requireWidgetSigning is enabled", async () => {
+    const verifySignature = vi.fn(() => ({ ok: true as const }));
+    const violation = await SecurityPolicy.fromAssistant(
+      {
+        id: "asst_internal",
+        publicId: "asst_public",
+        securitySettings: {
+          requireWidgetSigning: true,
+          widgetSigningSecret: "test-secret",
+        },
+      },
+      env,
+    ).enforceWidgetRequest(
+      requestWithOrigin("https://example.com"),
+      { source: "widget", message: "Hello", visitorId: "visitor01" },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots, verifySignature },
+    );
+    expect(violation).toBeNull();
+    expect(verifySignature).toHaveBeenCalled();
+  });
+
+  it("skips signature verification for the sign endpoint", async () => {
+    const verifySignature = vi.fn(() => ({ ok: false as const, reason: "should_not_run" }));
+    const violation = await SecurityPolicy.fromAssistant(
+      {
+        id: "asst_internal",
+        publicId: "asst_public",
+        securitySettings: {
+          requireWidgetSigning: true,
+          widgetSigningSecret: "test-secret",
+        },
+      },
+      env,
+    ).enforceWidgetRequest(
+      requestWithOrigin("https://example.com"),
+      { source: "widget", visitorId: "visitor01", skipSignatureCheck: true },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots, verifySignature },
+    );
+    expect(violation).toBeNull();
+    expect(verifySignature).not.toHaveBeenCalled();
   });
 });

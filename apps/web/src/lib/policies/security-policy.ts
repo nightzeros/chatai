@@ -11,6 +11,11 @@ import {
   consumeWidgetRateLimits,
   type ConsumeWidgetRateLimitsInput,
 } from "./checks/widget-rate-limit";
+import {
+  verifyWidgetSignature,
+  WIDGET_SIGNATURE_HEADER,
+  type VerifyWidgetSignatureResult,
+} from "./checks/widget-signature";
 import type { PolicyViolation, WidgetRequestContext } from "./policy-violation";
 import {
   resolveSecurityPolicy,
@@ -29,12 +34,18 @@ export type EnforceWidgetRequestDeps = {
     input: ConsumeWidgetRateLimitsInput,
   ) => Promise<PolicyViolation | null>;
   evaluateBot?: (input: BotCheckInput) => { ok: true } | { ok: false; reason: string };
+  verifySignature?: (input: {
+    secret: string;
+    assistantPublicId: string;
+    visitorId: string;
+    header: string | null;
+    maxSkewSeconds: number;
+  }) => VerifyWidgetSignatureResult;
 };
 
 /**
  * Shared widget security gate.
- * Task 2: domain → Task 3: rate limits → Task 4: bot heuristics.
- * Later: signature.
+ * domain → rate limits → bot heuristics → optional HMAC signature.
  */
 export class SecurityPolicy {
   readonly assistantId: string;
@@ -110,6 +121,47 @@ export class SecurityPolicy {
         message: "Request blocked.",
         reason: bot.reason,
       };
+    }
+
+    if (this.resolved.requireWidgetSigning && !ctx.skipSignatureCheck) {
+      const needsSignature = ctx.message !== undefined || Boolean(ctx.visitorId);
+      if (needsSignature) {
+        if (!this.resolved.widgetSigningSecret) {
+          return {
+            status: 403,
+            message: "Request blocked.",
+            reason: "widget_signing_misconfigured",
+          };
+        }
+        if (!ctx.visitorId) {
+          return {
+            status: 403,
+            message: "Request blocked.",
+            reason: "widget_signing_missing_visitor",
+          };
+        }
+
+        const verify = deps.verifySignature ?? ((input) =>
+          verifyWidgetSignature({
+            ...input,
+            maxSkewSeconds: this.resolved.signingMaxSkewSeconds,
+          }));
+
+        const verified = verify({
+          secret: this.resolved.widgetSigningSecret,
+          assistantPublicId: this.publicId,
+          visitorId: ctx.visitorId,
+          header: request.headers.get(WIDGET_SIGNATURE_HEADER),
+          maxSkewSeconds: this.resolved.signingMaxSkewSeconds,
+        });
+        if (!verified.ok) {
+          return {
+            status: 403,
+            message: "Request blocked.",
+            reason: verified.reason,
+          };
+        }
+      }
     }
 
     return null;

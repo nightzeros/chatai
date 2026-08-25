@@ -29,4 +29,16 @@ describe("optionsFromScript", () => {
       apiUrl: "https://api.example.com",
     });
   });
+
+  it("reads data-sign-endpoint when present", () => {
+    const script = document.createElement("script");
+    script.src = "https://chat.example.com/widget/chat.js";
+    script.dataset.assistantId = "asst_demo";
+    script.dataset.signEndpoint = "https://chat.example.com/api/v1/widget/sign";
+
+    expect(optionsFromScript(script)).toMatchObject({
+      assistantId: "asst_demo",
+      signEndpoint: "https://chat.example.com/api/v1/widget/sign",
+    });
+  });
 });

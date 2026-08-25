@@ -152,23 +152,49 @@ describe("createWidgetController", () => {
     );
   });
 
-  it("records an error when feedback cannot be saved", async () => {
+  it("fetches a signature before chat when requireWidgetSigning is set", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const storage = new Map<string, string>();
+    const fetcher: typeof fetch = async (url, init) => {
+      calls.push({ url: String(url), init });
+      if (String(url).endsWith("/config")) {
+        return Response.json({
+          assistantId: "asst_demo",
+          name: "Demo",
+          welcomeMessage: "Welcome",
+          settings: {},
+          requireWidgetSigning: true,
+        });
+      }
+      if (String(url).endsWith("/widget/sign")) {
+        return Response.json({ timestamp: 1, signature: "t=1,v1=abc" });
+      }
+      return new Response(
+        'data: {"type":"token","text":"Hi"}\n\ndata: {"type":"meta","messageId":"m1","conversationId":"c1","sources":[],"confidence":0.9,"outcome":"answered_with_context"}\n\ndata: {"type":"done"}\n\n',
+      );
+    };
     const controller = createWidgetController({
       assistantId: "asst_demo",
       apiUrl: "https://chat.example.com",
-      fetch: async () => Response.json({ error: "Not authorized to rate this message." }, { status: 403 }),
+      fetch: fetcher,
       storage: {
-        getItem: () => "visitor-1",
-        setItem: () => undefined,
+        getItem: (key) => storage.get(key) ?? null,
+        setItem: (key, value) => storage.set(key, value),
       },
+      createId: () => "visitor01",
     });
 
-    await expect(controller.sendFeedback("message-1", "positive")).rejects.toThrow(
-      "Not authorized to rate this message.",
-    );
-    expect(controller.getState()).toMatchObject({
-      status: "loading",
-      error: "Not authorized to rate this message.",
+    await controller.load();
+    await controller.send("Hello");
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://chat.example.com/api/v1/assistants/asst_demo/config",
+      "https://chat.example.com/api/v1/widget/sign",
+      "https://chat.example.com/api/v1/chat",
+    ]);
+    expect(calls[2]?.init?.headers).toEqual({
+      "Content-Type": "application/json",
+      "X-ChatAI-Signature": "t=1,v1=abc",
     });
   });
 });

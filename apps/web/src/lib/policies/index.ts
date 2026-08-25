@@ -29,3 +29,10 @@ export {
   isValidVisitorId,
   recordBurstAndAllow,
 } from "./checks/bot-heuristics";
+export {
+  createWidgetSignature,
+  generateWidgetSigningSecret,
+  parseWidgetSignatureHeader,
+  verifyWidgetSignature,
+  WIDGET_SIGNATURE_HEADER,
+} from "./checks/widget-signature";

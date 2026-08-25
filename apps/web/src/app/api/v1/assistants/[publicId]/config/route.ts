@@ -40,5 +40,6 @@ export async function GET(request: Request, context: { params: Promise<{ publicI
     name: assistant.name,
     welcomeMessage: assistant.welcomeMessage,
     settings: assistant.settings,
+    requireWidgetSigning: Boolean(assistant.securitySettings?.requireWidgetSigning),
   });
 }

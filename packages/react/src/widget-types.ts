@@ -8,6 +8,7 @@ export type WidgetMountOptions = {
   fetch?: typeof globalThis.fetch;
   storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   createId?: () => string;
+  signEndpoint?: string;
   primaryColor?: string;
   position?: "bottom-left" | "bottom-right";
   theme?: "light" | "dark" | "system";

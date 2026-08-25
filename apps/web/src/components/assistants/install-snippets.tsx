@@ -91,6 +91,15 @@ export function InstallSnippetsPanel({ snippets }: { snippets: InstallSnippets }
             onCopy={copy}
           />
 
+          <SnippetBlock
+            title="Signed embed"
+            description="Use when widget signing is enabled. The widget fetches a short-lived HMAC from data-sign-endpoint before each chat request."
+            code={snippets.signedHtml}
+            copyId="signed"
+            copiedId={copiedId}
+            onCopy={copy}
+          />
+
           <div className="flex flex-col gap-3">
             <SnippetBlock
               title="React wrapper"

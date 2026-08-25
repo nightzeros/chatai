@@ -1,6 +1,6 @@
 import { resolveApiUrl, type WidgetControllerOptions } from "@chatai/widget-core";
 
-type ScriptOptions = Pick<WidgetControllerOptions, "assistantId" | "apiUrl"> & {
+type ScriptOptions = Pick<WidgetControllerOptions, "assistantId" | "apiUrl" | "signEndpoint"> & {
   theme?: "light" | "dark" | "system";
   position?: "bottom-left" | "bottom-right";
 };
@@ -16,10 +16,12 @@ export function optionsFromScript(script: HTMLScriptElement): ScriptOptions {
   }
 
   const apiUrl = resolveApiUrl(script.dataset.apiUrl ?? script.src);
+  const signEndpoint = script.dataset.signEndpoint?.trim() || undefined;
 
   return {
     assistantId,
     apiUrl,
+    ...(signEndpoint ? { signEndpoint } : {}),
     theme: option(script.dataset.theme, ["light", "dark", "system"] as const),
     position: option(script.dataset.position, ["bottom-left", "bottom-right"] as const),
   };

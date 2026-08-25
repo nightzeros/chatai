@@ -34,6 +34,11 @@ describe("buildInstallSnippets", () => {
     expect(snippets.selfHostedNote).toMatch(/\/widget\/chat\.js/);
   });
 
+  it("builds a signed embed snippet with data-sign-endpoint", () => {
+    expect(snippets.signedHtml).toContain('data-sign-endpoint="https://chat.example.com/api/v1/widget/sign"');
+    expect(snippets.signedHtml).toContain('data-assistant-id="asst_demo123"');
+  });
+
   it("builds a React snippet against the shared package API", () => {
     expect(snippets.reactTsx).toContain('import { ChatWidget } from "@chatai/react";');
     expect(snippets.reactTsx).toContain('assistantId="asst_demo123"');
@@ -42,12 +47,20 @@ describe("buildInstallSnippets", () => {
     expect(snippets.reactInstall).toContain("workspace");
   });
 
-  it("exposes the public ID and a verification checklist", () => {
+  it("documents security controls available in settings", () => {
     expect(snippets.publicId).toBe("asst_demo123");
     expect(snippets.securityNote).toMatch(/public/i);
-    expect(snippets.securityNote).toMatch(/v0\.8|allowlist|rate limit/i);
-    expect(snippets.securityNote).toMatch(/public ID/i);
-    expect(snippets.securityNote).toMatch(/allowlists.*v0\.8/i);
+    expect(snippets.securityNote).toMatch(/allowlist|signing|rate limit/i);
     expect(snippets.verificationChecklist.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("includes sign endpoint attrs when requireWidgetSigning is enabled", () => {
+    const signed = buildInstallSnippets({
+      deploymentOrigin: "https://chat.example.com",
+      publicId: "asst_demo123",
+      requireWidgetSigning: true,
+    });
+    expect(signed.hostedHtml).toContain("data-sign-endpoint=");
+    expect(signed.reactTsx).toContain("signEndpoint=");
   });
 });
