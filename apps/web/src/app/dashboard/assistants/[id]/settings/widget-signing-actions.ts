@@ -61,6 +61,7 @@ export async function updateWidgetSigning(
 
   revalidatePath(`/dashboard/assistants/${assistant.id}`);
   revalidatePath(`/dashboard/assistants/${assistant.id}/settings`);
+  revalidatePath(`/dashboard/assistants/${assistant.id}/settings/security`);
   revalidatePath(`/dashboard/assistants/${assistant.id}/install`);
 
   return { saved: true, revealedSecret };
