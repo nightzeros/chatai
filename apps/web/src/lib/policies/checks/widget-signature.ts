@@ -48,15 +48,20 @@ export function parseWidgetSignatureHeader(
       }),
   );
 
+  // Reject floats / scientific notation / missing `t=` — require a positive unix second.
+  if (!/^[1-9]\d*$/.test(parts.t ?? "")) {
+    return null;
+  }
   const timestamp = Number(parts.t);
   const hex = parts.v1;
-  if (!Number.isFinite(timestamp) || !hex || !/^[0-9a-f]+$/i.test(hex)) {
+  if (!Number.isInteger(timestamp) || timestamp <= 0 || !hex || !/^[0-9a-f]+$/i.test(hex)) {
     return null;
   }
 
   return { timestamp, hex };
 }
 
+/** Constant-time compare of hex digests (via `timingSafeEqual` on decoded bytes). */
 function safeEqualHex(a: string, b: string): boolean {
   try {
     const left = Buffer.from(a, "hex");
@@ -86,6 +91,12 @@ export type VerifyWidgetSignatureResult =
 /**
  * Verify `X-ChatAI-Signature: t=<unix>,v1=<hex>` over
  * `${assistantPublicId}:${visitorId}:${timestamp}`.
+ *
+ * Replay within `maxSkewSeconds` (WIDGET_SIGNING_MAX_SKEW_SECONDS) is intentionally
+ * accepted: the same valid header may be reused until the skew window expires.
+ * Binding to a nonce or body hash would add embed complexity with little benefit for
+ * a public browser widget — domain allowlist, per-visitor/assistant rate limits, and
+ * bot heuristics already bound residual abuse. Do not treat HMAC as proof of Origin.
  */
 export function verifyWidgetSignature(
   input: VerifyWidgetSignatureInput,

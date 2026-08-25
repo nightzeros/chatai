@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { SettingsForm } from "@/components/assistants/settings-form";
 import { WidgetSigningCard } from "@/components/assistants/widget-signing-card";
 import { getOwnedAssistant } from "@/lib/assistants";
+import { redactAssistantForClient } from "@/lib/redact-assistant";
 import { env } from "@/lib/env";
 import { requireSession } from "@/lib/session";
 
@@ -15,10 +16,13 @@ export default async function SettingsPage({ params }: { params: Promise<{ id: s
     notFound();
   }
 
+  const hasSigningSecret = Boolean(assistant.securitySettings?.widgetSigningSecret);
+  const clientAssistant = redactAssistantForClient(assistant);
+
   return (
     <div className="flex flex-col gap-6">
       <SettingsForm
-        assistant={assistant}
+        assistant={clientAssistant}
         instanceDefaults={{
           chatProvider: env.AI_PROVIDER ?? "openai",
           chatModel: env.AI_MODEL,
@@ -30,7 +34,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ id: s
       <WidgetSigningCard
         assistantId={assistant.id}
         requireWidgetSigning={Boolean(assistant.securitySettings?.requireWidgetSigning)}
-        hasSigningSecret={Boolean(assistant.securitySettings?.widgetSigningSecret)}
+        hasSigningSecret={hasSigningSecret}
       />
     </div>
   );

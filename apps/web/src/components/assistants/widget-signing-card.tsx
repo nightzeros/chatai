@@ -32,8 +32,9 @@ export function WidgetSigningCard({
         <CardTitle>Widget signing</CardTitle>
         <CardDescription>
           When enabled, public widget chat must present a short-lived HMAC from{" "}
-          <code className="text-xs">/api/v1/widget/sign</code>. Use with domain allowlists for
-          higher-security embeds.
+          <code className="text-xs">/api/v1/widget/sign</code>. This is one layer alongside domain
+          allowlists, rate limits, and bot checks — not proof of request origin (headers can be
+          spoofed outside a browser).
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

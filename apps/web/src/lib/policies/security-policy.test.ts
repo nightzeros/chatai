@@ -264,7 +264,9 @@ describe("SecurityPolicy", () => {
     expect(verifySignature).toHaveBeenCalled();
   });
 
-  it("skips signature verification for the sign endpoint", async () => {
+  it("skips signature verification for the sign endpoint but still runs earlier gates", async () => {
+    const consumeRateLimits = vi.fn(async () => null);
+    const evaluateBot = vi.fn(() => ({ ok: true as const }));
     const verifySignature = vi.fn(() => ({ ok: false as const, reason: "should_not_run" }));
     const violation = await SecurityPolicy.fromAssistant(
       {
@@ -279,9 +281,30 @@ describe("SecurityPolicy", () => {
     ).enforceWidgetRequest(
       requestWithOrigin("https://example.com"),
       { source: "widget", visitorId: "visitor01", skipSignatureCheck: true },
-      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots, verifySignature },
+      { consumeRateLimits, evaluateBot, verifySignature },
     );
     expect(violation).toBeNull();
+    expect(consumeRateLimits).toHaveBeenCalled();
+    expect(evaluateBot).toHaveBeenCalled();
+    expect(verifySignature).not.toHaveBeenCalled();
+  });
+
+  it("still denies the sign path when origin is not allowed", async () => {
+    const verifySignature = vi.fn(() => ({ ok: true as const }));
+    const violation = await policy({
+      allowedDomains: ["allowed.example"],
+      requireWidgetSigning: true,
+      widgetSigningSecret: "test-secret",
+    }).enforceWidgetRequest(
+      requestWithOrigin("https://evil.example"),
+      { source: "widget", visitorId: "visitor01", skipSignatureCheck: true },
+      {
+        consumeRateLimits: allowAllRateLimits,
+        evaluateBot: allowAllBots,
+        verifySignature,
+      },
+    );
+    expect(violation).toMatchObject({ status: 403, reason: "origin_denied:evil.example" });
     expect(verifySignature).not.toHaveBeenCalled();
   });
 });

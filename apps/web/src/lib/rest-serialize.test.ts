@@ -16,13 +16,19 @@ describe("serializeAssistant", () => {
       settings: {},
       ragSettings: {},
       modelSettings: {},
-      securitySettings: {},
+      securitySettings: {
+        requireWidgetSigning: true,
+        widgetSigningSecret: "must-not-leak",
+      },
       privacySettings: {},
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
       updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     });
 
     expect(serialized).not.toHaveProperty("userId");
+    expect(serialized).not.toHaveProperty("securitySettings");
+    expect(serialized).not.toHaveProperty("privacySettings");
+    expect(JSON.stringify(serialized)).not.toContain("must-not-leak");
     expect(serialized.publicId).toBe("asst_public");
   });
 });

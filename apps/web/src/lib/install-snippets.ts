@@ -84,7 +84,7 @@ export function buildInstallSnippets(input: InstallSnippetInput): InstallSnippet
       "}",
     ].join("\n"),
     securityNote:
-      "Anyone with this public ID can open the widget and chat. Treat publicId as a publishable capability, not a secret. Use Security settings for domain allowlists, rate limits, and optional widget signing (HMAC).",
+      "Anyone with this public ID can open the widget and chat. Treat publicId as a publishable capability, not a secret. Security settings (domain allowlist, rate limits, optional short-lived widget HMAC) are layered defenses — not absolute proof of request origin.",
     verificationChecklist: [
       "Open a page that includes the script tag.",
       "Confirm the launcher appears and opens a chat panel.",

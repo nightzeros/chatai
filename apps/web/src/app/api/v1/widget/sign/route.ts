@@ -22,7 +22,8 @@ export async function OPTIONS() {
 /**
  * Issues a short-lived HMAC for widget chat when signing is configured.
  * Applies domain allowlist + rate limits + visitor bot checks; skips signature
- * verification (this endpoint creates the signature).
+ * verification (this endpoint creates the signature — requiring one would recurse).
+ * Signatures are reusable within WIDGET_SIGNING_MAX_SKEW_SECONDS; rate limits bound abuse.
  */
 export async function POST(request: Request) {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
