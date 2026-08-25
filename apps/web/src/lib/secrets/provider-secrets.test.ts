@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const selectLimit = vi.fn();
 const selectWhere = vi.fn();
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const select = vi.fn(() => ({ from: selectFrom }));
