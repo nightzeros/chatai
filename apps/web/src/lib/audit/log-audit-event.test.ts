@@ -13,7 +13,7 @@ vi.mock("../ids", () => ({
 }));
 
 describe("sanitizeAuditMetadata", () => {
-  it("strips sensitive keys and nested objects", async () => {
+  it("strips sensitive keys and nested objects recursively", async () => {
     const { sanitizeAuditMetadata } = await import("./log-audit-event");
     expect(
       sanitizeAuditMetadata({
@@ -22,11 +22,37 @@ describe("sanitizeAuditMetadata", () => {
         apiKey: "sk-secret",
         password: "x",
         fields: ["name", "instructions"],
-        nested: { apiKey: "still-secret" },
+        provider: {
+          name: "openai",
+          credentials: {
+            apiKey: "secret",
+            region: "us",
+          },
+        },
+        nested: { apiKey: "still-secret", ok: true },
+        ip: "1.2.3.4",
+        ipAddress: "9.9.9.9",
+        encryptionKey: "ek",
+        signingSecret: "ss",
       }),
     ).toEqual({
       requireWidgetSigning: true,
       fields: ["name", "instructions"],
+      provider: {
+        name: "openai",
+      },
+      nested: { ok: true },
+    });
+  });
+
+  it("sanitizes arrays of nested objects", async () => {
+    const { sanitizeAuditMetadata } = await import("./log-audit-event");
+    expect(
+      sanitizeAuditMetadata({
+        items: [{ token: "t", id: "1" }, { id: "2" }],
+      }),
+    ).toEqual({
+      items: [{ id: "1" }, { id: "2" }],
     });
   });
 });

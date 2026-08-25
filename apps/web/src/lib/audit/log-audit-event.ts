@@ -3,7 +3,10 @@ import { auditEvents, type AuditAction } from "@chatai/database";
 import { createId } from "../ids";
 
 const SENSITIVE_KEY =
-  /^(.*)?(password|secret|token|apikey|api_key|authorization|ciphertext|cookie|credential)(.*)?$/i;
+  /(password|secret|token|apikey|api[_-]?key|authorization|ciphertext|cookie|credential|encryption[_-]?key|signing[_-]?secret|bearer)/i;
+
+/** Never store network addresses in audit metadata (v0.8 policy). */
+const IP_KEY = /^(ip|ipaddress|ip_address|clientip|client_ip|xff|x[_-]?forwarded[_-]?for|remoteaddr|remote_addr)$/i;
 
 export type LogAuditEventInput = {
   userId?: string | null;
@@ -13,27 +16,36 @@ export type LogAuditEventInput = {
   metadata?: Record<string, unknown>;
 };
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
- * Strip secrets / credentials from audit metadata.
- * Never store IP addresses (v0.8 policy) or raw secrets.
+ * Recursively strip secrets / credentials / IPs from audit metadata.
+ * Safe primitives and nested structures of safe values are preserved.
  */
-export function sanitizeAuditMetadata(
-  metadata: Record<string, unknown>,
-): Record<string, unknown> {
+export function sanitizeAuditMetadata(value: unknown): unknown {
+  if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeAuditMetadata(entry));
+  }
+
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
   const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(metadata)) {
-    if (SENSITIVE_KEY.test(key)) {
+  for (const [key, child] of Object.entries(value)) {
+    if (SENSITIVE_KEY.test(key) || IP_KEY.test(key)) {
       continue;
     }
-    if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      out[key] = value;
-      continue;
+    const sanitized = sanitizeAuditMetadata(child);
+    if (sanitized !== undefined) {
+      out[key] = sanitized;
     }
-    if (Array.isArray(value) && value.every((v) => typeof v === "string" || typeof v === "number")) {
-      out[key] = value;
-      continue;
-    }
-    // Drop nested objects rather than risk leaking nested secrets.
   }
   return out;
 }
@@ -41,17 +53,19 @@ export function sanitizeAuditMetadata(
 /**
  * Append-only audit write. Failures are logged and never thrown so callers
  * (auth, deletes, settings) are not blocked by audit storage issues.
+ * There is no update/delete API for audit_events in application code.
  */
 export async function logAuditEvent(input: LogAuditEventInput): Promise<void> {
   try {
     const { db } = await import("@/lib/db");
+    const metadata = sanitizeAuditMetadata(input.metadata ?? {});
     await db().insert(auditEvents).values({
       id: createId(),
       userId: input.userId ?? null,
       action: input.action,
       resourceType: input.resourceType ?? null,
       resourceId: input.resourceId ?? null,
-      metadata: sanitizeAuditMetadata(input.metadata ?? {}),
+      metadata: isPlainObject(metadata) ? metadata : {},
     });
   } catch (error) {
     console.error("[audit] failed to write event", input.action, error);
