@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { generateApiKeySecret, hashApiKey } from "@/lib/api-keys";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { db } from "@/lib/db";
 import { createId } from "@/lib/ids";
 import { requireSession } from "@/lib/session";
@@ -42,14 +43,23 @@ export async function createApiKey(_prev: ApiKeyActionState, formData: FormData)
   }
 
   const { secret, prefix } = generateApiKeySecret();
+  const id = createId();
 
   await db().insert(apiKeys).values({
-    id: createId(),
+    id,
     userId: session.user.id,
     name: parsed.data.name,
     keyPrefix: prefix,
     keyHash: hashApiKey(secret),
     scopes: parsed.data.scopes,
+  });
+
+  await logAuditEvent({
+    userId: session.user.id,
+    action: "api_key_created",
+    resourceType: "api_key",
+    resourceId: id,
+    metadata: { name: parsed.data.name, prefix, scopes: parsed.data.scopes },
   });
 
   revalidatePath("/dashboard/account");
@@ -82,6 +92,14 @@ export async function revokeApiKey(_prev: ApiKeyActionState, formData: FormData)
     .update(apiKeys)
     .set({ revokedAt: new Date(), updatedAt: new Date() })
     .where(eq(apiKeys.id, key.id));
+
+  await logAuditEvent({
+    userId: session.user.id,
+    action: "api_key_revoked",
+    resourceType: "api_key",
+    resourceId: key.id,
+    metadata: { name: key.name, prefix: key.keyPrefix },
+  });
 
   revalidatePath("/dashboard/account");
   return { revoked: true };

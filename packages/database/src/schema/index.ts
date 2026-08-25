@@ -1,5 +1,7 @@
 export * from "./auth";
 export * from "./rag-settings";
+export * from "./security-settings";
+export * from "./privacy-settings";
 export * from "./assistants";
 export * from "./sources";
 export * from "./documents";
@@ -9,6 +11,9 @@ export * from "./evals";
 export * from "./eval-jobs";
 export * from "./api-keys";
 export * from "./api-key-rate-buckets";
+export * from "./audit-events";
+export * from "./widget-rate-buckets";
+export * from "./assistant-provider-secrets";
 
 export * from "./conversations";
 export * from "./pg-types";

@@ -14,8 +14,8 @@ vi.mock("@/lib/env", () => ({
 }));
 
 describe("resolveAssistantModels", () => {
-  it("uses instance defaults when modelSettings is empty", () => {
-    const models = resolveAssistantModels({});
+  it("uses instance defaults when modelSettings is empty", async () => {
+    const models = await resolveAssistantModels({});
     expect(models.chat).toMatchObject({
       provider: "openai",
       apiKey: "openai-key",
@@ -28,8 +28,8 @@ describe("resolveAssistantModels", () => {
     });
   });
 
-  it("applies per-assistant chat overrides", () => {
-    const models = resolveAssistantModels({
+  it("applies per-assistant chat overrides", async () => {
+    const models = await resolveAssistantModels({
       modelSettings: {
         chatProvider: "openrouter",
         chatModel: "anthropic/claude-3.5-sonnet",
@@ -37,5 +37,36 @@ describe("resolveAssistantModels", () => {
     });
     expect(models.chat.model).toBe("anthropic/claude-3.5-sonnet");
     expect(models.chat.provider).toBe("openrouter");
+  });
+
+  it("uses decrypted per-assistant keys when provider matches", async () => {
+    const models = await resolveAssistantModels(
+      {
+        id: "asst-1",
+        modelSettings: { chatProvider: "openai", embeddingProvider: "openai" },
+      },
+      {
+        decryptedSecrets: {
+          chat: { kind: "chat", provider: "openai", apiKey: "asst-chat-key" },
+          embedding: { kind: "embedding", provider: "openai", apiKey: "asst-embed-key" },
+        },
+      },
+    );
+    expect(models.chat.apiKey).toBe("asst-chat-key");
+    expect(models.embedding.apiKey).toBe("asst-embed-key");
+  });
+
+  it("ignores decrypted keys when provider does not match", async () => {
+    const models = await resolveAssistantModels(
+      {
+        modelSettings: { chatProvider: "openrouter" },
+      },
+      {
+        decryptedSecrets: {
+          chat: { kind: "chat", provider: "openai", apiKey: "asst-chat-key" },
+        },
+      },
+    );
+    expect(models.chat.apiKey).toBe("or-key");
   });
 });

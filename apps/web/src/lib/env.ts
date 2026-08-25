@@ -63,6 +63,18 @@ const envSchema = z.object({
 
   API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(60),
 
+  /** AES-256-GCM key for per-assistant provider secrets (32 bytes as base64 or hex). */
+  ENCRYPTION_KEY: z.string().optional(),
+  /** Version label written into new ciphertext envelopes (default 1). Bump when rotating. */
+  ENCRYPTION_KEY_VERSION: z.coerce.number().int().positive().optional(),
+  /** Prior key retained only for decrypt during rotation. */
+  ENCRYPTION_KEY_PREVIOUS: z.string().optional(),
+  ENCRYPTION_KEY_PREVIOUS_VERSION: z.coerce.number().int().positive().optional(),
+
+  WIDGET_RATE_LIMIT_PER_VISITOR_PER_MINUTE: z.coerce.number().int().positive().default(20),
+  WIDGET_RATE_LIMIT_PER_ASSISTANT_PER_MINUTE: z.coerce.number().int().positive().default(120),
+  WIDGET_SIGNING_MAX_SKEW_SECONDS: z.coerce.number().int().positive().default(300),
+
   UPLOAD_DIR: z.string().default("./uploads"),
 });
 
@@ -98,6 +110,14 @@ function loadEnv(): Env {
     VOYAGE_API_KEY: process.env.VOYAGE_API_KEY,
     COHERE_API_KEY: process.env.COHERE_API_KEY,
     API_RATE_LIMIT_PER_MINUTE: process.env.API_RATE_LIMIT_PER_MINUTE,
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    ENCRYPTION_KEY_VERSION: process.env.ENCRYPTION_KEY_VERSION,
+    ENCRYPTION_KEY_PREVIOUS: process.env.ENCRYPTION_KEY_PREVIOUS,
+    ENCRYPTION_KEY_PREVIOUS_VERSION: process.env.ENCRYPTION_KEY_PREVIOUS_VERSION,
+    WIDGET_RATE_LIMIT_PER_VISITOR_PER_MINUTE: process.env.WIDGET_RATE_LIMIT_PER_VISITOR_PER_MINUTE,
+    WIDGET_RATE_LIMIT_PER_ASSISTANT_PER_MINUTE:
+      process.env.WIDGET_RATE_LIMIT_PER_ASSISTANT_PER_MINUTE,
+    WIDGET_SIGNING_MAX_SKEW_SECONDS: process.env.WIDGET_SIGNING_MAX_SKEW_SECONDS,
     UPLOAD_DIR: process.env.UPLOAD_DIR,
   });
 

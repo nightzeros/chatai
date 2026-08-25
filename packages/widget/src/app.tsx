@@ -61,8 +61,9 @@ export function WidgetApp(props: Props) {
         fetch: props.fetch,
         storage: props.storage,
         createId: props.createId,
+        signEndpoint: props.signEndpoint,
       }),
-    [props.assistantId, props.apiUrl, props.fetch, props.storage, props.createId],
+    [props.assistantId, props.apiUrl, props.fetch, props.storage, props.createId, props.signEndpoint],
   );
   const [state, setState] = useState<WidgetState>(EMPTY_STATE);
   const [open, setOpen] = useState(false);

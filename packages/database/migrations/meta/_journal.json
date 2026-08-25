@@ -43,7 +43,13 @@
       "when": 1787059931307,
       "tag": "0005_flawless_black_panther",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787542774443,
+      "tag": "0006_rainy_blindfold",
+      "breakpoints": true
     }
-
   ]
 }

@@ -4,6 +4,9 @@ import { z } from "zod";
 import { canSubmitFeedback } from "@/lib/feedback-auth";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
+import { policyViolationResponse } from "@/lib/policies/policy-response";
+import { SecurityPolicy } from "@/lib/policies/security-policy";
 import { getSession } from "@/lib/session";
 
 const bodySchema = z.object({
@@ -30,7 +33,11 @@ export async function POST(request: Request) {
       id: messages.id,
       role: messages.role,
       conversationVisitorId: conversations.visitorId,
+      conversationSource: conversations.source,
+      assistantId: assistants.id,
+      assistantPublicId: assistants.publicId,
       assistantOwnerId: assistants.userId,
+      securitySettings: assistants.securitySettings,
     })
     .from(messages)
     .innerJoin(conversations, eq(messages.conversationId, conversations.id))
@@ -43,6 +50,27 @@ export async function POST(request: Request) {
   }
 
   const session = await getSession();
+  const isOwner = session?.user.id === message.assistantOwnerId;
+
+  // Owner playground ratings skip domain checks; widget/public feedback enforce allowlist.
+  if (!isOwner) {
+    const security = SecurityPolicy.fromAssistant(
+      {
+        id: message.assistantId,
+        publicId: message.assistantPublicId,
+        securitySettings: message.securitySettings,
+      },
+      env,
+    );
+    const violation = await security.enforceWidgetRequest(request, {
+      visitorId: parsed.data.visitorId,
+      source: message.conversationSource === "playground" ? "playground" : "widget",
+    });
+    if (violation) {
+      return policyViolationResponse(violation);
+    }
+  }
+
   if (
     !canSubmitFeedback({
       messageRole: message.role,

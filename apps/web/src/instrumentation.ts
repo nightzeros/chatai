@@ -13,5 +13,11 @@ export async function register() {
     } catch (error) {
       console.error("[eval] failed to start worker:", error);
     }
+    try {
+      const { startPrivacyWorker } = await import("./lib/privacy/retention-worker");
+      startPrivacyWorker();
+    } catch (error) {
+      console.error("[privacy] failed to start worker:", error);
+    }
   }
 }

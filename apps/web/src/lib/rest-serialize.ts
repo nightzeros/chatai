@@ -1,6 +1,7 @@
 import type { Assistant } from "@/lib/assistants";
 import type { Document } from "@/lib/documents";
 
+/** Owner REST shape — never includes securitySettings (widget signing secret) or privacySettings. */
 export function serializeAssistant(assistant: Assistant) {
   return {
     id: assistant.id,

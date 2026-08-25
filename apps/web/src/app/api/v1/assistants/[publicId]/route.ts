@@ -1,6 +1,7 @@
 import { assistants, eq } from "@chatai/database";
 
 import { getOwnedAssistantByRef } from "@/lib/assistants";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { assistantPatchSchema, normalizeAssistantWrite } from "@/lib/rest-assistants";
@@ -60,6 +61,14 @@ export async function PATCH(request: Request, context: RouteContext) {
     return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
   }
 
+  await logAuditEvent({
+    userId: auth.auth.userId,
+    action: "assistant_settings_updated",
+    resourceType: "assistant",
+    resourceId: assistant.id,
+    metadata: { via: "api" },
+  });
+
   return jsonWithCors({ assistant: serializeAssistant(assistant) });
 }
 
@@ -74,5 +83,14 @@ export async function DELETE(request: Request, context: RouteContext) {
   }
 
   await db().delete(assistants).where(eq(assistants.id, existing.id));
+
+  await logAuditEvent({
+    userId: auth.auth.userId,
+    action: "assistant_deleted",
+    resourceType: "assistant",
+    resourceId: existing.id,
+    metadata: { name: existing.name, publicId: existing.publicId, via: "api" },
+  });
+
   return jsonWithCors({ ok: true });
 }

@@ -1,6 +1,7 @@
 import { assistants } from "@chatai/database";
 
 import { getOwnedAssistantByRef, listAssistantsForUser } from "@/lib/assistants";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { createAssistantPublicId, createId } from "@/lib/ids";
@@ -57,8 +58,23 @@ export async function POST(request: Request) {
     if (!assistant) {
       return jsonWithCors({ error: "Could not create assistant." }, { status: 500 });
     }
+    await logAuditEvent({
+      userId: auth.auth.userId,
+      action: "assistant_created",
+      resourceType: "assistant",
+      resourceId: assistant.id,
+      metadata: { name: assistant.name, via: "api" },
+    });
     return jsonWithCors({ assistant: serializeAssistant(assistant) }, { status: 201 });
   }
+
+  await logAuditEvent({
+    userId: auth.auth.userId,
+    action: "assistant_created",
+    resourceType: "assistant",
+    resourceId: created.id,
+    metadata: { name: created.name, via: "api" },
+  });
 
   return jsonWithCors({ assistant: serializeAssistant(created) }, { status: 201 });
 }

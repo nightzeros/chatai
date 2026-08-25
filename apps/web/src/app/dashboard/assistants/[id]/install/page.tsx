@@ -19,6 +19,7 @@ export default async function InstallPage({ params }: { params: Promise<{ id: st
   const snippets = buildInstallSnippets({
     deploymentOrigin,
     publicId: assistant.publicId,
+    requireWidgetSigning: Boolean(assistant.securitySettings?.requireWidgetSigning),
   });
 
   return <InstallSnippetsPanel snippets={snippets} />;

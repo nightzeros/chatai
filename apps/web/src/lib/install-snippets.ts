@@ -3,6 +3,8 @@ import { WIDGET_ASSET_PATH } from "./widget-delivery";
 export type InstallSnippetInput = {
   deploymentOrigin: string;
   publicId: string;
+  /** When true, include data-sign-endpoint on HTML snippets. */
+  requireWidgetSigning?: boolean;
 };
 
 export type InstallSnippets = {
@@ -11,6 +13,7 @@ export type InstallSnippets = {
   hostedHtml: string;
   selfHostedHtml: string;
   selfHostedNote: string;
+  signedHtml: string;
   reactTsx: string;
   reactInstall: string;
   securityNote: string;
@@ -41,13 +44,28 @@ export function buildInstallSnippets(input: InstallSnippetInput): InstallSnippet
   }
 
   const widgetSrc = `${deploymentOrigin}${WIDGET_ASSET_PATH}`;
+  const signEndpoint = `${deploymentOrigin}/api/v1/widget/sign`;
+  const signedHtml = `<script
+  src="${widgetSrc}"
+  data-assistant-id="${publicId}"
+  data-api-url="${deploymentOrigin}"
+  data-sign-endpoint="${signEndpoint}"
+  async
+></script>`;
+
+  const hostedAttrs = input.requireWidgetSigning
+    ? ` data-api-url="${deploymentOrigin}" data-sign-endpoint="${signEndpoint}"`
+    : "";
 
   return {
     publicId,
     deploymentOrigin,
-    hostedHtml: `<script src="${widgetSrc}" data-assistant-id="${publicId}" async></script>`,
-    selfHostedHtml: `<script src="https://static.example.com/chat.js" data-assistant-id="${publicId}" data-api-url="${deploymentOrigin}" async></script>`,
+    hostedHtml: `<script src="${widgetSrc}" data-assistant-id="${publicId}"${hostedAttrs} async></script>`,
+    selfHostedHtml: `<script src="https://static.example.com/chat.js" data-assistant-id="${publicId}" data-api-url="${deploymentOrigin}"${
+      input.requireWidgetSigning ? ` data-sign-endpoint="${signEndpoint}"` : ""
+    } async></script>`,
     selfHostedNote: `Copy ${WIDGET_ASSET_PATH} from this ChatAI instance and host the same file on your static origin. Keep data-api-url pointed at ${deploymentOrigin} so the widget can reach the public chat API.`,
+    signedHtml,
     reactInstall:
       'Add "@chatai/react": "workspace:*" in this monorepo (private workspace package until npm publish)',
     reactTsx: [
@@ -58,17 +76,23 @@ export function buildInstallSnippets(input: InstallSnippetInput): InstallSnippet
       "    <ChatWidget",
       `      assistantId="${publicId}"`,
       `      apiUrl="${deploymentOrigin}"`,
+      ...(input.requireWidgetSigning
+        ? [`      signEndpoint="${signEndpoint}"`,]
+        : []),
       "    />",
       "  );",
       "}",
     ].join("\n"),
     securityNote:
-      "Anyone with this public ID can open the widget and chat. Treat publicId as a publishable capability, not a secret. Domain allowlists, signing, and rate limits arrive in v0.8.",
+      "Anyone with this public ID can open the widget and chat. Treat publicId as a publishable capability, not a secret. Security settings (domain allowlist, rate limits, optional short-lived widget HMAC) are layered defenses — not absolute proof of request origin.",
     verificationChecklist: [
       "Open a page that includes the script tag.",
       "Confirm the launcher appears and opens a chat panel.",
       "Send a question and check Network for /api/v1/assistants/.../config and /api/v1/chat.",
       "Confirm streamed answers arrive and sources follow your Customize settings.",
+      ...(input.requireWidgetSigning
+        ? ["Confirm chat requests include X-ChatAI-Signature after calling /api/v1/widget/sign."]
+        : []),
     ],
   };
 }

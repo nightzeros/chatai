@@ -27,6 +27,9 @@ import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { createId } from "@/lib/ids";
+import { policyViolationResponse } from "@/lib/policies/policy-response";
+import { SecurityPolicy } from "@/lib/policies/security-policy";
+import { shouldPersistChatTranscript } from "@/lib/privacy/should-persist-chat";
 import { publicChatMeta } from "@/lib/public-chat-meta";
 import { consumeApiKeyRateLimit } from "@/lib/rate-limit";
 import { getSession } from "@/lib/session";
@@ -92,52 +95,80 @@ export async function POST(request: Request) {
     return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
   }
 
-  const session = await getSession();
-  const includeDebug = input.source === "playground" && session?.user.id === assistant.userId;
-
-  let conversationId = input.conversationId;
-  if (conversationId) {
-    const [existing] = await db()
-      .select()
-      .from(conversations)
-      .where(eq(conversations.id, conversationId))
-      .limit(1);
-    if (!existing || existing.assistantId !== assistant.id) {
-      return jsonWithCors({ error: "Conversation not found." }, { status: 404 });
-    }
-  } else {
-    conversationId = createId();
-    await db().insert(conversations).values({
-      id: conversationId,
-      assistantId: assistant.id,
-      visitorId: input.visitorId ?? null,
+  if (!usesApiKeyAuth(request)) {
+    const security = SecurityPolicy.fromAssistant(assistant, env);
+    const violation = await security.enforceWidgetRequest(request, {
+      visitorId: input.visitorId,
+      message: input.message,
       source,
     });
+    if (violation) {
+      return policyViolationResponse(violation);
+    }
   }
 
-  const prior = await db()
-    .select({
-      role: messages.role,
-      content: messages.content,
-    })
-    .from(messages)
-    .where(eq(messages.conversationId, conversationId))
-    .orderBy(asc(messages.createdAt));
+  const session = await getSession();
+  const includeDebug = input.source === "playground" && session?.user.id === assistant.userId;
+  const persist = shouldPersistChatTranscript({
+    assistant,
+    source,
+    sessionUserId: session?.user.id,
+    assistantOwnerId: assistant.userId,
+  });
 
-  const history = prior
-    .filter((row) => row.role === "user" || row.role === "assistant")
-    .map((row) => ({
-      role: row.role as "user" | "assistant",
-      content: row.content,
-    }));
+  let conversationId = input.conversationId ?? createId();
+  let history: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+  if (persist) {
+    if (input.conversationId) {
+      const [existing] = await db()
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, input.conversationId))
+        .limit(1);
+      if (!existing || existing.assistantId !== assistant.id) {
+        return jsonWithCors({ error: "Conversation not found." }, { status: 404 });
+      }
+      conversationId = existing.id;
+    } else {
+      conversationId = createId();
+      await db().insert(conversations).values({
+        id: conversationId,
+        assistantId: assistant.id,
+        visitorId: input.visitorId ?? null,
+        source,
+      });
+    }
+
+    const prior = await db()
+      .select({
+        role: messages.role,
+        content: messages.content,
+      })
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(asc(messages.createdAt));
+
+    history = prior
+      .filter((row) => row.role === "user" || row.role === "assistant")
+      .map((row) => ({
+        role: row.role as "user" | "assistant",
+        content: row.content,
+      }));
+  } else {
+    // Ephemeral id for the SSE response only — nothing is written.
+    conversationId = createId();
+  }
 
   const userMessageId = createId();
-  await db().insert(messages).values({
-    id: userMessageId,
-    conversationId,
-    role: "user",
-    content: input.message,
-  });
+  if (persist) {
+    await db().insert(messages).values({
+      id: userMessageId,
+      conversationId,
+      role: "user",
+      content: input.message,
+    });
+  }
 
   const encoder = new TextEncoder();
   const assistantMessageId = createId();
@@ -146,7 +177,7 @@ export async function POST(request: Request) {
     async start(controller) {
       const send = (payload: unknown) => controller.enqueue(encoder.encode(sseLine(payload)));
 
-      const models = resolveAssistantModels(assistant);
+      const models = await resolveAssistantModels(assistant);
 
       try {
         const rag = resolveRagSettings(assistant.ragSettings);
@@ -198,27 +229,29 @@ export async function POST(request: Request) {
           debug: { ...prepared.debug, latencyMs, model: models.chat.model, provider: models.chat.provider },
         });
 
-        await db().insert(messages).values({
-          id: assistantMessageId,
-          conversationId,
-          role: "assistant",
-          content: final.answer,
-          sources: final.sources,
-          confidence: final.confidence,
-          outcome: final.outcome,
-          debug: final.debug,
-          latencyMs,
-        });
+        if (persist) {
+          await db().insert(messages).values({
+            id: assistantMessageId,
+            conversationId,
+            role: "assistant",
+            content: final.answer,
+            sources: final.sources,
+            confidence: final.confidence,
+            outcome: final.outcome,
+            debug: final.debug,
+            latencyMs,
+          });
 
-        if (shouldSampleEval(rag.evalSampleRate)) {
-          await enqueueOnlineEvalJob({ db: db(), messageId: assistantMessageId });
-          startEvalWorker();
+          if (shouldSampleEval(rag.evalSampleRate)) {
+            await enqueueOnlineEvalJob({ db: db(), messageId: assistantMessageId });
+            startEvalWorker();
+          }
+
+          await db()
+            .update(conversations)
+            .set({ updatedAt: new Date() })
+            .where(eq(conversations.id, conversationId));
         }
-
-        await db()
-          .update(conversations)
-          .set({ updatedAt: new Date() })
-          .where(eq(conversations.id, conversationId));
 
         send(publicChatMeta({
           messageId: assistantMessageId,
@@ -233,17 +266,19 @@ export async function POST(request: Request) {
         const message = error instanceof Error ? error.message : "Model failed.";
         const latencyMs = Date.now() - started;
 
-        await db().insert(messages).values({
-          id: assistantMessageId,
-          conversationId,
-          role: "assistant",
-          content: "I ran into a problem generating a response. Please try again.",
-          sources: [],
-          confidence: 0,
-          outcome: "model_failure",
-          debug: { model: models.chat.model, provider: models.chat.provider, latencyMs, error: message },
-          latencyMs,
-        });
+        if (persist) {
+          await db().insert(messages).values({
+            id: assistantMessageId,
+            conversationId,
+            role: "assistant",
+            content: "I ran into a problem generating a response. Please try again.",
+            sources: [],
+            confidence: 0,
+            outcome: "model_failure",
+            debug: { model: models.chat.model, provider: models.chat.provider, latencyMs, error: message },
+            latencyMs,
+          });
+        }
 
         send({ type: "token", text: "I ran into a problem generating a response. Please try again." });
         send(publicChatMeta({

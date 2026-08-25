@@ -2,6 +2,7 @@ import { eq, sources } from "@chatai/database";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { requireSession } from "@/lib/session";
 import { getOwnedSource, listDocumentsForSource, isSourceBusy } from "@/lib/sources";
 
@@ -32,5 +33,14 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   await db().delete(sources).where(eq(sources.id, source.id));
+
+  await logAuditEvent({
+    userId: session.user.id,
+    action: "source_deleted",
+    resourceType: "source",
+    resourceId: source.id,
+    metadata: { assistantId: id, name: source.name, type: source.type },
+  });
+
   return NextResponse.json({ ok: true });
 }
