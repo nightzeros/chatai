@@ -146,7 +146,8 @@ function randomId() {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }
-  return Math.random().toString(36).slice(2);
+  // Fallback must satisfy widget visitorId rules: [a-zA-Z0-9_-]{8,80}
+  return `v_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 }
 
 function responseError(response: Response) {

@@ -2,6 +2,7 @@ import type { SecuritySettings } from "@chatai/database";
 
 import type { Env } from "@/lib/env";
 
+import { evaluateBotHeuristics, type BotCheckInput } from "./checks/bot-heuristics";
 import {
   isOriginAllowed,
   requestOriginHostname,
@@ -27,12 +28,13 @@ export type EnforceWidgetRequestDeps = {
   consumeRateLimits?: (
     input: ConsumeWidgetRateLimitsInput,
   ) => Promise<PolicyViolation | null>;
+  evaluateBot?: (input: BotCheckInput) => { ok: true } | { ok: false; reason: string };
 };
 
 /**
  * Shared widget security gate.
- * Task 2: domain allowlist → Task 3: widget rate limits.
- * Later: bot heuristics → signature.
+ * Task 2: domain → Task 3: rate limits → Task 4: bot heuristics.
+ * Later: signature.
  */
 export class SecurityPolicy {
   readonly assistantId: string;
@@ -85,11 +87,31 @@ export class SecurityPolicy {
     }
 
     const consume = deps.consumeRateLimits ?? consumeWidgetRateLimits;
-    return consume({
+    const rateLimited = await consume({
       assistantId: this.assistantId,
       visitorId: ctx.visitorId,
       perVisitorLimit: this.resolved.widgetRateLimitPerVisitor,
       perAssistantLimit: this.resolved.widgetRateLimitPerAssistant,
     });
+    if (rateLimited) {
+      return rateLimited;
+    }
+
+    const evaluateBot = deps.evaluateBot ?? evaluateBotHeuristics;
+    const bot = evaluateBot({
+      assistantId: this.assistantId,
+      visitorId: ctx.visitorId,
+      message: ctx.message,
+      userAgent: request.headers.get("user-agent"),
+    });
+    if (!bot.ok) {
+      return {
+        status: 403,
+        message: "Request blocked.",
+        reason: bot.reason,
+      };
+    }
+
+    return null;
   }
 }

@@ -22,3 +22,10 @@ export {
   incrementWidgetRateBucket,
   visitorRateScopeKey,
 } from "./checks/widget-rate-limit";
+export {
+  clearBurstTracker,
+  evaluateBotHeuristics,
+  isSuspiciousUserAgent,
+  isValidVisitorId,
+  recordBurstAndAllow,
+} from "./checks/bot-heuristics";

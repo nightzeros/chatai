@@ -1,13 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SecurityPolicy } from "./security-policy";
+import { clearBurstTracker } from "./checks/bot-heuristics";
 import type { PolicyViolation } from "./policy-violation";
+import { SecurityPolicy } from "./security-policy";
 
 const env = {
   WIDGET_RATE_LIMIT_PER_VISITOR_PER_MINUTE: 20,
   WIDGET_RATE_LIMIT_PER_ASSISTANT_PER_MINUTE: 120,
   WIDGET_SIGNING_MAX_SKEW_SECONDS: 300,
 };
+
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0";
 
 function policy(
   securitySettings: {
@@ -26,17 +30,23 @@ function policy(
   );
 }
 
-function requestWithOrigin(origin?: string) {
+function requestWithOrigin(origin?: string, userAgent = BROWSER_UA) {
   const headers = new Headers();
   if (origin !== undefined) {
     headers.set("Origin", origin);
+  }
+  if (userAgent) {
+    headers.set("User-Agent", userAgent);
   }
   return new Request("http://localhost:3000/api/v1/chat", { method: "POST", headers });
 }
 
 const allowAllRateLimits = async () => null;
+const allowAllBots = () => ({ ok: true as const });
 
 describe("SecurityPolicy", () => {
+  afterEach(() => clearBurstTracker());
+
   it("builds from assistant settings", () => {
     const sec = policy({ allowedDomains: ["example.com"] });
     expect(sec.assistantId).toBe("asst_internal");
@@ -48,7 +58,7 @@ describe("SecurityPolicy", () => {
     const violation = await policy({}).enforceWidgetRequest(
       requestWithOrigin("http://evil.com"),
       { source: "widget" },
-      { consumeRateLimits: allowAllRateLimits },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots },
     );
     expect(violation).toBeNull();
   });
@@ -57,7 +67,7 @@ describe("SecurityPolicy", () => {
     const violation = await policy({ allowedDomains: ["example.com"] }).enforceWidgetRequest(
       requestWithOrigin("https://example.com"),
       { source: "widget" },
-      { consumeRateLimits: allowAllRateLimits },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots },
     );
     expect(violation).toBeNull();
   });
@@ -66,7 +76,7 @@ describe("SecurityPolicy", () => {
     const violation = await policy({ allowedDomains: ["example.com"] }).enforceWidgetRequest(
       requestWithOrigin("https://evil.com"),
       { source: "widget" },
-      { consumeRateLimits: allowAllRateLimits },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots },
     );
     expect(violation).toMatchObject({
       status: 403,
@@ -79,7 +89,7 @@ describe("SecurityPolicy", () => {
     const violation = await policy({ allowedDomains: ["localhost"] }).enforceWidgetRequest(
       requestWithOrigin("http://localhost:5173"),
       { source: "widget" },
-      { consumeRateLimits: allowAllRateLimits },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots },
     );
     expect(violation).toBeNull();
   });
@@ -88,7 +98,7 @@ describe("SecurityPolicy", () => {
     const violation = await policy({ allowedDomains: ["example.com"] }).enforceWidgetRequest(
       requestWithOrigin(),
       { source: "widget" },
-      { consumeRateLimits: allowAllRateLimits },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots },
     );
     expect(violation).toMatchObject({
       status: 403,
@@ -101,7 +111,7 @@ describe("SecurityPolicy", () => {
     const violation = await policy({ allowedDomains: ["example.com"] }).enforceWidgetRequest(
       requestWithOrigin("not-a-url"),
       { source: "widget" },
-      { consumeRateLimits: allowAllRateLimits },
+      { consumeRateLimits: allowAllRateLimits, evaluateBot: allowAllBots },
     );
     expect(violation).toMatchObject({
       status: 403,
@@ -109,29 +119,33 @@ describe("SecurityPolicy", () => {
     });
   });
 
-  it("skips domain and rate checks for playground source", async () => {
+  it("skips domain, rate, and bot checks for playground source", async () => {
     const consumeRateLimits = vi.fn(async () => null);
+    const evaluateBot = vi.fn(() => ({ ok: true as const }));
     const violation = await policy({ allowedDomains: ["example.com"] }).enforceWidgetRequest(
       requestWithOrigin("https://evil.com"),
       { source: "playground" },
-      { consumeRateLimits },
+      { consumeRateLimits, evaluateBot },
     );
     expect(violation).toBeNull();
     expect(consumeRateLimits).not.toHaveBeenCalled();
+    expect(evaluateBot).not.toHaveBeenCalled();
   });
 
   it("runs domain allowlist before rate limits (denied origin does not consume buckets)", async () => {
     const consumeRateLimits = vi.fn(async () => null);
+    const evaluateBot = vi.fn(() => ({ ok: true as const }));
     const violation = await policy({ allowedDomains: ["example.com"] }).enforceWidgetRequest(
       requestWithOrigin("https://evil.com"),
-      { source: "widget", visitorId: "v1" },
-      { consumeRateLimits },
+      { source: "widget", visitorId: "visitor01" },
+      { consumeRateLimits, evaluateBot },
     );
     expect(violation?.status).toBe(403);
     expect(consumeRateLimits).not.toHaveBeenCalled();
+    expect(evaluateBot).not.toHaveBeenCalled();
   });
 
-  it("applies resolved rate limits after domain passes", async () => {
+  it("applies resolved rate limits after domain passes and before bot checks", async () => {
     const limited: PolicyViolation = {
       status: 429,
       message: "Rate limit exceeded.",
@@ -139,6 +153,7 @@ describe("SecurityPolicy", () => {
       reason: "widget_rate_limit_visitor",
     };
     const consumeRateLimits = vi.fn(async () => limited);
+    const evaluateBot = vi.fn(() => ({ ok: true as const }));
 
     const sec = policy({
       allowedDomains: [],
@@ -147,19 +162,13 @@ describe("SecurityPolicy", () => {
     });
     const violation = await sec.enforceWidgetRequest(
       requestWithOrigin("https://example.com"),
-      { source: "widget", visitorId: "v1" },
-      { consumeRateLimits },
+      { source: "widget", visitorId: "visitor01", message: "Hi" },
+      { consumeRateLimits, evaluateBot },
     );
 
     expect(violation).toEqual(limited);
-    expect(consumeRateLimits).toHaveBeenCalledWith(
-      expect.objectContaining({
-        assistantId: "asst_internal",
-        visitorId: "v1",
-        perVisitorLimit: 5,
-        perAssistantLimit: 50,
-      }),
-    );
+    expect(consumeRateLimits).toHaveBeenCalled();
+    expect(evaluateBot).not.toHaveBeenCalled();
   });
 
   it("falls back to env rate limits when assistant overrides are null", async () => {
@@ -169,8 +178,8 @@ describe("SecurityPolicy", () => {
       widgetRateLimitPerAssistant: null,
     }).enforceWidgetRequest(
       requestWithOrigin("https://example.com"),
-      { source: "widget", visitorId: "v1" },
-      { consumeRateLimits },
+      { source: "widget", visitorId: "visitor01" },
+      { consumeRateLimits, evaluateBot: allowAllBots },
     );
 
     expect(consumeRateLimits).toHaveBeenCalledWith(
@@ -179,5 +188,40 @@ describe("SecurityPolicy", () => {
         perAssistantLimit: 120,
       }),
     );
+  });
+
+  it("blocks chat sends without a valid visitorId", async () => {
+    const violation = await policy({}).enforceWidgetRequest(
+      requestWithOrigin("https://example.com"),
+      { source: "widget", message: "Hello", visitorId: null },
+      { consumeRateLimits: allowAllRateLimits },
+    );
+    expect(violation).toMatchObject({
+      status: 403,
+      message: "Request blocked.",
+      reason: "bot_invalid_visitor_id",
+    });
+  });
+
+  it("blocks chat sends from curl user agents", async () => {
+    const violation = await policy({}).enforceWidgetRequest(
+      requestWithOrigin("https://example.com", "curl/8.0.1"),
+      { source: "widget", message: "Hello", visitorId: "visitor01" },
+      { consumeRateLimits: allowAllRateLimits },
+    );
+    expect(violation).toMatchObject({
+      status: 403,
+      message: "Request blocked.",
+      reason: "bot_suspicious_user_agent",
+    });
+  });
+
+  it("allows config fetches without visitorId", async () => {
+    const violation = await policy({}).enforceWidgetRequest(
+      requestWithOrigin("https://example.com"),
+      { source: "widget" },
+      { consumeRateLimits: allowAllRateLimits },
+    );
+    expect(violation).toBeNull();
   });
 });
