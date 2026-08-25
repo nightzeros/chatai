@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { Textarea } from "@/components/ui/textarea";
 import { buildFaqPayload } from "@/lib/add-answer";
 import type { AnalyticsMetrics, TopUnansweredQuestion } from "@/lib/analytics";
@@ -26,13 +28,24 @@ const metricDefinitions: Array<{
   label: string;
   description: string;
   format?: (value: number | null) => string;
+  tone?: "default" | "success" | "warning" | "danger" | "info";
 }> = [
   { key: "totalConversations", label: "Conversations", description: "All chat sessions" },
   { key: "totalQuestions", label: "Questions", description: "Messages from visitors" },
-  { key: "answered", label: "Answered", description: "Responses with context" },
-  { key: "unanswered", label: "Unanswered", description: "Fallback or low confidence" },
-  { key: "positiveFeedback", label: "Helpful", description: "Thumbs up responses" },
-  { key: "negativeFeedback", label: "Not helpful", description: "Thumbs down responses" },
+  { key: "answered", label: "Answered", description: "Responses with context", tone: "success" },
+  {
+    key: "unanswered",
+    label: "Unanswered",
+    description: "Fallback or low confidence",
+    tone: "warning",
+  },
+  { key: "positiveFeedback", label: "Helpful", description: "Thumbs up responses", tone: "success" },
+  {
+    key: "negativeFeedback",
+    label: "Not helpful",
+    description: "Thumbs down responses",
+    tone: "danger",
+  },
   {
     key: "averageConfidence",
     label: "Avg. confidence",
@@ -113,111 +126,26 @@ export function AnalyticsDashboard({
 
   return (
     <div className="flex flex-col gap-8">
-      <section>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold tracking-tight">Analytics</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            All-time performance across your playground, widget, and API chats.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {metricDefinitions.map((metric) => {
-            const value = metrics[metric.key];
-            return (
-              <Card key={metric.key}>
-                <CardHeader className="gap-2 p-4">
-                  <CardDescription>{metric.label}</CardDescription>
-                  <CardTitle className="text-2xl tabular-nums">
-                    {metric.format ? metric.format(value) : value?.toLocaleString() ?? "—"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <p className="text-xs text-muted-foreground">{metric.description}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">AI Quality</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Rolling averages from online sampling and offline regressions.
-            </p>
-          </div>
-          <Link
-            href={`/dashboard/assistants/${assistantId}/evals`}
-            className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
-          >
-            Manage test sets
-          </Link>
-        </div>
-        {Object.keys(quality.averages).length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center">
-            <p className="text-sm font-medium">No eval scores yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Run a regression on the Evals tab, or raise the online sample rate.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {Object.entries(quality.averages).map(([metric, score]) => (
-              <Card key={metric}>
-                <CardHeader className="gap-2 p-4">
-                  <CardDescription>{metric}</CardDescription>
-                  <CardTitle className="text-2xl tabular-nums">{score.toFixed(2)}</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <p className="text-xs text-muted-foreground">Average 0–1 LLM-as-judge score</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-        {quality.lastRun ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            Last run: {quality.lastRun.kind} · {quality.lastRun.status} ·{" "}
-            {new Date(quality.lastRun.createdAt).toLocaleString()}
-          </p>
-        ) : null}
-        {quality.recentFailures.length > 0 ? (
-          <div className="mt-4">
-            <h3 className="text-sm font-medium">Recent low scores</h3>
-            <ul className="mt-2 overflow-hidden rounded-xl border border-border">
-              {quality.recentFailures.map((item, index) => (
-                <li
-                  key={`${item.metric}-${item.createdAt}-${index}`}
-                  className="flex items-center justify-between gap-4 border-t border-border px-4 py-2 text-sm first:border-t-0"
-                >
-                  <span>
-                    {item.metric} · {item.kind}
-                  </span>
-                  <span className="tabular-nums text-muted-foreground">{item.score.toFixed(2)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </section>
+      <PageHeader
+        title="Analytics"
+        description="All-time performance across your playground, widget, and API chats."
+      />
 
       <section>
         <div className="mb-4">
-          <h2 className="text-lg font-semibold tracking-tight">Top unanswered questions</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Unanswered questions</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Repeated questions where the assistant fell back or had low confidence.
+            Repeated questions where the assistant fell back or had low confidence — close these gaps
+            first.
           </p>
           {success ? <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{success}</p> : null}
         </div>
         {topUnanswered.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center">
-            <p className="text-sm font-medium">No unanswered questions yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Knowledge gaps will appear here as conversations arrive.
-            </p>
-          </div>
+          <EmptyState
+            title="No unanswered questions yet"
+            description="Knowledge gaps will appear here as conversations arrive."
+            className="py-12"
+          />
         ) : (
           <ol className="overflow-hidden rounded-xl border border-border">
             {topUnanswered.map((item, index) => (
@@ -284,6 +212,97 @@ export function AnalyticsDashboard({
             ))}
           </ol>
         )}
+      </section>
+
+      <section>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold tracking-tight">Overview</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Key volume and quality metrics.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {metricDefinitions.map((metric) => {
+            const value = metrics[metric.key];
+            const tone =
+              metric.key === "unanswered"
+                ? value && value > 0
+                  ? "warning"
+                  : "default"
+                : metric.key === "negativeFeedback"
+                  ? value && value > 0
+                    ? "danger"
+                    : "default"
+                  : (metric.tone ?? "default");
+            return (
+              <StatCard
+                key={metric.key}
+                label={metric.label}
+                value={metric.format ? metric.format(value) : (value?.toLocaleString() ?? "—")}
+                hint={metric.description}
+                tone={tone}
+              />
+            );
+          })}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">AI Quality</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Rolling averages from online sampling and offline regressions.
+            </p>
+          </div>
+          <Link
+            href={`/dashboard/assistants/${assistantId}/evals`}
+            className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+          >
+            Manage test sets
+          </Link>
+        </div>
+        {Object.keys(quality.averages).length === 0 ? (
+          <EmptyState
+            title="No eval scores yet"
+            description="Run a regression on the Evals tab, or raise the online sample rate."
+            className="py-12"
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {Object.entries(quality.averages).map(([metric, score]) => (
+              <StatCard
+                key={metric}
+                label={metric}
+                value={score.toFixed(2)}
+                hint="Average 0–1 LLM-as-judge score"
+                tone={score < 0.5 ? "danger" : score < 0.7 ? "warning" : "success"}
+              />
+            ))}
+          </div>
+        )}
+        {quality.lastRun ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Last run: {quality.lastRun.kind} · {quality.lastRun.status} ·{" "}
+            {new Date(quality.lastRun.createdAt).toLocaleString()}
+          </p>
+        ) : null}
+        {quality.recentFailures.length > 0 ? (
+          <div className="mt-4">
+            <h3 className="text-sm font-medium">Recent low scores</h3>
+            <ul className="mt-2 overflow-hidden rounded-xl border border-border">
+              {quality.recentFailures.map((item, index) => (
+                <li
+                  key={`${item.metric}-${item.createdAt}-${index}`}
+                  className="flex items-center justify-between gap-4 border-t border-border px-4 py-2 text-sm first:border-t-0"
+                >
+                  <span>
+                    {item.metric} · {item.kind}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">{item.score.toFixed(2)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
     </div>
   );

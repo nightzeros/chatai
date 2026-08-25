@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageHeader } from "@/components/ui/page-header";
 import { Textarea } from "@/components/ui/textarea";
 import { EvalRunDetailsView, EvalRunRowChevron } from "@/components/evals/eval-run-details-view";
 import type { EvalRunDetails } from "@chatai/evals";
@@ -48,6 +51,14 @@ function statusLabel(status: EvalRunRow["status"]) {
   if (status === "pending" || status === "running") return "Running…";
   if (status === "completed") return "Completed";
   return "Failed";
+}
+
+function statusBadgeVariant(
+  status: EvalRunRow["status"],
+): "success" | "warning" | "danger" {
+  if (status === "completed") return "success";
+  if (status === "failed") return "danger";
+  return "warning";
 }
 
 export function EvalPanel({
@@ -224,19 +235,25 @@ export function EvalPanel({
 
   return (
     <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Evals"
+        description="Store Q/A pairs and run offline regressions against the current knowledge base."
+      />
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
       <section>
         <div className="mb-4">
-          <h2 className="text-lg font-semibold tracking-tight">Eval test sets</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Test sets</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Store Q/A pairs and run an offline regression against the current knowledge base.
+            Owner-only. Widget visitors never see this.
           </p>
         </div>
-        {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
         <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
           <Card>
             <CardHeader>
               <CardTitle>Sets</CardTitle>
-              <CardDescription>Owner-only. Widget visitors never see this.</CardDescription>
+              <CardDescription>Create a set, then add questions to score.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <form
@@ -252,7 +269,11 @@ export function EvalPanel({
                 </Button>
               </form>
               {sets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No test sets yet.</p>
+                <EmptyState
+                  title="No test sets yet"
+                  description="Create a set to start adding regression questions."
+                  className="py-8"
+                />
               ) : (
                 <ul className="flex flex-col gap-1">
                   {sets.map((set) => (
@@ -315,7 +336,11 @@ export function EvalPanel({
                   </form>
 
                   {selected.cases.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Add at least one question to run a regression.</p>
+                    <EmptyState
+                      title="No questions yet"
+                      description="Add at least one question to run a regression."
+                      className="py-8"
+                    />
                   ) : (
                     <ul className="overflow-hidden rounded-xl border border-border">
                       {selected.cases.map((item) => (
@@ -337,7 +362,11 @@ export function EvalPanel({
                   )}
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">Create a test set to get started.</p>
+                <EmptyState
+                  title="Select or create a set"
+                  description="Create a test set to get started with offline regressions."
+                  className="py-10"
+                />
               )}
             </CardContent>
           </Card>
@@ -352,10 +381,11 @@ export function EvalPanel({
           </p>
         </div>
         {runs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center">
-            <p className="text-sm font-medium">No eval runs yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">Run a regression or enable online sampling.</p>
-          </div>
+          <EmptyState
+            title="No eval runs yet"
+            description="Run a regression or enable online sampling."
+            className="py-12"
+          />
         ) : (
           <ol className="overflow-hidden rounded-xl border border-border">
             {runs.map((run) => {
@@ -377,18 +407,12 @@ export function EvalPanel({
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-medium">
-                            {run.kind === "offline" ? "Offline" : "Online"} · {statusLabel(run.status)}
+                            {run.kind === "offline" ? "Offline" : "Online"}
                           </p>
-                          {run.status === "failed" ? (
-                            <span className="rounded bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
-                              Failed
-                            </span>
-                          ) : null}
-                          {lowScores ? (
-                            <span className="rounded bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-                              Low score
-                            </span>
-                          ) : null}
+                          <Badge variant={statusBadgeVariant(run.status)}>
+                            {statusLabel(run.status)}
+                          </Badge>
+                          {lowScores ? <Badge variant="warning">Low score</Badge> : null}
                         </div>
                         <p className="text-xs text-muted-foreground">{new Date(run.createdAt).toLocaleString()}</p>
                       </div>
