@@ -44,13 +44,10 @@ export class PrivacyPolicy {
     return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   }
 
-  /**
-   * Anonymize when enabled and the conversation is older than
-   * min(30 days, retention window). If retention is off, use 30 days.
-   */
-  shouldAnonymizeVisitor(updatedAt: Date, now = new Date()): boolean {
+  /** Cutoff for visitorId anonymization; `null` when anonymization is disabled. */
+  anonymizeCutoff(now = new Date()): Date | null {
     if (!this.resolved.anonymizeVisitorIds) {
-      return false;
+      return null;
     }
 
     let windowDays = ANONYMIZE_MAX_DAYS;
@@ -59,7 +56,18 @@ export class PrivacyPolicy {
       windowDays = Math.min(ANONYMIZE_MAX_DAYS, retention);
     }
 
-    const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+    return new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  }
+
+  /**
+   * Anonymize when enabled and the conversation is older than
+   * min(30 days, retention window). If retention is off, use 30 days.
+   */
+  shouldAnonymizeVisitor(updatedAt: Date, now = new Date()): boolean {
+    const cutoff = this.anonymizeCutoff(now);
+    if (!cutoff) {
+      return false;
+    }
     return updatedAt.getTime() < cutoff.getTime();
   }
 }

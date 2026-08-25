@@ -59,5 +59,13 @@ describe("PrivacyPolicy", () => {
     });
     const eightDaysAgo = new Date("2026-08-15T12:00:00.000Z");
     expect(policy.shouldAnonymizeVisitor(eightDaysAgo, now)).toBe(true);
+    expect(policy.anonymizeCutoff(now)?.toISOString()).toBe("2026-08-16T12:00:00.000Z");
+  });
+
+  it("returns null anonymize cutoff when disabled", () => {
+    const policy = PrivacyPolicy.fromAssistant({
+      privacySettings: { anonymizeVisitorIds: false },
+    });
+    expect(policy.anonymizeCutoff(now)).toBeNull();
   });
 });
