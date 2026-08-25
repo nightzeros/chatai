@@ -6,6 +6,10 @@ import {
   isOriginAllowed,
   requestOriginHostname,
 } from "./checks/domain-allowlist";
+import {
+  consumeWidgetRateLimits,
+  type ConsumeWidgetRateLimitsInput,
+} from "./checks/widget-rate-limit";
 import type { PolicyViolation, WidgetRequestContext } from "./policy-violation";
 import {
   resolveSecurityPolicy,
@@ -19,9 +23,16 @@ export type SecurityPolicyAssistant = {
   securitySettings?: SecuritySettings | null;
 };
 
+export type EnforceWidgetRequestDeps = {
+  consumeRateLimits?: (
+    input: ConsumeWidgetRateLimitsInput,
+  ) => Promise<PolicyViolation | null>;
+};
+
 /**
  * Shared widget security gate.
- * Task 2: domain allowlist. Later tasks chain rate limit → bot → signature.
+ * Task 2: domain allowlist → Task 3: widget rate limits.
+ * Later: bot heuristics → signature.
  */
 export class SecurityPolicy {
   readonly assistantId: string;
@@ -56,6 +67,7 @@ export class SecurityPolicy {
   async enforceWidgetRequest(
     request: Request,
     ctx: WidgetRequestContext,
+    deps: EnforceWidgetRequestDeps = {},
   ): Promise<PolicyViolation | null> {
     if (ctx.source === "playground") {
       return null;
@@ -72,6 +84,12 @@ export class SecurityPolicy {
       };
     }
 
-    return null;
+    const consume = deps.consumeRateLimits ?? consumeWidgetRateLimits;
+    return consume({
+      assistantId: this.assistantId,
+      visitorId: ctx.visitorId,
+      perVisitorLimit: this.resolved.widgetRateLimitPerVisitor,
+      perAssistantLimit: this.resolved.widgetRateLimitPerAssistant,
+    });
   }
 }

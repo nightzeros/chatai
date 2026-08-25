@@ -16,3 +16,9 @@ export {
   parseAllowedDomain,
   requestOriginHostname,
 } from "./checks/domain-allowlist";
+export {
+  assistantRateScopeKey,
+  consumeWidgetRateLimits,
+  incrementWidgetRateBucket,
+  visitorRateScopeKey,
+} from "./checks/widget-rate-limit";
