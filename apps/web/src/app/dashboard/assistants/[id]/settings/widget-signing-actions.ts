@@ -4,6 +4,7 @@ import { assistants, eq } from "@chatai/database";
 import { revalidatePath } from "next/cache";
 
 import { getOwnedAssistant } from "@/lib/assistants";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { db } from "@/lib/db";
 import { generateWidgetSigningSecret } from "@/lib/policies/checks/widget-signature";
 import { requireSession } from "@/lib/session";
@@ -46,6 +47,17 @@ export async function updateWidgetSigning(
       updatedAt: new Date(),
     })
     .where(eq(assistants.id, assistant.id));
+
+  await logAuditEvent({
+    userId: session.user.id,
+    action: "security_settings_updated",
+    resourceType: "assistant",
+    resourceId: assistant.id,
+    metadata: {
+      requireWidgetSigning,
+      signingSecretRotated: Boolean(revealedSecret),
+    },
+  });
 
   revalidatePath(`/dashboard/assistants/${assistant.id}`);
   revalidatePath(`/dashboard/assistants/${assistant.id}/settings`);

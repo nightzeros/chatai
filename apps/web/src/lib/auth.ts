@@ -1,9 +1,11 @@
 import { getDb } from "@chatai/database";
 import * as schema from "@chatai/database/schema";
 import { betterAuth } from "better-auth";
+import { createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { sendEmail } from "@/lib/email";
 import { env } from "@/lib/env";
 
@@ -41,6 +43,12 @@ export const auth = betterAuth({
         text: `Reset your password (link expires in 1 hour):\n\n${url}\n`,
         html: `<p>Reset your password (expires in 1 hour):</p><p><a href="${url}">${url}</a></p>`,
       });
+      await logAuditEvent({
+        userId: user.id,
+        action: "password_reset_requested",
+        resourceType: "user",
+        resourceId: user.id,
+      });
     },
   },
   ...(githubEnabled
@@ -57,6 +65,63 @@ export const auth = betterAuth({
     deleteUser: {
       enabled: true,
     },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          await logAuditEvent({
+            userId: session.userId,
+            action: "login",
+            resourceType: "session",
+            resourceId: session.id,
+          });
+        },
+      },
+      delete: {
+        after: async (session) => {
+          await logAuditEvent({
+            userId: session.userId,
+            action: "logout",
+            resourceType: "session",
+            resourceId: session.id,
+          });
+        },
+      },
+    },
+    user: {
+      delete: {
+        before: async (user) => {
+          await logAuditEvent({
+            userId: user.id,
+            action: "account_deleted",
+            resourceType: "user",
+            resourceId: user.id,
+          });
+        },
+      },
+    },
+  },
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      const path = ctx.path ?? "";
+      if (path === "/reset-password" || path.endsWith("/reset-password")) {
+        const userId =
+          (ctx.context.session?.user?.id as string | undefined) ??
+          (typeof ctx.body === "object" &&
+          ctx.body &&
+          "userId" in ctx.body &&
+          typeof (ctx.body as { userId?: unknown }).userId === "string"
+            ? (ctx.body as { userId: string }).userId
+            : null);
+        await logAuditEvent({
+          userId,
+          action: "password_reset_completed",
+          resourceType: "user",
+          resourceId: userId,
+        });
+      }
+    }),
   },
   plugins: [nextCookies()],
 });

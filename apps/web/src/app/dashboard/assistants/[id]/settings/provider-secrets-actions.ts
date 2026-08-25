@@ -4,6 +4,7 @@ import { CHAT_PROVIDERS, EMBEDDING_PROVIDERS } from "@chatai/ai";
 import { revalidatePath } from "next/cache";
 
 import { getOwnedAssistant } from "@/lib/assistants";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { env } from "@/lib/env";
 import {
   deleteProviderSecret,
@@ -53,10 +54,12 @@ export async function updateProviderSecrets(
   const embeddingKey = emptyToUndefined(formData.get("embeddingApiKey"));
   const clearChat = formData.get("clearChatApiKey") === "on";
   const clearEmbedding = formData.get("clearEmbeddingApiKey") === "on";
+  const changed: string[] = [];
 
   try {
     if (clearChat) {
       await deleteProviderSecret(assistant.id, "chat");
+      changed.push("chat_cleared");
     } else if (chatKey) {
       await upsertProviderSecret({
         assistantId: assistant.id,
@@ -65,10 +68,12 @@ export async function updateProviderSecrets(
         plaintext: chatKey,
         env,
       });
+      changed.push("chat_upserted");
     }
 
     if (clearEmbedding) {
       await deleteProviderSecret(assistant.id, "embedding");
+      changed.push("embedding_cleared");
     } else if (embeddingKey) {
       await upsertProviderSecret({
         assistantId: assistant.id,
@@ -77,11 +82,22 @@ export async function updateProviderSecrets(
         plaintext: embeddingKey,
         env,
       });
+      changed.push("embedding_upserted");
     }
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Could not save provider secrets.",
     };
+  }
+
+  if (changed.length > 0) {
+    await logAuditEvent({
+      userId: session.user.id,
+      action: "security_settings_updated",
+      resourceType: "assistant",
+      resourceId: assistant.id,
+      metadata: { providerSecrets: changed },
+    });
   }
 
   revalidatePath(`/dashboard/assistants/${assistant.id}/settings`);

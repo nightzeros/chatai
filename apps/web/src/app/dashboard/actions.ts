@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { getOwnedAssistant } from "@/lib/assistants";
 import { settingsFromFormData } from "@/lib/assistant-settings";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { db } from "@/lib/db";
 import { enqueueReprocessForAssistant } from "@/lib/enqueue-reprocess";
 import { env } from "@/lib/env";
@@ -79,6 +80,14 @@ export async function createAssistant(_prev: ActionState, formData: FormData): P
     instructions: parsed.data.instructions ?? DEFAULT_INSTRUCTIONS,
     hallucinationMode: "balanced",
     settings: {},
+  });
+
+  await logAuditEvent({
+    userId: session.user.id,
+    action: "assistant_created",
+    resourceType: "assistant",
+    resourceId: id,
+    metadata: { name: parsed.data.name },
   });
 
   revalidatePath("/dashboard");
@@ -172,6 +181,14 @@ export async function updateAssistant(_prev: ActionState, formData: FormData): P
     await enqueueReprocessForAssistant(existing.id);
   }
 
+  await logAuditEvent({
+    userId: session.user.id,
+    action: "assistant_settings_updated",
+    resourceType: "assistant",
+    resourceId: existing.id,
+    metadata: { fields: ["settings", "rag", "models"] },
+  });
+
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/assistants/${existing.id}`);
   return { saved: true };
@@ -221,6 +238,14 @@ export async function deleteAssistant(formData: FormData) {
   }
 
   await db().delete(assistants).where(eq(assistants.id, existing.id));
+
+  await logAuditEvent({
+    userId: session.user.id,
+    action: "assistant_deleted",
+    resourceType: "assistant",
+    resourceId: existing.id,
+    metadata: { name: existing.name, publicId: existing.publicId },
+  });
 
   revalidatePath("/dashboard");
   redirect("/dashboard");

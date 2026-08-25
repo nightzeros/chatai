@@ -3,6 +3,7 @@ import { unlink } from "node:fs/promises";
 import { documents, eq } from "@chatai/database";
 
 import { getOwnedAssistantByRef } from "@/lib/assistants";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { getOwnedDocument } from "@/lib/documents";
@@ -52,6 +53,19 @@ export async function DELETE(request: Request, context: RouteContext) {
   if (document.storagePath) {
     await unlink(document.storagePath).catch(() => undefined);
   }
+
+  await logAuditEvent({
+    userId: auth.auth.userId,
+    action: "document_deleted",
+    resourceType: "document",
+    resourceId: document.id,
+    metadata: {
+      assistantId: assistant.id,
+      name: document.name,
+      type: document.type,
+      via: "api",
+    },
+  });
 
   return jsonWithCors({ ok: true });
 }
