@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { WidgetControllerOptions, WidgetState } from "@chatai/widget-core";
 
 import { createWidgetController } from "@chatai/widget-core";
@@ -20,6 +20,9 @@ export type WidgetAppProps = WidgetControllerOptions &
 
 type Props = WidgetAppProps;
 
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 function settingOverrides(props: Props): WidgetSettings {
   return {
     primaryColor: props.primaryColor,
@@ -29,7 +32,7 @@ function settingOverrides(props: Props): WidgetSettings {
     suggestedQuestions: props.suggestedQuestions,
     showSources: props.showSources,
   };
-};
+}
 
 const EMPTY_STATE: WidgetState = { status: "loading", messages: [] };
 
@@ -52,6 +55,16 @@ function ChatGlyph() {
   );
 }
 
+function TypingIndicator() {
+  return (
+    <div className="chatai-typing" aria-label="Assistant is typing" role="status">
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
 export function WidgetApp(props: Props) {
   const controller = useMemo(
     () =>
@@ -67,7 +80,12 @@ export function WidgetApp(props: Props) {
   );
   const [state, setState] = useState<WidgetState>(EMPTY_STATE);
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [draft, setDraft] = useState("");
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = controller.subscribe(setState);
@@ -81,11 +99,40 @@ export function WidgetApp(props: Props) {
   const settings = settingsFrom(state, props);
   const questions = settings.suggestedQuestions?.filter(Boolean) ?? [];
   const busy = state.status === "streaming";
+  const panelShown = open || closing;
   const isDark =
     settings.theme === "dark" ||
     (settings.theme === "system" &&
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+
+  const lastMessage = state.messages[state.messages.length - 1];
+  const showTyping = busy && lastMessage?.role === "assistant" && !lastMessage.content;
+
+  function reduceMotion() {
+    return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function openPanel() {
+    setClosing(false);
+    setOpen(true);
+  }
+
+  function closePanel() {
+    if (!open) return;
+    if (reduceMotion()) {
+      setOpen(false);
+      setClosing(false);
+      return;
+    }
+    setOpen(false);
+    setClosing(true);
+  }
+
+  function togglePanel() {
+    if (open) closePanel();
+    else openPanel();
+  }
 
   function send(message: string) {
     if (!message.trim()) return;
@@ -97,24 +144,83 @@ export function WidgetApp(props: Props) {
     void controller.sendFeedback(messageId, rating).catch(() => undefined);
   }
 
+  function retry() {
+    void controller.load();
+  }
+
+  useEffect(() => {
+    if (!panelShown) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const focusables = () => Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+    const initial = focusables();
+    (initial.find((el) => el.id === "chatai-message-input") ?? initial[0])?.focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePanel();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const nodes = focusables();
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    panel.addEventListener("keydown", onKeyDown);
+    return () => panel.removeEventListener("keydown", onKeyDown);
+  }, [panelShown]);
+
+  useEffect(() => {
+    if (wasOpenRef.current && !open && !closing) {
+      launcherRef.current?.focus();
+    }
+    wasOpenRef.current = open || closing;
+  }, [open, closing]);
+
+  useEffect(() => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [state.messages, state.error, showTyping, panelShown]);
+
   return (
     <div
       className={`chatai-widget ${isDark ? "theme-dark" : "theme-light"} ${settings.position === "bottom-left" ? "position-left" : "position-right"} ${props.layout === "contained" ? "layout-contained" : ""}`}
       style={{ "--chatai-accent": settings.primaryColor ?? "#0F766E" }}
     >
-      {open ? (
-        <section className="chatai-panel" role="dialog" aria-label={`${state.config?.name ?? "Assistant"} chat`}>
+      {panelShown ? (
+        <section
+          ref={panelRef}
+          className={`chatai-panel${closing ? " is-closing" : ""}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${state.config?.name ?? "Assistant"} chat`}
+          onAnimationEnd={() => {
+            if (closing) setClosing(false);
+          }}
+        >
           <header className="chatai-header">
             <div>
               <p className="chatai-kicker">Knowledge assistant</p>
               <h2>{state.config?.name ?? "Loading assistant…"}</h2>
             </div>
-            <button type="button" className="chatai-close" onClick={() => setOpen(false)} aria-label="Close chat">
+            <button type="button" className="chatai-close" onClick={closePanel} aria-label="Close chat">
               ×
             </button>
           </header>
 
-          <div className="chatai-transcript" aria-live="polite">
+          <div ref={transcriptRef} className="chatai-transcript" aria-live="polite">
             {state.config?.welcomeMessage ? (
               <article className="chatai-message assistant">
                 <p>{state.config.welcomeMessage}</p>
@@ -129,43 +235,58 @@ export function WidgetApp(props: Props) {
                 ))}
               </div>
             ) : null}
-            {state.messages.map((message, index) => (
-              <article key={`${message.role}-${index}`} className={`chatai-message ${message.role}`}>
-                <p>{message.content || (busy && message.role === "assistant" ? "Thinking…" : "")}</p>
-                {settings.showSources !== false && message.sources?.length ? (
-                  <ul className="chatai-sources" aria-label="Sources">
-                    {message.sources.map((source) => (
-                      <li key={`${source.documentId}-${source.chunkId ?? source.page ?? source.documentName}`}>
-                        <strong>{source.documentName}</strong>
-                        {source.page != null ? ` · p. ${source.page}` : ""}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {message.role === "assistant" && message.id ? (
-                  <div className="chatai-feedback">
-                    <span>Was this helpful?</span>
-                    <button
-                      type="button"
-                      aria-label="Mark response helpful"
-                      aria-pressed={message.feedback === "positive"}
-                      onClick={() => rate(message.id!, "positive")}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Mark response not helpful"
-                      aria-pressed={message.feedback === "negative"}
-                      onClick={() => rate(message.id!, "negative")}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                ) : null}
-              </article>
-            ))}
-            {state.error ? <p className="chatai-error">{state.error}</p> : null}
+            {state.messages.map((message, index) => {
+              const isStreamingPlaceholder =
+                showTyping && index === state.messages.length - 1 && message.role === "assistant";
+              return (
+                <article key={`${message.role}-${index}`} className={`chatai-message ${message.role}`}>
+                  {isStreamingPlaceholder ? (
+                    <TypingIndicator />
+                  ) : (
+                    <p>{message.content || (busy && message.role === "assistant" ? "Thinking…" : "")}</p>
+                  )}
+                  {settings.showSources !== false && message.sources?.length ? (
+                    <ul className="chatai-sources" aria-label="Sources">
+                      {message.sources.map((source) => (
+                        <li key={`${source.documentId}-${source.chunkId ?? source.page ?? source.documentName}`}>
+                          <strong>{source.documentName}</strong>
+                          {source.page != null ? ` · p. ${source.page}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {message.role === "assistant" && message.id ? (
+                    <div className="chatai-feedback">
+                      <span>Was this helpful?</span>
+                      <button
+                        type="button"
+                        aria-label="Mark response helpful"
+                        aria-pressed={message.feedback === "positive"}
+                        onClick={() => rate(message.id!, "positive")}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Mark response not helpful"
+                        aria-pressed={message.feedback === "negative"}
+                        onClick={() => rate(message.id!, "negative")}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+            {state.error ? (
+              <div className="chatai-error" role="alert">
+                <p>{state.error}</p>
+                <button type="button" className="chatai-retry" onClick={retry} disabled={busy}>
+                  Retry
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <form
@@ -193,7 +314,15 @@ export function WidgetApp(props: Props) {
         </section>
       ) : null}
 
-      <button type="button" className="chatai-launcher" onClick={() => setOpen((value) => !value)} aria-label="Open chat">
+      <button
+        ref={launcherRef}
+        type="button"
+        className="chatai-launcher"
+        onClick={togglePanel}
+        aria-label={open || closing ? "Close chat" : "Open chat"}
+        aria-expanded={open && !closing}
+        aria-haspopup="dialog"
+      >
         {settings.iconUrl ? <img src={settings.iconUrl} alt="" /> : <ChatGlyph />}
       </button>
     </div>

@@ -43,6 +43,9 @@ describe("mountWidget", () => {
     (root?.querySelector('[aria-label="Open chat"]') as HTMLButtonElement).click();
     await Promise.resolve();
     expect(root?.querySelector('[role="dialog"]')).not.toBeNull();
+    const launcher = root?.querySelector(".chatai-launcher") as HTMLButtonElement;
+    expect(launcher.getAttribute("aria-expanded")).toBe("true");
+    expect(launcher.getAttribute("aria-label")).toBe("Close chat");
 
     instance.destroy();
     expect(target.shadowRoot?.childElementCount).toBe(0);
