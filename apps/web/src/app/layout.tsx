@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Syne } from "next/font/google";
 
 import { ThemeProvider } from "@/components/theme-provider";
+import { brand } from "@/lib/site";
 
 import "./globals.css";
 
@@ -23,16 +24,30 @@ const mono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
+const metadataBase =
+  process.env.NEXT_PUBLIC_APP_URL != null
+    ? new URL(process.env.NEXT_PUBLIC_APP_URL)
+    : new URL(brand.product.appUrl);
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
+  metadataBase,
   title: {
     default: "ChatAI",
     template: "%s · ChatAI",
   },
   description:
-    "Open-source platform to create AI assistants with your knowledge and embed them on your website.",
+    "Build AI assistants grounded in your own knowledge and embed them anywhere. An open-source project by NightZeros.",
   applicationName: "ChatAI",
+  authors: [{ name: brand.company.name, url: brand.company.url }],
+  creator: brand.company.name,
   openGraph: {
-    title: "ChatAI",
+    title: "ChatAI — Open-source AI Assistants by NightZeros",
     description:
       "Create AI assistants on your knowledge, test answers with citations, and embed a chat widget. Open source and self-hostable.",
     type: "website",
@@ -40,8 +55,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "ChatAI",
-    description: "Open-source AI assistants on your knowledge.",
+    title: "ChatAI — Open-source AI Assistants by NightZeros",
+    description: "Open-source AI assistants on your knowledge. A NightZeros project.",
   },
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],

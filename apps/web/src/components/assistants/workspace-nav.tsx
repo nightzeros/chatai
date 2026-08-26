@@ -77,7 +77,8 @@ export function WorkspaceNav({ assistantId }: { assistantId: string }) {
 
   return (
     <nav className="space-y-3" aria-label="Assistant workspace">
-      <div className="flex gap-1 overflow-x-auto border-b border-border pb-px md:hidden">
+      <div className="sticky top-0 z-10 -mx-[var(--spacing-page)] border-b border-border bg-background/95 px-[var(--spacing-page)] backdrop-blur-sm md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:backdrop-blur-none">
+        <div className="flex gap-1 overflow-x-auto pb-px [-ms-overflow-style:none] [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
         {groups.flatMap((group) =>
           group.items.map((item) => {
             const href = `${base}${item.href}`;
@@ -98,6 +99,7 @@ export function WorkspaceNav({ assistantId }: { assistantId: string }) {
             );
           }),
         )}
+        </div>
       </div>
 
       <div className="hidden md:block">

@@ -100,11 +100,11 @@ function ConversationGroups({
                 >
                   <Link
                     href={`/dashboard/assistants/${assistantId}/conversations/${item.id}`}
-                    className="flex items-start justify-between gap-4 px-4 py-3 transition-colors hover:bg-accent/40"
+                    className="flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-accent/40 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{item.preview}</p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-sm font-medium sm:truncate">{item.preview}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground sm:truncate">
                         {item.sourceLabel} · {item.visitorLabel} · {formatTime(item.updatedAt)} ·{" "}
                         {item.messageCount} {item.messageCount === 1 ? "message" : "messages"}
                       </p>
