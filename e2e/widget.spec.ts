@@ -11,8 +11,10 @@ test("draft preview updates and settings save", async ({ page }) => {
   await expect
     .poll(async () =>
       previewAside.evaluate((aside) => {
-        const mount = aside.querySelector("div.h-full");
-        const widget = mount?.shadowRoot?.querySelector(".chatai-widget") as HTMLElement | null;
+        const mount = aside.querySelector('[data-testid="widget-preview-mount"]');
+        const widget = mount?.querySelector("div")?.shadowRoot?.querySelector(".chatai-widget") as
+          | HTMLElement
+          | null;
         return widget?.style.getPropertyValue("--chatai-accent") ?? "";
       }),
     )
