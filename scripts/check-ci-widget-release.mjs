@@ -22,10 +22,12 @@ for (const command of [
   "pnpm lint",
   "pnpm typecheck",
   "pnpm test",
+  "pnpm test:migrations",
   "pnpm build",
   "pnpm widget:check",
+  "pnpm ci:widget-release",
 ]) {
-  assert.match(workflow, new RegExp(command.replace(" ", "\\s+")));
+  assert.match(workflow, new RegExp(command.replace(" ", "\\s+").replace(":", "\\:")));
 }
 
 assert.match(workflow, /playwright install(?:[^\n]*)chromium/i);
@@ -36,6 +38,7 @@ const positions = [
   "pnpm lint",
   "pnpm typecheck",
   "pnpm test",
+  "pnpm test:migrations",
   "pnpm build",
   "pnpm widget:check",
   "run: pnpm e2e\n",
@@ -43,7 +46,7 @@ const positions = [
 
 assert.ok(
   positions.every((position, index) => index === 0 || position > positions[index - 1]),
-  "CI release gates must run in lint, typecheck, test, build, widget check, e2e order.",
+  "CI release gates must run in lint, typecheck, test, migrations, build, widget check, e2e order.",
 );
 
 const downloadedAssetCheck = spawnSync(

@@ -1,0 +1,49 @@
+---
+title: API stability
+description: Semver and deprecation policy for the stable /api/v1 REST surface.
+---
+
+ChatAI **v1.0** freezes the public HTTP API under `/api/v1`. The OpenAPI document at `GET /api/v1/openapi.json` is the contract of record.
+
+## Stable surface
+
+| Area | Routes | Auth |
+| --- | --- | --- |
+| Chat | `POST /api/v1/chat` | Bearer key **or** keyless widget/playground |
+| Owner REST | `/api/v1/assistants`, documents, conversations, analytics | Bearer `sk_live_…` |
+| Widget | `GET …/config`, `POST /api/v1/feedback`, `POST /api/v1/widget/sign` | Keyless (domain allowlist + rate limits) |
+
+Dashboard-only routes under `/api/assistants/*` (uploads, evals, sources) are **not** part of the v1 contract. Integrations should use `/api/v1/*` only.
+
+## Semver rules (API)
+
+We follow [Semantic Versioning](https://semver.org/) for product releases. For the HTTP API:
+
+| Release | Allowed changes on `/api/v1` |
+| --- | --- |
+| **Patch** (1.0.x) | Bug fixes, documentation, additive optional response fields |
+| **Minor** (1.x.0) | Additive endpoints, optional request fields, new enum values |
+| **Major** (2.0.0) | Breaking request/response shapes, removed routes, auth changes |
+
+Breaking changes ship only under a new prefix (e.g. `/api/v2`) while `/api/v1` remains available for at least one major cycle with a published sunset date.
+
+## Deprecation process
+
+1. Mark the field or route **deprecated** in OpenAPI and docs (minimum **90 days** notice).
+2. Emit a `Deprecation` response header on affected routes when feasible.
+3. Remove only in the next **major** product release.
+
+## Contract tests
+
+The monorepo stores a frozen fingerprint of all documented operations in `@chatai/sdk` (`openapi.fingerprint.json`). CI fails if routes are added, removed, or renamed without updating the fingerprint intentionally.
+
+Regenerate after an approved API change:
+
+```bash
+pnpm --filter @chatai/sdk openapi:fingerprint
+```
+
+## Related
+
+- [REST API reference](/docs/api)
+- [Versioning and migrations](/docs/self-hosting/versioning)

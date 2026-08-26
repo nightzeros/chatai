@@ -12,3 +12,4 @@ export {
   type Document,
 } from "./schemas";
 export type { ChatStreamEvent } from "./sse";
+export { API_VERSION } from "./version";

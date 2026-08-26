@@ -1,0 +1,16 @@
+---
+name: General
+title: "[Discussion] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use Discussions for questions and ideas. File bugs with the Bug Report issue template.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to do or discuss?
+    validations:
+      required: true

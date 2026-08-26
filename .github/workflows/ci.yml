@@ -60,6 +60,12 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: Migration upgrade path
+        run: pnpm test:migrations
+
+      - name: Widget release gate meta-check
+        run: pnpm ci:widget-release
+
       - name: Build
         run: pnpm build
 

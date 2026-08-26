@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read VERSION
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches VERSION
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          expected="${{ steps.version.outputs.value }}"
+          if [ "$tag" != "$expected" ]; then
+            echo "Tag v$tag does not match VERSION file ($expected)" >&2
+            exit 1
+          fi
+
+      - name: Extract changelog section
+        id: notes
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const version = fs.readFileSync("VERSION", "utf8").trim();
+          const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
+          const header = `## [${version}]`;
+          const start = changelog.indexOf(header);
+          if (start < 0) {
+            console.error(`No CHANGELOG section for ${version}`);
+            process.exit(1);
+          }
+          const rest = changelog.slice(start + header.length);
+          const next = rest.search(/\n## \[/);
+          const body = (next < 0 ? rest : rest.slice(0, next)).trim();
+          fs.writeFileSync("release-notes.md", `# ChatAI ${version}\n\n${body}\n`);
+          NODE
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          draft: false
+          generate_release_notes: false

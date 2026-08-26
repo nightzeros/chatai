@@ -1,0 +1,70 @@
+{
+  "version": "1.0.0",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/assistants"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistants"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/assistants/{assistantId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistants/{assistantId}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/assistants/{assistantId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistants/{assistantId}/analytics"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistants/{assistantId}/conversations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistants/{assistantId}/conversations/{conversationId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistants/{assistantId}/documents"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/assistants/{assistantId}/documents/{documentId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistants/{assistantId}/documents/{documentId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assistants/{assistantId}/documents/{documentId}/reprocess"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/assistants/{publicId}/config"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/chat"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/feedback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/widget/sign"
+    }
+  ],
+  "hash": "7e0249c95a5975c01e180b84c079db26948951deca07079ffdb5dcd1bc16dfdc"
+}

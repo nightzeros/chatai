@@ -1,12 +1,15 @@
 {
   "name": "chatai",
   "private": true,
+  "version": "1.0.0",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:migrations": "node scripts/test-migrations.mjs",
+    "ci:widget-release": "node scripts/check-ci-widget-release.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,md,json,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json,yml,yaml}\"",
     "db:generate": "pnpm --filter @chatai/database db:generate",
@@ -22,7 +25,10 @@
     "e2e:seed": "node scripts/seed-e2e.mjs",
     "e2e": "node scripts/seed-e2e.mjs && playwright test",
     "docs:dev": "pnpm --filter @chatai/docs dev",
-    "docs:build": "pnpm --filter @chatai/docs build"
+    "docs:build": "pnpm --filter @chatai/docs build",
+    "loadtest:smoke": "node loadtest/smoke.mjs",
+    "loadtest:config": "node loadtest/config.mjs",
+    "loadtest:chat": "node loadtest/chat.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",

@@ -1,6 +1,12 @@
 # ChatAI
 
+[![CI](https://github.com/master-tecs/chatai/actions/workflows/ci.yml/badge.svg)](https://github.com/master-tecs/chatai/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-0F766E.svg)](./VERSION)
+
 Open-source platform to **create an AI assistant, give it your knowledge, test it, customize it, and embed it on your website**.
+
+**v1.0** freezes the public `/api/v1` API and migration path. See [ROADMAP.md](./ROADMAP.md), [CHANGELOG.md](./CHANGELOG.md), and [docs/RELEASE.md](./docs/RELEASE.md).
 
 ## What it does
 
@@ -280,8 +286,8 @@ Draft changes update the live preview immediately; only **Save** publishes them 
 
 - `publicId` / `data-assistant-id` is a **public capability**, not a secret. Anyone who knows it can open the widget and chat against that assistant.
 - Widget and playground chat stay **keyless**. Hashed `sk_` keys are for owner REST/SDK only.
-- Domain allowlists and visitor rate limits are deferred to **v0.8**. Per-key REST rate limits are in v0.6.
-- v0.2 keeps the existing open CORS posture on the public chat APIs so cross-origin embeds work. Host pages still need a correct absolute API origin (`script` URL or `data-api-url` / `apiUrl`).
+- Domain allowlists, visitor rate limits, signed widgets, and privacy retention are available in **v0.8+ / v1.0**.
+- Host pages still need a correct absolute API origin (`script` URL or `data-api-url` / `apiUrl`).
 
 ## Troubleshooting
 
@@ -297,6 +303,23 @@ Draft changes update the live preview immediately; only **Save** publishes them 
 | REST `429` | Per-key rate limit; wait for `Retry-After` seconds |
 | Eval run details show empty retrieval / unknown sources on new runs | The background eval worker may be running stale code after HMR; **restart `pnpm dev`** after changes under `packages/evals`. New runs should persist `details.snapshot.retrieval` on every score row. |
 
+## v1.0 status
+
+Stabilization and release:
+
+- `/api/v1` contract freeze (OpenAPI fingerprint + stability docs)
+- Semver + forward-only migration guarantees (`VERSION`, `pnpm test:migrations`)
+- Widget hardening (30 kB gzip CI budget, offline retry UX, e2e)
+- Load-test smoke harness (`pnpm loadtest:*`)
+- Community: Discussions, labels, roadmap, SECURITY, CoC, release workflow
+
+## v0.8 status
+
+Security + privacy:
+
+- Domain allowlist, visitor/assistant rate limits, optional widget signing
+- Encrypted provider secrets, audit log, conversation retention/export/delete
+
 ## v0.7 status
 
 Self-hosting, documentation site, and example apps:
@@ -307,7 +330,7 @@ Self-hosting, documentation site, and example apps:
 - `apps/docs` Fumadocs site (`pnpm docs:dev` on :3001) — install, self-hosting, product, API (Scalar), SDK
 - Examples: html-widget, react-widget, nextjs-portfolio, node-sdk-chat; support-bot walkthrough via `pnpm seed:demo`
 
-Next: npm publish of packages; v0.8 domain allowlists and visitor rate limits.
+Next: npm publish of packages when ready; post-1.0 features in [ROADMAP.md](./ROADMAP.md).
 
 ## v0.6 status
 
