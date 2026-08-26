@@ -4,7 +4,7 @@ description: Bearer-authenticated /api/v1 routes, dual-auth chat, rate limits, a
 full: true
 ---
 
-Public HTTP API under `/api/v1`. The OpenAPI document is generated from `@chatai/sdk` (`getOpenApiDocument()`).
+Public HTTP API under `/api/v1`. The OpenAPI document is generated from `@chatai/sdk` (`getOpenApiDocument()`). **v1.0 freezes this surface** — see [API stability](/docs/api/stability).
 
 - Live instance: `GET {CHATAI_ORIGIN}/api/v1/openapi.json`
 - This docs site: `GET /api/openapi` (same generator, no running app required)
@@ -48,7 +48,7 @@ Widget `publicId` is a public capability, not a secret.
 
 Per-API-key limits are stored in Postgres (`API_RATE_LIMIT_PER_MINUTE`, default `60`). Exceeded requests return **429** with a `Retry-After` header (seconds).
 
-Widget/`publicId` chat is **not** limited by this bucket (visitor rate limits are a later release).
+Widget/`publicId` chat uses **per-assistant visitor rate limits** (configured in Security settings). Exceeded requests return **429**.
 
 ## Common errors
 
@@ -67,6 +67,7 @@ Widget/`publicId` chat is **not** limited by this bucket (visitor rate limits ar
 
 ## Related
 
+- [API stability](/docs/api/stability)
 - [TypeScript SDK](/docs/sdk)
 - [Examples](/docs/examples) — `node-sdk-chat`
 - [Widget](/docs/widget) — keyless embed path

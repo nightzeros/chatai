@@ -152,6 +152,23 @@ describe("createWidgetController", () => {
     );
   });
 
+  it("surfaces a recoverable offline message when config fetch fails", async () => {
+    const controller = createWidgetController({
+      assistantId: "asst_demo",
+      apiUrl: "https://chat.example.com",
+      fetch: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    });
+
+    await controller.load();
+
+    expect(controller.getState()).toMatchObject({
+      status: "error",
+      error: expect.stringMatching(/Unable to reach the ChatAI server/i),
+    });
+  });
+
   it("fetches a signature before chat when requireWidgetSigning is set", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const storage = new Map<string, string>();

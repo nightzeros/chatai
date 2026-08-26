@@ -67,6 +67,35 @@ export const documentSchema = z.object({
 
 export const okSchema = z.object({ ok: z.literal(true) });
 
+export const widgetConfigSchema = z.object({
+  assistantId: z.string(),
+  name: z.string(),
+  welcomeMessage: z.string(),
+  settings: z.record(z.unknown()),
+  requireWidgetSigning: z.boolean().optional(),
+});
+
+export const feedbackRequestSchema = z.object({
+  messageId: z.string().min(1),
+  rating: z.enum(["positive", "negative"]),
+  visitorId: z.string().min(1).max(80).optional(),
+});
+
+export const feedbackResponseSchema = z.object({
+  ok: z.literal(true),
+  feedback: z.enum(["positive", "negative"]),
+});
+
+export const widgetSignRequestSchema = z.object({
+  assistantId: z.string().min(1),
+  visitorId: z.string().min(8).max(80),
+});
+
+export const widgetSignResponseSchema = z.object({
+  timestamp: z.number().int(),
+  signature: z.string(),
+});
+
 export type AssistantCreateInput = z.infer<typeof assistantCreateSchema>;
 export type AssistantPatchInput = z.infer<typeof assistantPatchSchema>;
 export type ChatRequestInput = z.infer<typeof chatRequestSchema>;

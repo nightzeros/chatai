@@ -12,8 +12,14 @@ import {
   chatRequestSchema,
   documentSchema,
   errorSchema,
+  feedbackRequestSchema,
+  feedbackResponseSchema,
   okSchema,
+  widgetConfigSchema,
+  widgetSignRequestSchema,
+  widgetSignResponseSchema,
 } from "./schemas";
+import { API_VERSION } from "./version";
 
 extendZodWithOpenApi(z);
 
@@ -51,6 +57,11 @@ const documentId = z.string().openapi({
 
 const conversationId = z.string().openapi({
   param: { name: "conversationId", in: "path" },
+});
+
+const publicId = z.string().openapi({
+  param: { name: "publicId", in: "path" },
+  description: "Assistant public id (`asst_…`)",
 });
 
 const bearer = [{ bearerAuth: [] }];
@@ -253,6 +264,62 @@ registry.registerPath({
   },
 });
 
+registry.registerPath({
+  method: "get",
+  path: "/api/v1/assistants/{publicId}/config",
+  summary: "Public widget configuration",
+  description:
+    "Keyless embed endpoint. Returns display settings only (no secrets). Domain allowlist and rate limits apply.",
+  tags: ["Widget"],
+  security: [],
+  request: { params: z.object({ publicId }) },
+  responses: {
+    200: json(widgetConfigSchema, "Widget-safe assistant config"),
+    404: json(errorSchema, "Assistant not found"),
+    403: json(errorSchema, "Origin not allowed or policy violation"),
+    429: json(errorSchema, "Rate limit exceeded"),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/v1/feedback",
+  summary: "Rate an assistant message",
+  description: "Widget visitors submit thumbs up/down for a message they received.",
+  tags: ["Widget"],
+  security: [],
+  request: {
+    body: { content: { "application/json": { schema: feedbackRequestSchema } } },
+  },
+  responses: {
+    200: json(feedbackResponseSchema, "Feedback recorded"),
+    400: json(errorSchema, "Invalid body"),
+    403: json(errorSchema, "Not authorized to rate this message"),
+    404: json(errorSchema, "Message not found"),
+    429: json(errorSchema, "Rate limit exceeded"),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/v1/widget/sign",
+  summary: "Issue a widget HMAC signature",
+  description:
+    "When `requireWidgetSigning` is enabled, the embed must call this before chat/feedback. Domain allowlist and rate limits apply.",
+  tags: ["Widget"],
+  security: [],
+  request: {
+    body: { content: { "application/json": { schema: widgetSignRequestSchema } } },
+  },
+  responses: {
+    200: json(widgetSignResponseSchema, "Short-lived signature"),
+    400: json(errorSchema, "Invalid body or signing not configured"),
+    404: json(errorSchema, "Assistant not found"),
+    403: json(errorSchema, "Origin not allowed or policy violation"),
+    429: json(errorSchema, "Rate limit exceeded"),
+  },
+});
+
 export function getOpenApiDocument(): {
   openapi: string;
   info: { title: string; version: string; description?: string };
@@ -264,9 +331,9 @@ export function getOpenApiDocument(): {
     openapi: "3.1.0",
     info: {
       title: "ChatAI API",
-      version: "0.6.0",
+      version: API_VERSION,
       description:
-        "Owner REST API (Bearer `sk_` keys) plus dual-auth chat. Widget `publicId` chat stays keyless. Document upload is dashboard-only.",
+        "Stable v1 REST API. Owner routes require Bearer `sk_` keys. Widget routes are keyless with domain allowlist + rate limits. Document upload stays dashboard-only.",
     },
     servers: [{ url: "/", description: "ChatAI instance origin" }],
     tags: [
@@ -275,6 +342,7 @@ export function getOpenApiDocument(): {
       { name: "Documents" },
       { name: "Conversations" },
       { name: "Analytics" },
+      { name: "Widget" },
     ],
   });
 }

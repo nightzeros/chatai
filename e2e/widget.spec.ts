@@ -45,3 +45,12 @@ test("self-hosted widget mounts launcher with data-api-url", async ({ page }) =>
   const host = page.locator("chatai-widget-host");
   await expect(host.getByRole("button", { name: "Open chat" })).toBeVisible();
 });
+
+test("hosted widget shows retry when the config API is unreachable", async ({ page }) => {
+  await page.route("**/api/v1/assistants/*/config", (route) => route.abort("failed"));
+  await page.goto("/e2e/hosted.html");
+  const host = page.locator("chatai-widget-host");
+  await host.getByRole("button", { name: "Open chat" }).click();
+  await expect(host.getByRole("alert")).toContainText(/Unable to reach|Unable to load|failed/i);
+  await expect(host.getByRole("button", { name: "Retry" })).toBeVisible();
+});

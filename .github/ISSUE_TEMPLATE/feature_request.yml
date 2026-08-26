@@ -1,6 +1,6 @@
 name: Feature request
 description: Suggest a new feature or improvement
-labels: ["enhancement"]
+labels: ["enhancement", "needs-triage"]
 body:
   - type: textarea
     id: problem
@@ -26,7 +26,10 @@ body:
       label: Related milestone (if known)
       options:
         - Unsure
-        - v0.1 Core RAG
-        - v0.2 Embeddable
-        - v0.3 Observability
-        - Later / post-1.0
+        - v1.x maintenance
+        - Post-1.0 — AI Actions / Tools
+        - Post-1.0 — Human handoff
+        - Post-1.0 — Leads
+        - Post-1.0 — Teams / organizations
+        - Post-1.0 — Multi-language
+        - Docs / DX only

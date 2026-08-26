@@ -164,6 +164,16 @@ function responseError(response: Response) {
     .catch(() => "Widget request failed.");
 }
 
+/** Maps offline / CORS / DNS failures to a visitor-safe message. */
+function humanizeNetworkError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  const message = error.message;
+  if (/failed to fetch|networkerror|load failed|network request failed|fetch failed/i.test(message)) {
+    return "Unable to reach the ChatAI server. Check your connection and try again.";
+  }
+  return message || fallback;
+}
+
 export function createWidgetController(options: WidgetControllerOptions) {
   const fetcher = options.fetch ?? globalThis.fetch;
   const storage = options.storage ?? defaultStorage();
@@ -247,7 +257,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
         setState({
           ...state,
           status: "error",
-          error: error instanceof Error ? error.message : "Unable to load the assistant.",
+          error: humanizeNetworkError(error, "Unable to load the assistant."),
         });
       }
     },
@@ -319,7 +329,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
         setState({
           ...state,
           status: "error",
-          error: error instanceof Error ? error.message : "Unable to send the message.",
+          error: humanizeNetworkError(error, "Unable to send the message."),
         });
       }
     },

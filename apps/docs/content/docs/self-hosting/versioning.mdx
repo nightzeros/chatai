@@ -1,0 +1,50 @@
+---
+title: Versioning and migrations
+description: Semver guarantees, database migration policy, and safe upgrades.
+---
+
+## Product versioning
+
+ChatAI uses [Semantic Versioning](https://semver.org/). The canonical version lives in the repository root `VERSION` file and is mirrored in:
+
+- OpenAPI `info.version`
+- Git tags (`v1.0.0`, …)
+- GitHub Releases
+
+| Component | Versioning |
+| --- | --- |
+| Self-hosted app (Docker image) | Tracks product semver |
+| `@chatai/sdk`, `@chatai/widget`, `@chatai/react` | Same major.minor as product when published |
+| Database schema | Forward-only Drizzle migrations; no down migrations |
+
+## Database migration guarantees
+
+Migrations live in `packages/database/migrations/` and apply automatically on Docker boot via `migrate.mjs`.
+
+| Guarantee | Detail |
+| --- | --- |
+| **Forward-only** | Each release adds numbered SQL files; we do not ship down migrations |
+| **Additive by default** | Minor/patch releases use additive DDL (new tables/columns, indexes) |
+| **Breaking DDL** | Reserved for major releases with explicit upgrade notes |
+| **Legacy bootstrap** | Pre-journal Docker installs are baselined before applying pending migrations |
+| **CI verification** | `pnpm test:migrations` applies all migrations on a fresh Postgres |
+
+### Before upgrading
+
+1. Back up Postgres and uploads — see [Backup and upgrades](/docs/self-hosting/backup-upgrade).
+2. Read the release notes for migration-specific steps.
+3. Pull/rebuild and restart so the entrypoint runs `pnpm migrate`.
+
+### Embedding dimension constraint
+
+The schema uses `vector(1536)`. Switching to a model with a different dimension requires re-embedding all documents — surfaced in the dashboard when changing embedding providers.
+
+## Package semver (npm)
+
+Publishable packages (`@chatai/sdk`, `@chatai/widget`, `@chatai/react`) follow the product **major** for breaking API/widget embed changes. Patch releases are bugfix-only.
+
+## Related
+
+- [API stability](/docs/api/stability)
+- [Backup and upgrades](/docs/self-hosting/backup-upgrade)
+- [Release checklist](https://github.com/master-tecs/chatai/blob/main/docs/RELEASE.md)
