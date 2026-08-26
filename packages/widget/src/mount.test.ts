@@ -102,4 +102,24 @@ describe("mountWidget", () => {
 
     expect(target.shadowRoot?.querySelector("style")?.textContent).toContain(".chatai-launcher");
   });
+
+  it("anchors the launcher and panel to the configured screen corner", async () => {
+    await installConfigFetch();
+    const target = document.createElement("div");
+    document.body.append(target);
+
+    mountWidget(target, {
+      assistantId: "asst_demo",
+      apiUrl: "https://chat.example.com",
+      position: "bottom-left",
+      layout: "contained",
+    });
+
+    await Promise.resolve();
+    const styleText = target.shadowRoot?.querySelector("style")?.textContent ?? "";
+    expect(styleText).toContain("align-items: flex-end");
+    expect(styleText).toContain(".chatai-widget.position-left");
+    expect(styleText).toContain(".chatai-widget.position-left .chatai-launcher");
+    expect(styleText).toContain("border-radius: 24px 24px 24px 8px");
+  });
 });

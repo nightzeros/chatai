@@ -15,7 +15,7 @@ export default async function HomePage() {
   return (
     <div className="atmosphere relative flex min-h-screen flex-col overflow-hidden">
       <div className="atmosphere-grain pointer-events-none absolute inset-0" aria-hidden />
-      <SiteHeader signedIn={Boolean(session)} />
+      <SiteHeader signedIn={Boolean(session)} docsUrl={docsUrl} />
 
       <main className="relative z-10 flex-1">
         <section className="mx-auto flex max-w-[var(--content-max)] flex-col gap-12 px-4 pb-16 pt-12 md:gap-16 md:px-6 md:pb-24 md:pt-16">
@@ -114,7 +114,7 @@ export default async function HomePage() {
         </section>
       </main>
 
-      <SiteFooter />
+      <SiteFooter docsUrl={docsUrl} />
     </div>
   );
 }

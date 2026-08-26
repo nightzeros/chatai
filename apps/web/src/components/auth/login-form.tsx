@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn } from "@/lib/auth-client";
@@ -50,13 +49,8 @@ export function LoginForm({ githubEnabled }: { githubEnabled: boolean }) {
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>Sign in</CardTitle>
-        <CardDescription>Access your ChatAI assistants.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+    <div className="flex flex-col gap-4">
+      <form className="flex flex-col gap-4" onSubmit={onSubmit}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -97,7 +91,7 @@ export function LoginForm({ githubEnabled }: { githubEnabled: boolean }) {
         {githubEnabled ? (
           <>
             <div className="relative py-1 text-center text-xs text-muted-foreground">
-              <span className="bg-card px-2 relative z-10">or</span>
+              <span className="relative z-10 bg-card/90 px-2">or</span>
               <div className="absolute inset-x-0 top-1/2 border-t border-border" />
             </div>
             <Button type="button" variant="outline" onClick={onGithub}>
@@ -112,7 +106,6 @@ export function LoginForm({ githubEnabled }: { githubEnabled: boolean }) {
             Sign up
           </Link>
         </p>
-      </CardContent>
-    </Card>
+    </div>
   );
 }

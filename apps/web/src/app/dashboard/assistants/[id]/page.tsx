@@ -138,7 +138,7 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
         </Card>
 
         <Card className="shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
             <div>
               <CardTitle className="text-base">Recent conversations</CardTitle>
               <CardDescription>Latest activity across playground, widget, and API</CardDescription>

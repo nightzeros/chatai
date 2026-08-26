@@ -29,7 +29,7 @@
   --input: oklch(0.88 0.01 210);
   --ring: oklch(0.48 0.09 195);
   --radius: 0.5rem;
-  --spacing-page: 1.5rem;
+  --spacing-page: 1rem;
   --content-max: 64rem;
   --surface-elevated: oklch(1 0 0 / 72%);
   --atmosphere-a: oklch(0.92 0.04 195);
@@ -110,10 +110,17 @@
   border-color: var(--border);
 }
 
+@media (min-width: 640px) {
+  :root {
+    --spacing-page: 1.5rem;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-body), system-ui, sans-serif;
+  overflow-x: clip;
 }
 
 .font-display {

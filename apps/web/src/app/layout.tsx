@@ -29,6 +29,12 @@ const metadataBase =
     ? new URL(process.env.NEXT_PUBLIC_APP_URL)
     : new URL(brand.product.appUrl);
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
   metadataBase,
   title: {

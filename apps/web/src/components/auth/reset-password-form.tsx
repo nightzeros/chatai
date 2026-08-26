@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { resetPassword } from "@/lib/auth-client";
@@ -55,21 +54,17 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>Set a new password</CardTitle>
-        <CardDescription>
-          {invalidLink
-            ? "This reset link is invalid or has expired. Request a new one."
-            : "Choose a new password for your ChatAI account."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {invalidLink ? (
+    <div className="flex flex-col gap-4">
+      {invalidLink ? (
+        <>
+          <p className="text-sm text-muted-foreground">
+            This reset link is invalid or has expired. Request a new one.
+          </p>
           <Link href="/forgot-password" className={cn(buttonVariants())}>
             Request a new link
           </Link>
-        ) : (
+        </>
+      ) : (
           <form className="flex flex-col gap-4" onSubmit={onSubmit}>
             <div className="flex flex-col gap-2">
               <Label htmlFor="password">New password</Label>
@@ -102,12 +97,11 @@ export function ResetPasswordForm() {
           </form>
         )}
 
-        <p className="text-center text-sm text-muted-foreground">
-          <Link className="font-medium text-foreground underline-offset-4 hover:underline" href="/login">
-            Back to sign in
-          </Link>
-        </p>
-      </CardContent>
-    </Card>
+      <p className="text-center text-sm text-muted-foreground">
+        <Link className="font-medium text-foreground underline-offset-4 hover:underline" href="/login">
+          Back to sign in
+        </Link>
+      </p>
+    </div>
   );
 }

@@ -171,13 +171,13 @@ export function PlaygroundChat({
           Chat through the public API and inspect retrieval under each answer.
         </p>
       </div>
-    <div className="flex h-[min(720px,calc(100dvh-16rem))] min-h-[28rem] flex-col overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+    <div className="flex h-[min(720px,calc(100dvh-9rem))] min-h-[18rem] flex-col overflow-hidden rounded-xl border border-border bg-card sm:min-h-[24rem] md:min-h-[28rem] md:h-[min(720px,calc(100dvh-16rem))]">
+      <div className="flex flex-col gap-2 border-b border-border px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4">
         <div className="min-w-0">
           <p className="text-sm font-medium">{name}</p>
           <p className="truncate text-xs text-muted-foreground">Public chat API · playground source</p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={resetChat} disabled={busy}>
+        <Button type="button" variant="outline" size="sm" onClick={resetChat} disabled={busy} className="w-full sm:w-auto">
           <RotateCcw />
           New chat
         </Button>
@@ -250,7 +250,7 @@ export function PlaygroundChat({
       </div>
 
       <form
-        className="border-t border-border p-3"
+        className="border-t border-border p-2.5 sm:p-3"
         onSubmit={(event) => {
           event.preventDefault();
           void send(draft);
@@ -277,7 +277,7 @@ export function PlaygroundChat({
             <ArrowUp />
           </Button>
         </div>
-        <p className="mt-2 px-1 text-xs text-muted-foreground">Enter to send · Shift+Enter for a new line</p>
+        <p className="mt-2 px-1 text-xs text-muted-foreground max-sm:hidden">Enter to send · Shift+Enter for a new line</p>
       </form>
     </div>
     </div>

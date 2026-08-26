@@ -17,7 +17,7 @@ export function AuthShell({
   return (
     <div className="atmosphere relative flex min-h-screen flex-col overflow-hidden">
       <div className="atmosphere-grain pointer-events-none absolute inset-0" aria-hidden />
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-8 px-6 py-12">
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-6 px-4 py-10 sm:gap-8 sm:px-6 sm:py-12">
         <div className="space-y-3 text-center">
           <div className="flex flex-col items-center gap-2">
             <BrandLockup />
@@ -31,7 +31,7 @@ export function AuthShell({
             {description ? <p className="mt-1.5 text-sm text-muted-foreground">{description}</p> : null}
           </div>
         </div>
-        <div className="rounded-2xl border border-border bg-card/90 p-6 shadow-sm backdrop-blur-sm">{children}</div>
+        <div className="rounded-2xl border border-border bg-card/90 p-4 shadow-sm backdrop-blur-sm sm:p-6">{children}</div>
         <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
           <a href={docsUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
             Docs

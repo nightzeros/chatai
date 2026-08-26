@@ -11,6 +11,7 @@ export function NavLink({
   exact = false,
   match,
   className,
+  onClick,
 }: {
   href: string;
   children: React.ReactNode;
@@ -18,6 +19,7 @@ export function NavLink({
   /** When set, overrides default prefix matching. */
   match?: (pathname: string) => boolean;
   className?: string;
+  onClick?: () => void;
 }) {
   const pathname = usePathname();
   const active = match
@@ -29,6 +31,7 @@ export function NavLink({
   return (
     <Link
       href={href}
+      onClick={onClick}
       className={cn(
         "rounded-md px-2 py-2 text-sm transition-colors",
         active
