@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BrandLockup } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { getDocsUrl } from "@/lib/docs-url";
-import { CONTRIBUTING_URL, GITHUB_REPO_URL } from "@/lib/site";
+import { brand, CONTRIBUTING_URL, GITHUB_REPO_URL } from "@/lib/site";
 
 export function SiteHeader({ signedIn }: { signedIn?: boolean }) {
   const docsUrl = getDocsUrl();
@@ -52,6 +52,18 @@ export function SiteFooter() {
         <div className="space-y-1">
           <p className="font-display text-sm font-semibold tracking-tight">ChatAI</p>
           <p className="text-xs text-muted-foreground">Open-source assistants on your knowledge.</p>
+          <p className="text-xs text-muted-foreground">
+            An open-source project by{" "}
+            <a
+              href={brand.company.url}
+              target="_blank"
+              rel="noreferrer"
+              className="underline-offset-2 hover:text-foreground hover:underline"
+            >
+              {brand.company.name}
+            </a>
+            .
+          </p>
         </div>
         <nav className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
           <a href={docsUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">

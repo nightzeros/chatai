@@ -90,6 +90,7 @@ export default async function HomePage() {
               <h2 className="font-display text-xl font-semibold tracking-tight">Contribute</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 ChatAI is built in the open. Star the repo, open an issue, or read the contributing guide.
+                A NightZeros open-source project.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Button asChild variant="outline" size="sm">

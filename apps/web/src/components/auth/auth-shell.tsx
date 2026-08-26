@@ -1,4 +1,5 @@
 import { BrandLockup } from "@/components/brand/logo";
+import { BrandAttribution } from "@/components/brand/attribution";
 import { getDocsUrl } from "@/lib/docs-url";
 import { CONTRIBUTING_URL, GITHUB_REPO_URL } from "@/lib/site";
 
@@ -18,8 +19,12 @@ export function AuthShell({
       <div className="atmosphere-grain pointer-events-none absolute inset-0" aria-hidden />
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-8 px-6 py-12">
         <div className="space-y-3 text-center">
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
             <BrandLockup />
+            <p className="max-w-xs text-sm text-muted-foreground">
+              Open-source AI assistants grounded in your knowledge.
+            </p>
+            <BrandAttribution variant="stacked" />
           </div>
           <div>
             <h1 className="font-display text-2xl font-semibold tracking-tight">{title}</h1>

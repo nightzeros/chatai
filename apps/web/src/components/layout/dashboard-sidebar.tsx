@@ -13,7 +13,7 @@ export function DashboardSidebar({ docsUrl }: { docsUrl: string }) {
   return (
     <aside className="hidden w-56 shrink-0 border-r border-border bg-card/40 md:flex md:flex-col">
       <div className="flex h-14 items-center px-4">
-        <BrandLockup href="/dashboard" markSize={24} className="[&_span]:text-base" />
+        <BrandLockup href="/dashboard" markSize={24} showAttribution className="[&_span]:text-base" />
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-3 py-2">
         <NavLink href="/dashboard" match={isAssistantsPath}>

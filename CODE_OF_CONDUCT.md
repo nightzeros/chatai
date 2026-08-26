@@ -24,6 +24,6 @@ Examples of unacceptable behavior:
 
 ## Enforcement
 
-Report incidents to the maintainers at **conduct@master-tecs.dev** or via GitHub. Maintainers will review and respond as appropriate.
+Report incidents to the maintainers at **hello@nightzeros.com** or via GitHub. Maintainers will review and respond as appropriate.
 
 This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.

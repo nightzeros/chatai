@@ -1,6 +1,6 @@
 # Contributing to ChatAI
 
-Thanks for your interest in contributing. ChatAI is at **v1.0** — the public `/api/v1` API and schema migration path are stable. Small, focused PRs are preferred.
+Thanks for your interest in contributing. ChatAI is at **v1.0** — the public `/api/v1` API and schema migration path are stable. ChatAI is maintained by [NightZeros](https://nightzeros.com). Small, focused PRs are preferred.
 
 Please read the [Code of Conduct](./CODE_OF_CONDUCT.md) and [Security Policy](./SECURITY.md).
 

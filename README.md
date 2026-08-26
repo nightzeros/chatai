@@ -4,7 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-0F766E.svg)](./VERSION)
 
-Open-source platform to **create an AI assistant, give it your knowledge, test it, customize it, and embed it on your website**.
+Open-source AI assistants grounded in your knowledge.
+
+An [NightZeros](https://nightzeros.com) open-source project · [Product site](https://nightzeros.com/chatai)
 
 **v1.0** freezes the public `/api/v1` API and migration path. See [ROADMAP.md](./ROADMAP.md), [CHANGELOG.md](./CHANGELOG.md), and [docs/RELEASE.md](./docs/RELEASE.md).
 

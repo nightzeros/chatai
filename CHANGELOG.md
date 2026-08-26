@@ -22,6 +22,7 @@ All notable changes to ChatAI are documented here. The format follows [Keep a Ch
 
 - OpenAPI `info.version` aligned to product `1.0.0`
 - Contributing docs updated for the v1.0 release train
+- NightZeros brand attribution across web app, docs, README, and package metadata (no API or widget behavior changes)
 
 ## [0.8.0] - Unreleased (pre-1.0)
 
