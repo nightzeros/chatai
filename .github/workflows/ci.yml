@@ -85,9 +85,18 @@ jobs:
 
       - name: Smoke hosted widget over HTTP
         run: |
+          set -euo pipefail
           pnpm --filter @chatai/web start > /tmp/chatai-web.log 2>&1 &
           server_pid=$!
-          trap 'kill "$server_pid"' EXIT
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+            # pnpm exits before next start; free :3000 so Playwright e2e can bind.
+            if command -v fuser >/dev/null 2>&1; then
+              fuser -k 3000/tcp 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
 
           for attempt in {1..30}; do
             if curl --fail --silent --show-error \
