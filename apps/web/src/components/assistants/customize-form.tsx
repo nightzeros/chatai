@@ -125,7 +125,7 @@ export function CustomizeForm({ assistant, apiUrl }: { assistant: Assistant; api
 
               <fieldset className="flex flex-col gap-3">
                 <legend className="text-sm font-medium">Color mode</legend>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {(["system", "light", "dark"] as const).map((value) => (
                     <label
                       key={value}

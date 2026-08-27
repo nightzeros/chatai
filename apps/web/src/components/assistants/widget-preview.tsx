@@ -15,8 +15,10 @@ export function WidgetPreview({ assistantId, apiUrl, settings }: PreviewWidgetIn
   return (
     <aside className="rounded-xl border border-border bg-muted/30 p-5">
       <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Draft preview</p>
-      <div className="mt-5 h-80 overflow-hidden rounded-lg border border-border bg-background p-4">
-        <ChatWidget className="h-full" {...previewWidgetOptions({ assistantId, apiUrl, settings })} />
+      <div className="relative mt-5 h-96 overflow-hidden rounded-lg border border-border bg-background">
+        <div className="absolute inset-0" data-testid="widget-preview-mount">
+          <ChatWidget className="h-full w-full" {...previewWidgetOptions({ assistantId, apiUrl, settings })} />
+        </div>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">Draft preview — not published until you save.</p>
     </aside>

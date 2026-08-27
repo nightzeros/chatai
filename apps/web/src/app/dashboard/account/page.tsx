@@ -1,4 +1,5 @@
 import { AccountForms } from "@/components/account/account-forms";
+import { AboutCard } from "@/components/account/about-card";
 import { ApiKeysPanel } from "@/components/account/api-keys-panel";
 import { AuditLogPanel } from "@/components/account/audit-log-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -51,6 +52,10 @@ export default async function AccountPage() {
         <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Profile & security</h2>
         <AccountForms name={session.user.name} email={session.user.email} />
       </section>
+
+      <Separator />
+
+      <AboutCard />
     </div>
   );
 }

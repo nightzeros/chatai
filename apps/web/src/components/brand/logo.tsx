@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { BrandAttribution } from "@/components/brand/attribution";
 import { cn } from "@/lib/utils";
 
 export function BrandMark({ className, size = 28 }: { className?: string; size?: number }) {
@@ -29,18 +30,25 @@ export function BrandLockup({
   href = "/",
   className,
   markSize = 28,
+  showAttribution = false,
 }: {
   href?: string;
   className?: string;
   markSize?: number;
+  showAttribution?: boolean;
 }) {
   return (
-    <Link
-      href={href}
-      className={cn("inline-flex items-center gap-2.5 text-foreground transition-opacity hover:opacity-90", className)}
-    >
-      <BrandMark size={markSize} />
-      <span className="font-display text-xl font-semibold tracking-tight">ChatAI</span>
-    </Link>
+    <div className={cn("inline-flex flex-col gap-0.5", className)}>
+      <Link
+        href={href}
+        className="inline-flex items-center gap-2.5 text-foreground transition-opacity hover:opacity-90"
+      >
+        <BrandMark size={markSize} />
+        <span className="font-display text-xl font-semibold tracking-tight">ChatAI</span>
+      </Link>
+      {showAttribution ? (
+        <BrandAttribution variant="stacked" style={{ paddingLeft: markSize + 10 }} />
+      ) : null}
+    </div>
   );
 }

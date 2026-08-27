@@ -8,6 +8,7 @@ import { nextCookies } from "better-auth/next-js";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { sendEmail } from "@/lib/email";
 import { env } from "@/lib/env";
+import { brand } from "@/lib/site";
 
 function requireEnv(value: string | undefined, name: string): string {
   if (!value) {
@@ -37,11 +38,13 @@ export const auth = betterAuth({
     enabled: true,
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
+      const footerText = `\n\n—\nChatAI by ${brand.company.name}\n${brand.company.url}`;
+      const footerHtml = `<p style="margin-top:1.5rem;font-size:12px;color:#666">ChatAI by <a href="${brand.company.url}">${brand.company.name}</a></p>`;
       await sendEmail({
         to: user.email,
         subject: "Reset your ChatAI password",
-        text: `Reset your password (link expires in 1 hour):\n\n${url}\n`,
-        html: `<p>Reset your password (expires in 1 hour):</p><p><a href="${url}">${url}</a></p>`,
+        text: `Reset your password (link expires in 1 hour):\n\n${url}${footerText}`,
+        html: `<p>Reset your password (expires in 1 hour):</p><p><a href="${url}">${url}</a></p>${footerHtml}`,
       });
       await logAuditEvent({
         userId: user.id,

@@ -1,6 +1,11 @@
 {
   "name": "@chatai/widget-core",
   "version": "1.0.0",
+  "description": "Core widget runtime for ChatAI, an open-source project by NightZeros",
+  "author": "NightZeros",
+  "homepage": "https://nightzeros.com/chatai",
+  "repository": "github:master-tecs/chatai",
+  "bugs": "https://github.com/master-tecs/chatai/issues",
   "private": true,
   "type": "module",
   "exports": {

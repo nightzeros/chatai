@@ -24,9 +24,9 @@ export default async function AssistantLayout({
   const siblings = await listAssistantsForUser(session.user.id);
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
+    <div className="flex flex-col gap-4 sm:gap-6 lg:flex-row lg:items-start lg:gap-8">
       <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-52">
-        <div className="mb-4 space-y-1">
+        <div className="mb-3 space-y-1 sm:mb-4">
           <Link href="/dashboard" className="text-xs text-muted-foreground hover:text-foreground">
             ← Assistants
           </Link>
