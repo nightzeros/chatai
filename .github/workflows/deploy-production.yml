@@ -1,0 +1,130 @@
+name: Deploy Production
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git ref to build (tag, branch, or SHA)"
+        required: true
+        default: "main"
+      image_tag:
+        description: "Immutable GHCR tag (defaults to git ref for tags, or git SHA for dispatch)"
+        required: false
+
+concurrency:
+  group: deploy-production-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: master-tecs/chatai
+  NEXT_PUBLIC_DOCS_URL: https://docs.nightzeros.com
+  NEXT_PUBLIC_APP_URL: https://app.nightzeros.com
+
+jobs:
+  build-and-push:
+    name: Build and push GHCR image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      git_sha: ${{ steps.meta.outputs.git_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.ref }}
+
+      - name: Resolve image tag
+        id: meta
+        run: |
+          set -euo pipefail
+          git_sha="$(git rev-parse HEAD)"
+          echo "git_sha=${git_sha}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            tag="${GITHUB_REF_NAME#v}"
+            version="$(tr -d '[:space:]' < VERSION)"
+            if [[ "$tag" != "$version" ]]; then
+              echo "Tag v${tag} does not match VERSION (${version})" >&2
+              exit 1
+            fi
+            image_tag="v${tag}"
+          elif [[ -n "${{ inputs.image_tag }}" ]]; then
+            image_tag="${{ inputs.image_tag }}"
+          else
+            image_tag="${git_sha}"
+          fi
+
+          echo "image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
+          echo "Resolved image tag: ${image_tag}"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Release checks
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          DATABASE_URL: postgresql://chatai:chatai@127.0.0.1:5432/chatai
+          BETTER_AUTH_SECRET: ci-build-secret-at-least-32-chars-long
+          BETTER_AUTH_URL: http://127.0.0.1:3000
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          pnpm widget:check
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.git_sha }}
+          build-args: |
+            NEXT_PUBLIC_DOCS_URL=${{ env.NEXT_PUBLIC_DOCS_URL }}
+            NEXT_PUBLIC_APP_URL=${{ env.NEXT_PUBLIC_APP_URL }}
+            BETTER_AUTH_URL=${{ env.NEXT_PUBLIC_APP_URL }}
+
+  deploy:
+    name: Deploy to VPS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/chatai
+            export CHATAI_IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+            ./scripts/deploy.sh

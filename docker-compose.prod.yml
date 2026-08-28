@@ -1,0 +1,51 @@
+name: chatai
+
+services:
+  chatai:
+    image: ghcr.io/master-tecs/chatai:${CHATAI_IMAGE_TAG:?Set CHATAI_IMAGE_TAG to an immutable GHCR tag}
+    expose:
+      - "3000"
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      RUN_MIGRATIONS: "0"
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - chatai_uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      chatai:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  chatai_uploads:
+  caddy_data:
+  caddy_config:
