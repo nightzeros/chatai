@@ -6,8 +6,12 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
-echo "[entrypoint] Applying database migrations…"
-node /app/packages/database/scripts/migrate.mjs
+if [ "${RUN_MIGRATIONS:-1}" != "0" ]; then
+  echo "[entrypoint] Applying database migrations…"
+  node /app/packages/database/scripts/migrate.mjs
+else
+  echo "[entrypoint] RUN_MIGRATIONS=0 — skipping migrations (production deploy runs them separately)."
+fi
 
 echo "[entrypoint] Starting ChatAI…"
 node apps/web/server.js &

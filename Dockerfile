@@ -34,9 +34,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ARG DATABASE_URL=postgresql://chatai:chatai@db:5432/chatai
 ARG BETTER_AUTH_SECRET=build-time-secret-at-least-32-characters-long
 ARG BETTER_AUTH_URL=http://localhost:3000
+ARG NEXT_PUBLIC_DOCS_URL=https://docs.nightzeros.com
+ARG NEXT_PUBLIC_APP_URL=https://app.nightzeros.com
 ENV DATABASE_URL=$DATABASE_URL
 ENV BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
 ENV BETTER_AUTH_URL=$BETTER_AUTH_URL
+ENV NEXT_PUBLIC_DOCS_URL=$NEXT_PUBLIC_DOCS_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
 RUN pnpm --filter @chatai/web build
 
@@ -70,7 +74,10 @@ COPY --from=migrate-deps /migrate/node_modules ./packages/database/node_modules
 COPY scripts/seed-demo.mjs ./packages/database/scripts/seed-demo.mjs
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 
-RUN chmod +x /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh \
+  && chown -R nextjs:nodejs /app/packages/database /app/docker-entrypoint.sh
+
+USER nextjs
 
 EXPOSE 3000
 
