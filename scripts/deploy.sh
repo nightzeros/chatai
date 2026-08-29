@@ -39,8 +39,8 @@ echo "[deploy] Pulling image…"
 docker compose -f "$COMPOSE_FILE" pull chatai
 
 echo "[deploy] Running migrations once (before switching app)…"
-if ! docker compose -f "$COMPOSE_FILE" run --rm --no-deps chatai \
-  node /app/packages/database/scripts/migrate.mjs; then
+if ! docker compose -f "$COMPOSE_FILE" run --rm --no-deps --entrypoint node chatai \
+  /app/packages/database/scripts/migrate.mjs; then
   echo "[deploy] Migration failed. App was not restarted." >&2
   echo "[deploy] The running container (if any) remains on the previous image." >&2
   if [[ -n "$previous_tag" ]]; then
