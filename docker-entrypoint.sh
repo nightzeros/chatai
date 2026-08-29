@@ -6,6 +6,11 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
+# One-off commands (e.g. deploy.sh migrations): bypass server startup.
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
 if [ "${RUN_MIGRATIONS:-1}" != "0" ]; then
   echo "[entrypoint] Applying database migrations…"
   node /app/packages/database/scripts/migrate.mjs
