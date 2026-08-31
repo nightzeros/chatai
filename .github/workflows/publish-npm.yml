@@ -1,0 +1,120 @@
+name: Publish npm packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to npm (requires npm environment approval)
+        type: boolean
+        default: false
+      dry_run:
+        description: npm publish --dry-run (no registry upload)
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: publish-npm-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate and pack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.21.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync package versions
+        run: pnpm packages:sync-versions
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build monorepo
+        run: pnpm build
+
+      - name: Verify hosted widget asset
+        run: pnpm widget:check
+
+      - name: Verify npm packages (build + pack)
+        run: pnpm packages:verify
+
+      - name: Verify tarball install smoke
+        run: pnpm packages:verify-install
+
+      - name: Upload packed tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-pack-${{ github.sha }}
+          path: /tmp/chatai-npm-pack/*.tgz
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm
+    needs: validate
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.publish == true) ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.21.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync package versions
+        run: pnpm packages:sync-versions
+
+      - name: Build publishable packages
+        run: pnpm packages:build
+
+      - name: Publish (OIDC + provenance)
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true && '1' || '0' }}
+        run: |
+          if [ "$DRY_RUN" = "1" ]; then
+            node scripts/publish-npm-packages.mjs --dry-run
+          else
+            node scripts/publish-npm-packages.mjs
+          fi

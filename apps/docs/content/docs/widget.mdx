@@ -5,11 +5,25 @@ description: Embed ChatAI with a script tag (hosted or self-hosted chat.js).
 
 The embeddable widget is an IIFE bundle (`chat.js`) with a Shadow DOM launcher. Copy the exact snippet from the assistant **Install** tab.
 
+**Zero-install (recommended):** load hosted `chat.js` from your ChatAI deployment — no npm package required.
+
+**Programmatic embed:** install `@chatai/widget` or `@chatai/react` from npm when you need `mountWidget` / `<ChatWidget />` in your bundler (see [React](/docs/react)). The hosted IIFE is not published to npm.
+
 Browser baseline: modern evergreen browsers with Shadow DOM and `fetch` / streaming support.
 
 ## Hosted script (recommended)
 
-Load `chat.js` from your ChatAI origin. The widget derives the API origin from the script URL — do **not** set `data-api-url`.
+Load `chat.js` from your ChatAI origin. Production hosted URL:
+
+```html
+<script
+  src="https://app.nightzeros.com/widget/chat.js"
+  data-assistant-id="asst_your_public_id"
+  async
+></script>
+```
+
+Self-hosted ChatAI instance:
 
 ```html
 <script

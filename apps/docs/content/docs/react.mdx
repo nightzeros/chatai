@@ -3,7 +3,15 @@ title: React
 description: Use the ChatWidget React package in your app.
 ---
 
-`@chatai/react` is a **private workspace package** (not on npm yet). Use it inside this monorepo with `workspace:*`. Peer dependency: React 18 or 19.
+Install from npm:
+
+```bash
+pnpm add @chatai/react
+```
+
+Peer dependency: React 18 or 19. The package entry includes `"use client"` for Next.js App Router.
+
+Inside this monorepo during development, use `workspace:*` instead of the public registry.
 
 ```json
 {
@@ -16,13 +24,15 @@ description: Use the ChatWidget React package in your app.
 ## Basic usage
 
 ```tsx
+"use client";
+
 import { ChatWidget } from "@chatai/react";
 
 export function SupportChat() {
   return (
     <ChatWidget
       assistantId="asst_your_public_id"
-      apiUrl="https://your-chatai-instance.example"
+      apiUrl="https://app.nightzeros.com"
     />
   );
 }

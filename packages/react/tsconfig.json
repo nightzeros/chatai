@@ -4,10 +4,7 @@
     "baseUrl": ".",
     "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx",
-    "rootDir": "src",
-    "paths": {
-      "@chatai/widget": ["src/widget-types.ts"]
-    }
+    "rootDir": "src"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

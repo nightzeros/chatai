@@ -1,8 +1,6 @@
 # ChatAI React widget example
 
-Minimal Vite + React app that mounts the private `@chatai/react` package via
-`workspace:*`. Do not publish this example or expect `pnpm add @chatai/react`
-from npm until packages are published.
+Minimal Vite + React app that mounts `@chatai/react`.
 
 ## Prerequisites
 
@@ -24,7 +22,7 @@ VITE_CHATAI_ASSISTANT_ID=asst_replace_me
 | `VITE_CHATAI_ORIGIN` | Absolute ChatAI origin passed as `apiUrl` |
 | `VITE_CHATAI_ASSISTANT_ID` | Assistant `publicId` |
 
-## Run
+## Run (monorepo)
 
 ```bash
 cp examples/react-widget/.env.example examples/react-widget/.env
@@ -32,6 +30,18 @@ cp examples/react-widget/.env.example examples/react-widget/.env
 
 pnpm --filter @chatai/example-react-widget dev
 ```
+
+## Test with packed tarballs (CI-style)
+
+After `pnpm packages:verify` from the repo root:
+
+```bash
+npm install /tmp/chatai-npm-pack/chatai-widget-core-*.tgz \
+  /tmp/chatai-npm-pack/chatai-widget-*.tgz \
+  /tmp/chatai-npm-pack/chatai-react-*.tgz
+```
+
+Then point the example at those installs instead of `workspace:*`.
 
 Open the printed local URL. The launcher mounts via:
 

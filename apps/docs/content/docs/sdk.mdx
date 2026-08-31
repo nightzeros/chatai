@@ -3,7 +3,13 @@ title: TypeScript SDK
 description: Thin @chatai/sdk client for streaming chat and owner REST routes.
 ---
 
-`@chatai/sdk` is a **private workspace package** (not on npm yet). Use it inside this monorepo with `workspace:*`.
+Install from npm (server-side only):
+
+```bash
+pnpm add @chatai/sdk
+```
+
+Inside this monorepo during development, use `workspace:*`:
 
 ```json
 {
@@ -17,7 +23,7 @@ It wraps Bearer REST + SSE chat. OpenAPI for the same surface: [REST API](/docs/
 
 ## Setup
 
-1. Run ChatAI (`pnpm dev` or Docker)
+1. Run ChatAI (`pnpm dev`, Docker, or `https://app.nightzeros.com`)
 2. Create an assistant and knowledge (or `pnpm seed:demo`)
 3. In **Account**, create an API key with at least the **chat** scope; copy `sk_live_…`
 4. Note the assistant **public id** (`asst_…`)
@@ -29,7 +35,7 @@ import { ChatAI } from "@chatai/sdk";
 
 const client = new ChatAI({
   apiKey: process.env.CHATAI_API_KEY!,
-  baseUrl: process.env.CHATAI_API_URL ?? "http://localhost:3000",
+  baseUrl: process.env.CHATAI_API_URL ?? "https://app.nightzeros.com",
 });
 
 const result = await client.chat({

@@ -22,6 +22,10 @@ pnpm build
 pnpm docs:build
 pnpm widget:check
 pnpm ci:widget-release # meta-check that CI gates stay wired
+pnpm packages:sync-versions
+pnpm packages:build
+pnpm packages:verify
+pnpm packages:verify-install
 pnpm e2e
 ```
 
@@ -37,7 +41,13 @@ BASE_URL=http://127.0.0.1:3000 ASSISTANT_ID=asst_… pnpm loadtest:smoke
 2. Tag: `git tag -a v$(cat VERSION) -m "ChatAI $(cat VERSION)"`
 3. Push: `git push origin main --tags`
 4. Create GitHub Release from the tag (notes from `CHANGELOG.md`).
-5. When npm publish is enabled: publish `@chatai/sdk`, `@chatai/widget`, `@chatai/react` at the same version.
+5. **npm client packages** (when ready — see [docs/deployment/npm-publish.md](./deployment/npm-publish.md)):
+   - Complete npm Trusted Publisher linking for `@chatai/widget-core`, `@chatai/widget`, `@chatai/react`, `@chatai/sdk`
+   - Configure GitHub environment **`npm`** with required reviewers
+   - After tag push: review `publish-npm.yml` artifacts (packed tarballs)
+   - Approve publish via `workflow_dispatch` (`publish=true`) or the tag-triggered `npm` environment gate
+   - Publish order: widget-core → widget → react → sdk (same `VERSION` as the git tag)
+   - Smoke test: `pnpm add @chatai/react` in a clean app pointing at your production origin
 
 ## Post-release smoke
 
