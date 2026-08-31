@@ -1,5 +1,5 @@
 {
-  "name": "@chatai/sdk",
+  "name": "@nightzeros/chatai-sdk",
   "version": "1.0.0",
   "description": "OpenAPI schemas and types for ChatAI, an open-source project by NightZeros",
   "author": "NightZeros",

@@ -1,5 +1,5 @@
 {
-  "name": "@chatai/widget-core",
+  "name": "@nightzeros/chatai-widget-core",
   "version": "1.0.0",
   "description": "Core widget runtime for ChatAI, an open-source project by NightZeros",
   "author": "NightZeros",

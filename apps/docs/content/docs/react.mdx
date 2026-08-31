@@ -6,7 +6,7 @@ description: Use the ChatWidget React package in your app.
 Install from npm:
 
 ```bash
-pnpm add @chatai/react
+pnpm add @nightzeros/chatai-react
 ```
 
 Peer dependency: React 18 or 19. The package entry includes `"use client"` for Next.js App Router.
@@ -16,7 +16,7 @@ Inside this monorepo during development, use `workspace:*` instead of the public
 ```json
 {
   "dependencies": {
-    "@chatai/react": "workspace:*"
+    "@nightzeros/chatai-react": "workspace:*"
   }
 }
 ```
@@ -26,7 +26,7 @@ Inside this monorepo during development, use `workspace:*` instead of the public
 ```tsx
 "use client";
 
-import { ChatWidget } from "@chatai/react";
+import { ChatWidget } from "@nightzeros/chatai-react";
 
 export function SupportChat() {
   return (

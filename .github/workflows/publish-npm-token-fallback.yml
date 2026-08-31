@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       npm_token:
-        description: NPM_TOKEN with publish access to @chatai/* (paste for this run only if not stored as secret)
+        description: NPM_TOKEN with publish access to @nightzeros/chatai-* (paste for this run only if not stored as secret)
         type: string
         required: false
       dry_run:

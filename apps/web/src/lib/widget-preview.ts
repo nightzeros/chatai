@@ -1,4 +1,4 @@
-import type { ChatWidgetOptions } from "@chatai/react";
+import type { ChatWidgetOptions } from "@nightzeros/chatai-react";
 
 import type { AssistantSettingsInput } from "@/lib/assistant-settings";
 

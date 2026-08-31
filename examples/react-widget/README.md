@@ -1,6 +1,6 @@
 # ChatAI React widget example
 
-Minimal Vite + React app that mounts `@chatai/react`.
+Minimal Vite + React app that mounts `@nightzeros/chatai-react`.
 
 ## Prerequisites
 

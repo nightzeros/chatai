@@ -15,7 +15,7 @@ Use this **only** when npm Trusted Publishing (OIDC) is unavailable—for exampl
 [`.github/workflows/publish-npm-token-fallback.yml`](../../.github/workflows/publish-npm-token-fallback.yml) is **not** attached to `v*` tags and has `if: false` on the job. To use it:
 
 1. Remove or override the `if: false` guard in a maintainer branch (do not merge to `main` unless you intend to enable token auth).
-2. Add repository secret **`NPM_TOKEN`** with publish access to `@chatai/*`.
+2. Add repository secret **`NPM_TOKEN`** with publish access to `@nightzeros/chatai-*`.
 3. Run **workflow_dispatch** with `dry_run=true` first.
 4. Set `dry_run=false` only after inspecting dry-run output.
 

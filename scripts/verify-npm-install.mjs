@@ -42,14 +42,14 @@ function main() {
     run(`npm install ${tarballs}`, installRoot);
 
     const reactCheck = `
-      import { ChatWidget } from "@chatai/react";
+      import { ChatWidget } from "@nightzeros/chatai-react";
       if (typeof ChatWidget !== "function") throw new Error("ChatWidget export missing");
-      console.log("[packages:verify-install] @chatai/react ok");
+      console.log("[packages:verify-install] @nightzeros/chatai-react ok");
     `;
     const sdkCheck = `
-      import { ChatAI } from "@chatai/sdk";
+      import { ChatAI } from "@nightzeros/chatai-sdk";
       if (typeof ChatAI !== "function") throw new Error("ChatAI export missing");
-      console.log("[packages:verify-install] @chatai/sdk ok");
+      console.log("[packages:verify-install] @nightzeros/chatai-sdk ok");
     `;
 
     writeFileSync(path.join(installRoot, "check-react.mjs"), reactCheck);
@@ -58,8 +58,15 @@ function main() {
     run("node check-react.mjs", installRoot);
     run("node check-sdk.mjs", installRoot);
 
-    const reactTypes = path.join(installRoot, "node_modules", "@chatai", "react", "dist", "index.d.ts");
-    const sdkTypes = path.join(installRoot, "node_modules", "@chatai", "sdk", "dist", "index.d.ts");
+    const reactTypes = path.join(
+      installRoot,
+      "node_modules",
+      "@nightzeros",
+      "chatai-react",
+      "dist",
+      "index.d.ts",
+    );
+    const sdkTypes = path.join(installRoot, "node_modules", "@nightzeros", "chatai-sdk", "dist", "index.d.ts");
     if (!existsSync(reactTypes) || !existsSync(sdkTypes)) {
       throw new Error("Installed packages are missing dist/index.d.ts type declarations");
     }

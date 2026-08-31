@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { NPM_PUBLIC_PACKAGES } from "./npm-public-packages.mjs";
+import { LEGACY_PUBLISH_PACKAGE_NAMES, NPM_PUBLIC_PACKAGES } from "./npm-public-packages.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packDir = path.join(os.tmpdir(), "chatai-npm-pack");
@@ -61,6 +61,17 @@ function findTarball(scopedName, version) {
   return fullPath;
 }
 
+function assertNoLegacyPublishNames(tarballPath, entries, pkg) {
+  for (const entry of entries) {
+    const content = runCapture(`tar -xOzf ${JSON.stringify(tarballPath)} ${JSON.stringify(entry)}`);
+    for (const legacyName of LEGACY_PUBLISH_PACKAGE_NAMES) {
+      if (content.includes(legacyName)) {
+        throw new Error(`${pkg.name}: tarball entry ${entry} still references legacy publish name ${legacyName}`);
+      }
+    }
+  }
+}
+
 function verifyTarball(tarballPath, pkg) {
   const entries = listTarEntries(tarballPath);
   assertNoForbiddenPaths(entries);
@@ -71,7 +82,7 @@ function verifyTarball(tarballPath, pkg) {
     throw new Error(`${pkg.name}: tarball missing dist/index.js or dist/index.d.ts`);
   }
 
-  if (pkg.name === "@chatai/widget") {
+  if (pkg.name === "@nightzeros/chatai-widget") {
     const hasChatJs = entries.some((entry) => entry.endsWith("/dist/chat.js"));
     if (hasChatJs) {
       throw new Error(`${pkg.name}: dist/chat.js must not be included in npm tarball`);
@@ -82,6 +93,8 @@ function verifyTarball(tarballPath, pkg) {
   if (JSON.stringify(manifest).includes("workspace:")) {
     throw new Error(`${pkg.name}: packed package.json still contains workspace: references`);
   }
+
+  assertNoLegacyPublishNames(tarballPath, entries, pkg);
 
   const sizeKb = Math.round(statSync(tarballPath).size / 1024);
   console.log(`[packages:verify] ${pkg.name} ok (${sizeKb} KiB) → ${tarballPath}`);

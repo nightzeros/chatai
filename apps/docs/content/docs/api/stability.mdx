@@ -35,12 +35,12 @@ Breaking changes ship only under a new prefix (e.g. `/api/v2`) while `/api/v1` r
 
 ## Contract tests
 
-The monorepo stores a frozen fingerprint of all documented operations in `@chatai/sdk` (`openapi.fingerprint.json`). CI fails if routes are added, removed, or renamed without updating the fingerprint intentionally.
+The monorepo stores a frozen fingerprint of all documented operations in `@nightzeros/chatai-sdk` (`openapi.fingerprint.json`). CI fails if routes are added, removed, or renamed without updating the fingerprint intentionally.
 
 Regenerate after an approved API change:
 
 ```bash
-pnpm --filter @chatai/sdk openapi:fingerprint
+pnpm --filter @nightzeros/chatai-sdk openapi:fingerprint
 ```
 
 ## Related

@@ -31,7 +31,7 @@ export default function HomePage() {
           <h1>Product engineer building calm interfaces for complex tools.</h1>
           <p>
             This page is a ChatAI example: a static portfolio shell with{" "}
-            <code>@chatai/react</code> embedded so visitors can ask about projects.
+            <code>@nightzeros/chatai-react</code> embedded so visitors can ask about projects.
           </p>
         </section>
 

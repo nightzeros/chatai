@@ -159,16 +159,16 @@ packages/widget-core      Public npm: browser-safe chat client + config loading
 packages/widget           Public npm: Preact mount API; IIFE chat.js for hosted embed
 packages/react            Public npm: React / Next.js <ChatWidget />
 examples/html-widget      Hosted + self-host script fixtures
-examples/react-widget     Vite demo (@chatai/react from workspace or npm)
-examples/nextjs-portfolio App Router portfolio + @chatai/react
-examples/node-sdk-chat    Node script using @chatai/sdk
+examples/react-widget     Vite demo (@nightzeros/chatai-react from workspace or npm)
+examples/nextjs-portfolio App Router portfolio + @nightzeros/chatai-react
+examples/node-sdk-chat    Node script using @nightzeros/chatai-sdk
 ```
 
 Public install (hosted API at `https://app.nightzeros.com`):
 
 ```bash
-pnpm add @chatai/react    # React / Next.js embed
-pnpm add @chatai/sdk      # Node server client
+pnpm add @nightzeros/chatai-react    # React / Next.js embed
+pnpm add @nightzeros/chatai-sdk      # Node server client
 # Zero-install browser embed: load https://app.nightzeros.com/widget/chat.js
 ```
 
@@ -218,13 +218,13 @@ If `data-api-url` is missing or points at a different origin than the ChatAI API
 Install from npm (or `workspace:*` while developing in this monorepo):
 
 ```bash
-pnpm add @chatai/react
+pnpm add @nightzeros/chatai-react
 ```
 
 ```tsx
 "use client";
 
-import { ChatWidget } from "@chatai/react";
+import { ChatWidget } from "@nightzeros/chatai-react";
 
 export function SupportChat() {
   return (
@@ -264,11 +264,11 @@ OpenAPI: `GET /api/v1/openapi.json`.
 Install from npm (server-side only — never expose `sk_` keys in the browser):
 
 ```bash
-pnpm add @chatai/sdk
+pnpm add @nightzeros/chatai-sdk
 ```
 
 ```ts
-import { ChatAI } from "@chatai/sdk";
+import { ChatAI } from "@nightzeros/chatai-sdk";
 
 const client = new ChatAI({
   apiKey: process.env.CHATAI_API_KEY!,
@@ -314,7 +314,7 @@ Draft changes update the live preview immediately; only **Save** publishes them 
 | Launcher appears, chat fails | Self-host without `data-api-url`, or `data-api-url` / React `apiUrl` pointed at the wrong origin |
 | CORS errors in the console | API origin mismatch, or a reverse proxy stripping CORS headers on `/api/v1/*` |
 | Styling / settings look wrong | Unsaved Customize draft, or embed still caching an old `chat.js` copy |
-| `Cannot find package '@chatai/react'` / `@chatai/sdk` | Run `pnpm install`; in this monorepo use `workspace:*`, or `pnpm add @chatai/react` / `@chatai/sdk` from npm after publish |
+| `Cannot find package '@nightzeros/chatai-react'` / `@nightzeros/chatai-sdk` | Run `pnpm install`; in this monorepo use `workspace:*`, or `pnpm add @nightzeros/chatai-react` / `@nightzeros/chatai-sdk` from npm after publish |
 | Embedding model save rejected | Model native dimensions differ from instance `EMBEDDING_DIMENSIONS` (default 1536) |
 | REST `401` / `403` | Missing Bearer `sk_` key, revoked key, or missing scope |
 | REST `429` | Per-key rate limit; wait for `Retry-After` seconds |
@@ -347,7 +347,7 @@ Self-hosting, documentation site, and example apps:
 - `apps/docs` Fumadocs site (`pnpm docs:dev` on :3001) — install, self-hosting, product, API (Scalar), SDK
 - Examples: html-widget, react-widget, nextjs-portfolio, node-sdk-chat; support-bot walkthrough via `pnpm seed:demo`
 
-Next: first npm release of `@chatai/*` client packages ([docs/deployment/npm-publish.md](./docs/deployment/npm-publish.md)); post-1.0 features in [ROADMAP.md](./ROADMAP.md).
+Next: first npm release of `@nightzeros/chatai-*` client packages ([docs/deployment/npm-publish.md](./docs/deployment/npm-publish.md)); post-1.0 features in [ROADMAP.md](./ROADMAP.md).
 
 ## v0.6 status
 
@@ -357,7 +357,7 @@ Developer platform:
 - Per-assistant chat/embedding overrides when embedding dimensions match the instance
 - Hashed API keys, scoped Bearer REST, Postgres per-key rate limits
 - Dual-auth chat: widget `publicId` stays keyless; SDK uses `sk_` + `chat` scope
-- OpenAPI at `/api/v1/openapi.json`, `@chatai/sdk`, `examples/node-sdk-chat`
+- OpenAPI at `/api/v1/openapi.json`, `@nightzeros/chatai-sdk`, `examples/node-sdk-chat`
 
 ## v0.5 status
 
@@ -375,7 +375,7 @@ RAG quality and evaluation tooling:
 
 Widget delivery is in place:
 
-- Hosted `/widget/chat.js`, self-host copy + `data-api-url`, `@chatai/react` npm package  
+- Hosted `/widget/chat.js`, self-host copy + `data-api-url`, `@nightzeros/chatai-react` npm package  
 - Customize settings with draft preview and Install snippets  
 - Example fixtures under `examples/`  
 

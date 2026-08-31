@@ -1,5 +1,5 @@
 {
-  "name": "@chatai/widget",
+  "name": "@nightzeros/chatai-widget",
   "version": "1.0.0",
   "description": "Embeddable chat widget for ChatAI, an open-source project by NightZeros",
   "author": "NightZeros",
@@ -37,7 +37,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@chatai/widget-core": "workspace:*",
+    "@nightzeros/chatai-widget-core": "workspace:*",
     "preact": "^10.27.2"
   },
   "devDependencies": {

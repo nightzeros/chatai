@@ -6,7 +6,7 @@ Use this before tagging a product release. Canonical version: root `VERSION` fil
 
 - [ ] `VERSION` matches intended tag (`1.0.0` → `v1.0.0`)
 - [ ] `packages/sdk/src/version.ts` `API_VERSION` matches `VERSION`
-- [ ] OpenAPI fingerprint up to date (`pnpm --filter @chatai/sdk openapi:fingerprint` only if the contract changed intentionally)
+- [ ] OpenAPI fingerprint up to date (`pnpm --filter @nightzeros/chatai-sdk openapi:fingerprint` only if the contract changed intentionally)
 - [ ] `CHANGELOG.md` has a dated section for this version
 - [ ] Docs: API stability + versioning pages still accurate
 - [ ] No secrets in the tree (`.env` untracked)
@@ -42,12 +42,12 @@ BASE_URL=http://127.0.0.1:3000 ASSISTANT_ID=asst_… pnpm loadtest:smoke
 3. Push: `git push origin main --tags`
 4. Create GitHub Release from the tag (notes from `CHANGELOG.md`).
 5. **npm client packages** (when ready — see [docs/deployment/npm-publish.md](./deployment/npm-publish.md)):
-   - Complete npm Trusted Publisher linking for `@chatai/widget-core`, `@chatai/widget`, `@chatai/react`, `@chatai/sdk`
+   - Complete npm Trusted Publisher linking for `@nightzeros/chatai-widget-core`, `@nightzeros/chatai-widget`, `@nightzeros/chatai-react`, `@nightzeros/chatai-sdk`
    - Configure GitHub environment **`npm`** with required reviewers
    - After tag push: review `publish-npm.yml` artifacts (packed tarballs)
    - Approve publish via `workflow_dispatch` (`publish=true`) or the tag-triggered `npm` environment gate
    - Publish order: widget-core → widget → react → sdk (same `VERSION` as the git tag)
-   - Smoke test: `pnpm add @chatai/react` in a clean app pointing at your production origin
+   - Smoke test: `pnpm add @nightzeros/chatai-react` in a clean app pointing at your production origin
 
 ## Post-release smoke
 

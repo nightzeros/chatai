@@ -1,6 +1,6 @@
 # ChatAI Next.js portfolio example
 
-Minimal App Router site with a portfolio layout and the private `@chatai/react`
+Minimal App Router site with a portfolio layout and the private `@nightzeros/chatai-react`
 `<ChatWidget />` embed. Not published — use `workspace:*` inside this monorepo.
 
 ## Prerequisites
@@ -30,10 +30,10 @@ pnpm --filter @chatai/example-nextjs-portfolio dev
 ```
 
 Open [http://localhost:3002](http://localhost:3002). The floating chat launcher
-loads from `@chatai/react` against your ChatAI instance.
+loads from `@nightzeros/chatai-react` against your ChatAI instance.
 
 ## Notes
 
-- `@chatai/react` is not on npm yet — only `workspace:*` in this repo
+- `@nightzeros/chatai-react` is not on npm yet — only `workspace:*` in this repo
 - Point `NEXT_PUBLIC_CHATAI_API_URL` at the same origin as `BETTER_AUTH_URL` on the ChatAI app
 - For a seeded support bot: `pnpm seed:demo`, wait for ingestion, paste the Support Bot `publicId`

@@ -9,7 +9,7 @@ export default defineConfig({
   outDir: "dist",
   target: "es2022",
   platform: "browser",
-  external: ["@chatai/widget-core", "preact", "preact/hooks"],
+  external: ["@nightzeros/chatai-widget-core", "preact", "preact/hooks"],
   esbuildOptions(options) {
     options.jsx = "automatic";
     options.jsxImportSource = "preact";

@@ -9,7 +9,7 @@ export default defineConfig({
   outDir: "dist",
   target: "es2022",
   platform: "browser",
-  external: ["react", "react-dom", "@chatai/widget"],
+  external: ["react", "react-dom", "@nightzeros/chatai-widget"],
   banner: {
     js: '"use client";',
   },

@@ -1,12 +1,12 @@
 ---
 title: TypeScript SDK
-description: Thin @chatai/sdk client for streaming chat and owner REST routes.
+description: Thin @nightzeros/chatai-sdk client for streaming chat and owner REST routes.
 ---
 
 Install from npm (server-side only):
 
 ```bash
-pnpm add @chatai/sdk
+pnpm add @nightzeros/chatai-sdk
 ```
 
 Inside this monorepo during development, use `workspace:*`:
@@ -14,7 +14,7 @@ Inside this monorepo during development, use `workspace:*`:
 ```json
 {
   "dependencies": {
-    "@chatai/sdk": "workspace:*"
+    "@nightzeros/chatai-sdk": "workspace:*"
   }
 }
 ```
@@ -31,7 +31,7 @@ It wraps Bearer REST + SSE chat. OpenAPI for the same surface: [REST API](/docs/
 ## Streaming chat
 
 ```ts
-import { ChatAI } from "@chatai/sdk";
+import { ChatAI } from "@nightzeros/chatai-sdk";
 
 const client = new ChatAI({
   apiKey: process.env.CHATAI_API_KEY!,
