@@ -1,8 +1,8 @@
 /** @jsxImportSource preact */
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { WidgetControllerOptions, WidgetState } from "@chatai/widget-core";
+import type { WidgetControllerOptions, WidgetState } from "@nightzeros/chatai-widget-core";
 
-import { createWidgetController } from "@chatai/widget-core";
+import { createWidgetController } from "@nightzeros/chatai-widget-core";
 
 export type WidgetSettings = {
   primaryColor?: string;

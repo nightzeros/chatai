@@ -1,4 +1,4 @@
-import { resolveApiUrl, type WidgetControllerOptions } from "@chatai/widget-core";
+import { resolveApiUrl, type WidgetControllerOptions } from "@nightzeros/chatai-widget-core";
 
 type ScriptOptions = Pick<WidgetControllerOptions, "assistantId" | "apiUrl" | "signEndpoint"> & {
   theme?: "light" | "dark" | "system";

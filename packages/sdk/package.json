@@ -1,17 +1,37 @@
 {
-  "name": "@chatai/sdk",
+  "name": "@nightzeros/chatai-sdk",
   "version": "1.0.0",
   "description": "OpenAPI schemas and types for ChatAI, an open-source project by NightZeros",
   "author": "NightZeros",
+  "license": "MIT",
   "homepage": "https://nightzeros.com/chatai",
-  "repository": "github:master-tecs/chatai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/master-tecs/chatai.git",
+    "directory": "packages/sdk"
+  },
   "bugs": "https://github.com/master-tecs/chatai/issues",
-  "private": true,
   "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "tsup",
+    "build:lib": "tsup",
     "test": "vitest run",
     "openapi:fingerprint": "UPDATE_OPENAPI_FINGERPRINT=1 vitest run src/openapi.fingerprint.gen.test.ts",
     "typecheck": "tsc --noEmit",
@@ -23,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "tsup": "^8.5.0",
     "typescript": "^5.8.2",
     "vitest": "^4.1.10"
   }

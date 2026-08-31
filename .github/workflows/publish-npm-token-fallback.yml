@@ -1,0 +1,62 @@
+name: Publish npm packages (token fallback)
+
+# Emergency/manual fallback only. Default releases use publish-npm.yml with npm Trusted Publishing (OIDC).
+# Do not attach this workflow to v* tags.
+
+on:
+  workflow_dispatch:
+    inputs:
+      npm_token:
+        description: NPM_TOKEN with publish access to @nightzeros/chatai-* (paste for this run only if not stored as secret)
+        type: string
+        required: false
+      dry_run:
+        description: npm publish --dry-run
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish-token:
+    name: Publish with NPM_TOKEN
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.21.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+          always-auth: true
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync and build
+        run: |
+          pnpm packages:sync-versions
+          pnpm packages:build
+
+      - name: Publish with token
+        env:
+          NODE_AUTH_TOKEN: ${{ inputs.npm_token != '' && inputs.npm_token || secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "Set repository secret NPM_TOKEN or provide npm_token input." >&2
+            exit 1
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node scripts/publish-npm-packages.mjs --dry-run
+          else
+            node scripts/publish-npm-packages.mjs
+          fi

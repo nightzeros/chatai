@@ -1,6 +1,6 @@
 "use client";
 
-import { ChatWidget } from "@chatai/react";
+import { ChatWidget } from "@nightzeros/chatai-react";
 
 import type { AssistantSettingsInput } from "@/lib/assistant-settings";
 import { previewWidgetOptions } from "@/lib/widget-preview";

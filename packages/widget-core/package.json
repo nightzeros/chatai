@@ -1,22 +1,40 @@
 {
-  "name": "@chatai/widget-core",
+  "name": "@nightzeros/chatai-widget-core",
   "version": "1.0.0",
   "description": "Core widget runtime for ChatAI, an open-source project by NightZeros",
   "author": "NightZeros",
+  "license": "MIT",
   "homepage": "https://nightzeros.com/chatai",
-  "repository": "github:master-tecs/chatai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/master-tecs/chatai.git",
+    "directory": "packages/widget-core"
+  },
   "bugs": "https://github.com/master-tecs/chatai/issues",
-  "private": true,
   "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "tsup",
+    "build:lib": "tsup",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
   "devDependencies": {
+    "tsup": "^8.5.0",
     "typescript": "^5.8.2",
     "vitest": "^4.1.10"
   }

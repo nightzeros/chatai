@@ -1,4 +1,4 @@
-import { assistantCreateSchema, assistantPatchSchema } from "@chatai/sdk";
+import { assistantCreateSchema, assistantPatchSchema } from "@nightzeros/chatai-sdk";
 
 export const DEFAULT_WELCOME = "Hi! How can I help you today?";
 export const DEFAULT_INSTRUCTIONS =

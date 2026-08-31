@@ -40,11 +40,11 @@ describe("buildInstallSnippets", () => {
   });
 
   it("builds a React snippet against the shared package API", () => {
-    expect(snippets.reactTsx).toContain('import { ChatWidget } from "@chatai/react";');
+    expect(snippets.reactTsx).toContain('import { ChatWidget } from "@nightzeros/chatai-react";');
     expect(snippets.reactTsx).toContain('assistantId="asst_demo123"');
     expect(snippets.reactTsx).toContain('apiUrl="https://chat.example.com"');
-    expect(snippets.reactInstall).toContain("@chatai/react");
-    expect(snippets.reactInstall).toContain("workspace");
+    expect(snippets.reactInstall).toContain("@nightzeros/chatai-react");
+    expect(snippets.reactInstall).toContain("pnpm add");
   });
 
   it("documents security controls available in settings", () => {

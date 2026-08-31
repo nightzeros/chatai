@@ -144,22 +144,35 @@ pnpm db:studio     # Drizzle Studio
 ## Monorepo
 
 ```text
-apps/web              Dashboard + APIs + hosted /widget/chat.js
-apps/docs             Documentation site (Fumadocs) — pnpm docs:dev → :3001
-packages/database     Schema, migrations, DB client
-packages/ai           LLM + embeddings
-packages/rag          Ingestion + answering
-packages/evals        Offline/online eval scoring + run details
-packages/sdk          TypeScript REST client + OpenAPI document
+app.nightzeros.com        Hosted ChatAI API + zero-install /widget/chat.js
+docs.nightzeros.com       Documentation site
 
-packages/widget-core  Browser-safe chat client + config loading
-packages/widget       Preact Shadow DOM bundle (IIFE chat.js)
-packages/react        Thin React wrapper (private workspace package)
-examples/html-widget  Hosted + self-host script fixtures
-examples/react-widget Vite demo using workspace:* @chatai/react
-examples/nextjs-portfolio App Router portfolio + @chatai/react
-examples/node-sdk-chat Node script using workspace:* @chatai/sdk
+apps/web                  Dashboard + APIs + hosted /widget/chat.js
+apps/docs                 Documentation site (Fumadocs) — pnpm docs:dev → :3001
+packages/database         Schema, migrations, DB client
+packages/ai               LLM + embeddings
+packages/rag              Ingestion + answering
+packages/evals            Offline/online eval scoring + run details
+packages/sdk              Public npm: Node REST + SSE client + OpenAPI
+
+packages/widget-core      Public npm: browser-safe chat client + config loading
+packages/widget           Public npm: Preact mount API; IIFE chat.js for hosted embed
+packages/react            Public npm: React / Next.js <ChatWidget />
+examples/html-widget      Hosted + self-host script fixtures
+examples/react-widget     Vite demo (@nightzeros/chatai-react from workspace or npm)
+examples/nextjs-portfolio App Router portfolio + @nightzeros/chatai-react
+examples/node-sdk-chat    Node script using @nightzeros/chatai-sdk
 ```
+
+Public install (hosted API at `https://app.nightzeros.com`):
+
+```bash
+pnpm add @nightzeros/chatai-react    # React / Next.js embed
+pnpm add @nightzeros/chatai-sdk      # Node server client
+# Zero-install browser embed: load https://app.nightzeros.com/widget/chat.js
+```
+
+Inside this monorepo, use `workspace:*` until you cut a release tag. See [docs/deployment/npm-publish.md](./docs/deployment/npm-publish.md).
 
 ## Embed the widget
 
@@ -200,32 +213,30 @@ That writes `examples/html-widget/chat.js` for [`examples/html-widget/self-host.
 
 If `data-api-url` is missing or points at a different origin than the ChatAI API, the launcher may mount while config and chat requests fail (wrong host, CORS, or 404). The script host and the API host are independent when you self-host the bundle.
 
-## React workspace integration
+## React integration
 
-`@chatai/react` is a **private workspace package**. It is not published to npm yet. Install it only inside this monorepo with a `workspace:*` dependency (see [`examples/react-widget/`](./examples/react-widget/)):
+Install from npm (or `workspace:*` while developing in this monorepo):
 
-```json
-{
-  "dependencies": {
-    "@chatai/react": "workspace:*"
-  }
-}
+```bash
+pnpm add @nightzeros/chatai-react
 ```
 
 ```tsx
-import { ChatWidget } from "@chatai/react";
+"use client";
+
+import { ChatWidget } from "@nightzeros/chatai-react";
 
 export function SupportChat() {
   return (
     <ChatWidget
       assistantId="asst_your_public_id"
-      apiUrl="https://your-chatai-instance.example"
+      apiUrl="https://app.nightzeros.com"
     />
   );
 }
 ```
 
-Do not run `pnpm add @chatai/react` from the public registry until the package is published. React 18 or 19 is required as a peer dependency.
+React 18 or 19 is required as a peer dependency. The package ships with a `"use client"` entry for Next.js App Router.
 
 ## Providers and model overrides
 
@@ -250,14 +261,18 @@ OpenAPI: `GET /api/v1/openapi.json`.
 
 ## TypeScript SDK
 
-`@chatai/sdk` is a **private workspace package** (not on npm). It wraps the Bearer REST API and dual-auth chat stream.
+Install from npm (server-side only — never expose `sk_` keys in the browser):
+
+```bash
+pnpm add @nightzeros/chatai-sdk
+```
 
 ```ts
-import { ChatAI } from "@chatai/sdk";
+import { ChatAI } from "@nightzeros/chatai-sdk";
 
 const client = new ChatAI({
   apiKey: process.env.CHATAI_API_KEY!,
-  baseUrl: "http://localhost:3000",
+  baseUrl: process.env.CHATAI_API_URL ?? "https://app.nightzeros.com",
 });
 
 const result = await client.chat({
@@ -299,7 +314,7 @@ Draft changes update the live preview immediately; only **Save** publishes them 
 | Launcher appears, chat fails | Self-host without `data-api-url`, or `data-api-url` / React `apiUrl` pointed at the wrong origin |
 | CORS errors in the console | API origin mismatch, or a reverse proxy stripping CORS headers on `/api/v1/*` |
 | Styling / settings look wrong | Unsaved Customize draft, or embed still caching an old `chat.js` copy |
-| `Cannot find package '@chatai/react'` / `@chatai/sdk` | Packages are private; use `workspace:*` inside this monorepo until npm publish |
+| `Cannot find package '@nightzeros/chatai-react'` / `@nightzeros/chatai-sdk` | Run `pnpm install`; in this monorepo use `workspace:*`, or `pnpm add @nightzeros/chatai-react` / `@nightzeros/chatai-sdk` from npm after publish |
 | Embedding model save rejected | Model native dimensions differ from instance `EMBEDDING_DIMENSIONS` (default 1536) |
 | REST `401` / `403` | Missing Bearer `sk_` key, revoked key, or missing scope |
 | REST `429` | Per-key rate limit; wait for `Retry-After` seconds |
@@ -332,7 +347,7 @@ Self-hosting, documentation site, and example apps:
 - `apps/docs` Fumadocs site (`pnpm docs:dev` on :3001) — install, self-hosting, product, API (Scalar), SDK
 - Examples: html-widget, react-widget, nextjs-portfolio, node-sdk-chat; support-bot walkthrough via `pnpm seed:demo`
 
-Next: npm publish of packages when ready; post-1.0 features in [ROADMAP.md](./ROADMAP.md).
+Next: first npm release of `@nightzeros/chatai-*` client packages ([docs/deployment/npm-publish.md](./docs/deployment/npm-publish.md)); post-1.0 features in [ROADMAP.md](./ROADMAP.md).
 
 ## v0.6 status
 
@@ -342,7 +357,7 @@ Developer platform:
 - Per-assistant chat/embedding overrides when embedding dimensions match the instance
 - Hashed API keys, scoped Bearer REST, Postgres per-key rate limits
 - Dual-auth chat: widget `publicId` stays keyless; SDK uses `sk_` + `chat` scope
-- OpenAPI at `/api/v1/openapi.json`, private `@chatai/sdk`, `examples/node-sdk-chat`
+- OpenAPI at `/api/v1/openapi.json`, `@nightzeros/chatai-sdk`, `examples/node-sdk-chat`
 
 ## v0.5 status
 
@@ -360,7 +375,7 @@ RAG quality and evaluation tooling:
 
 Widget delivery is in place:
 
-- Hosted `/widget/chat.js`, self-host copy + `data-api-url`, private `@chatai/react` wrapper  
+- Hosted `/widget/chat.js`, self-host copy + `data-api-url`, `@nightzeros/chatai-react` npm package  
 - Customize settings with draft preview and Install snippets  
 - Example fixtures under `examples/`  
 

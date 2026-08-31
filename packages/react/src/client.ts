@@ -1,4 +1,4 @@
-import { mountWidget, type WidgetInstance, type WidgetMountOptions } from "@chatai/widget";
+import { mountWidget, type WidgetInstance, type WidgetMountOptions } from "@nightzeros/chatai-widget";
 
 export type ChatWidgetOptions = WidgetMountOptions;
 

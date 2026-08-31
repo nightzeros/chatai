@@ -1,4 +1,4 @@
-import { getOpenApiDocument } from "@chatai/sdk";
+import { getOpenApiDocument } from "@nightzeros/chatai-sdk";
 
 export function GET() {
   return Response.json(getOpenApiDocument(), {

@@ -47,7 +47,7 @@ The dashboard is at [http://localhost:3000](http://localhost:3000).
 - Use Prettier (`pnpm format`) and ESLint (`pnpm lint`).
 - Keep changes scoped to the task; avoid drive-by refactors.
 - Do not commit secrets (`.env`, API keys).
-- **API changes:** update OpenAPI in `@chatai/sdk` and regenerate the fingerprint (`pnpm --filter @chatai/sdk openapi:fingerprint`) when routes change. See [API stability](./apps/docs/content/docs/api/stability.mdx).
+- **API changes:** update OpenAPI in `@nightzeros/chatai-sdk` and regenerate the fingerprint (`pnpm --filter @nightzeros/chatai-sdk openapi:fingerprint`) when routes change. See [API stability](./apps/docs/content/docs/api/stability.mdx).
 - **Schema changes:** additive migrations for minor/patch; breaking DDL only in majors. See [versioning docs](./apps/docs/content/docs/self-hosting/versioning.mdx).
 
 ## Pull requests

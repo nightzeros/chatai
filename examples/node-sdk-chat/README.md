@@ -1,6 +1,6 @@
 # Node SDK chat example
 
-Minimal script that sends a question through [`@chatai/sdk`](../../packages/sdk) and prints the streamed answer.
+Minimal script that sends a question through [`@nightzeros/chatai-sdk`](../../packages/sdk) and prints the streamed answer.
 
 ## Prerequisites
 

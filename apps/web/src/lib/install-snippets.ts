@@ -66,10 +66,9 @@ export function buildInstallSnippets(input: InstallSnippetInput): InstallSnippet
     } async></script>`,
     selfHostedNote: `Copy ${WIDGET_ASSET_PATH} from this ChatAI instance and host the same file on your static origin. Keep data-api-url pointed at ${deploymentOrigin} so the widget can reach the public chat API.`,
     signedHtml,
-    reactInstall:
-      'Add "@chatai/react": "workspace:*" in this monorepo (private workspace package until npm publish)',
+    reactInstall: 'pnpm add @nightzeros/chatai-react',
     reactTsx: [
-      'import { ChatWidget } from "@chatai/react";',
+      'import { ChatWidget } from "@nightzeros/chatai-react";',
       "",
       "export function SupportChat() {",
       "  return (",

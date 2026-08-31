@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@chatai/sdk": "workspace:*",
+    "@nightzeros/chatai-sdk": "workspace:*",
     "@scalar/api-reference-react": "^0.9.65",
     "fumadocs-core": "15.6.0",
     "fumadocs-mdx": "11.6.0",

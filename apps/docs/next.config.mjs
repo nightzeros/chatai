@@ -10,7 +10,7 @@ const appDir = path.dirname(fileURLToPath(import.meta.url));
 const config = {
   reactStrictMode: true,
   outputFileTracingRoot: path.join(appDir, "../.."),
-  transpilePackages: ["@chatai/sdk", "@scalar/api-reference-react"],
+  transpilePackages: ["@nightzeros/chatai-sdk", "@scalar/api-reference-react"],
 };
 
 export default withMDX(config);

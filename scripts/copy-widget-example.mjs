@@ -9,7 +9,7 @@ const destination = path.join(root, "examples/html-widget/chat.js");
 try {
   await stat(source);
 } catch {
-  throw new Error("Widget bundle is missing. Run `pnpm --filter @chatai/widget build` before copying it.");
+  throw new Error("Widget bundle is missing. Run `pnpm --filter @nightzeros/chatai-widget build` before copying it.");
 }
 
 await mkdir(path.dirname(destination), { recursive: true });

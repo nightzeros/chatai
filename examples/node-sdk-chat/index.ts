@@ -1,4 +1,4 @@
-import { ChatAI, ChatAIError } from "@chatai/sdk";
+import { ChatAI, ChatAIError } from "@nightzeros/chatai-sdk";
 
 const apiKey = process.env.CHATAI_API_KEY;
 const assistantId = process.env.CHATAI_ASSISTANT_ID;

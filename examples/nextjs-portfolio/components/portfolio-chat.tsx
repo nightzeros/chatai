@@ -1,6 +1,6 @@
 "use client";
 
-import { ChatWidget } from "@chatai/react";
+import { ChatWidget } from "@nightzeros/chatai-react";
 
 export function PortfolioChat() {
   const assistantId = process.env.NEXT_PUBLIC_CHATAI_ASSISTANT_ID?.trim();

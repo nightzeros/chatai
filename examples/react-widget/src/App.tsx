@@ -1,4 +1,4 @@
-import { ChatWidget } from "@chatai/react";
+import { ChatWidget } from "@nightzeros/chatai-react";
 
 const assistantId = import.meta.env.VITE_CHATAI_ASSISTANT_ID;
 const apiUrl = import.meta.env.VITE_CHATAI_ORIGIN || "http://localhost:3000";

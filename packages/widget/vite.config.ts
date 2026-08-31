@@ -9,6 +9,6 @@ export default defineConfig({
       fileName: () => "chat.js",
     },
     outDir: "dist",
-    emptyOutDir: true,
+    emptyOutDir: false,
   },
 });

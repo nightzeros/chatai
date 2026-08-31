@@ -1,29 +1,49 @@
 {
-  "name": "@chatai/widget",
+  "name": "@nightzeros/chatai-widget",
   "version": "1.0.0",
   "description": "Embeddable chat widget for ChatAI, an open-source project by NightZeros",
   "author": "NightZeros",
+  "license": "MIT",
   "homepage": "https://nightzeros.com/chatai",
-  "repository": "github:master-tecs/chatai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/master-tecs/chatai.git",
+    "directory": "packages/widget"
+  },
   "bugs": "https://github.com/master-tecs/chatai/issues",
-  "private": true,
   "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
-    "build": "node scripts/embed-styles.mjs && vite build && node scripts/check-size.mjs",
+    "build:lib": "node scripts/embed-styles.mjs && tsup",
+    "build:iife": "node scripts/embed-styles.mjs && vite build && node scripts/check-size.mjs",
+    "build": "pnpm run build:lib && pnpm run build:iife",
     "test": "vitest run --environment happy-dom",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
   "dependencies": {
-    "@chatai/widget-core": "workspace:*",
+    "@nightzeros/chatai-widget-core": "workspace:*",
     "preact": "^10.27.2"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
     "happy-dom": "^17.4.4",
+    "tsup": "^8.5.0",
     "typescript": "^5.8.2",
     "vite": "^6.3.5",
     "vitest": "^4.1.10"
