@@ -1,6 +1,6 @@
 # npm package audit (client libraries)
 
-Audit for the `chore/npm-package-release` branch. Scope: prepare client libraries for public npm under `@nightzeros/chatai-*` without publishing in this PR.
+Audit for public npm packages under `@nightzeros/chatai-*`. Bootstrap **`1.0.0`** is live on npm (September 2025). Future releases use GitHub Actions OIDC Trusted Publishing.
 
 ## Publishable (this change)
 

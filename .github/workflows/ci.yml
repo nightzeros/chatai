@@ -75,6 +75,9 @@ jobs:
       - name: Verify hosted widget asset
         run: pnpm widget:check
 
+      - name: Verify npm publish workflow gates
+        run: pnpm ci:npm-publish
+
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
 
