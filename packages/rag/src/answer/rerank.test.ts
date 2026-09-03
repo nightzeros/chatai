@@ -57,10 +57,15 @@ describe("rerank", () => {
 
   it("uses Cohere when an API key is provided", async () => {
     const input = makeChunks(10);
-    const cohereRerankMock = vi.fn(async () => [
-      { index: 2, relevanceScore: 0.91 },
-      { index: 0, relevanceScore: 0.82 },
-    ]);
+    const cohereRerankMock = vi.fn(async () => ({
+      results: [
+        { index: 2, relevanceScore: 0.91 },
+        { index: 0, relevanceScore: 0.82 },
+      ],
+      usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, totalTokens: 0 },
+      model: "rerank-english-v3.0",
+      provider: "cohere" as const,
+    }));
 
     const result = await rerank({
       chunks: input,
@@ -119,9 +124,11 @@ describe("cohereRerank", () => {
     });
 
     expect(fetchImpl).toHaveBeenCalledOnce();
-    expect(results).toEqual([
+    expect(results.results).toEqual([
       { index: 1, relevanceScore: 0.77 },
       { index: 0, relevanceScore: 0.55 },
     ]);
+    expect(results.provider).toBe("cohere");
+    expect(results.model).toBe("rerank-english-v3.0");
   });
 });

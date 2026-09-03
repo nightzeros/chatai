@@ -11,6 +11,7 @@ import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { db } from "@/lib/db";
 import { enqueueReprocessForAssistant } from "@/lib/enqueue-reprocess";
 import { env } from "@/lib/env";
+import { getOrCreateHostingAccount } from "@/lib/hosting/accounts";
 import { createAssistantPublicId, createId } from "@/lib/ids";
 import {
   embeddingSettingsChanged,
@@ -67,6 +68,8 @@ export async function createAssistant(_prev: ActionState, formData: FormData): P
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
+
+  await getOrCreateHostingAccount(session.user.id);
 
   const id = createId();
 

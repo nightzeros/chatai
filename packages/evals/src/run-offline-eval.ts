@@ -1,4 +1,4 @@
-import { generateChat, type ChatConfig, type EmbeddingConfig } from "@chatai/ai";
+import { generateChat, runGenerateChat, type ChatConfig, type EmbeddingConfig } from "@chatai/ai";
 import {
   assistants,
   evalCases,
@@ -83,11 +83,25 @@ export async function runOfflineEvalCase(opts: {
     prepared = withVerifierResult(prepared, verified);
     fullText = verified.text;
   } else if (prepared.shouldGenerate) {
-    fullText = await generate({
+    const generated = await runGenerateChat(generate, {
       config: opts.chat,
       system: prepared.system,
       prompt: evalCase.question,
     });
+    fullText = generated.text;
+    prepared = {
+      ...prepared,
+      providerUsages: [
+        ...prepared.providerUsages,
+        {
+          kind: "chat_completion",
+          provider: opts.chat.provider,
+          model: opts.chat.model,
+          usage: generated.usage,
+          step: "offline_eval_answer",
+        },
+      ],
+    };
   }
 
   const final = finalizeAnswer(fullText, prepared);

@@ -124,6 +124,7 @@ describe("runOfflineEvalCase integration", () => {
           similarity: chunk.similarity,
         })),
       },
+      providerUsages: [],
     }));
 
     await runOfflineEvalCase({

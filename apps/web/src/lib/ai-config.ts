@@ -1,8 +1,9 @@
 import type { ChatConfig, EmbeddingConfig, ProviderEnv } from "@chatai/ai";
 import { resolveChatConfigFromEnv, resolveEmbeddingConfigFromEnv } from "@chatai/ai";
-import type { ModelSettings } from "@chatai/database";
+import type { ModelSettings, UsageBillingMode } from "@chatai/database";
 
 import { env } from "@/lib/env";
+import { resolveBillingMode } from "./hosting/billing-mode";
 import {
   getDecryptedProviderSecrets,
   type DecryptedProviderSecrets,
@@ -60,6 +61,12 @@ export type ResolveAssistantModelsOptions = {
   decryptedSecrets?: DecryptedProviderSecrets;
 };
 
+export type AssistantBillingModes = {
+  chat: UsageBillingMode;
+  embedding: UsageBillingMode;
+  rerank: UsageBillingMode;
+};
+
 /**
  * Resolve chat + embedding configs for an assistant.
  * Per-assistant API keys are decrypted only here (server-side) and never serialized
@@ -106,5 +113,15 @@ export async function resolveAssistantModels(
     embedding.apiKey = secrets.embedding.apiKey;
   }
 
-  return { chat, embedding };
+  const billing: AssistantBillingModes = {
+    chat: resolveBillingMode({ kind: "chat", provider: chat.provider, secrets }),
+    embedding: resolveBillingMode({
+      kind: "embedding",
+      provider: embedding.provider,
+      secrets,
+    }),
+    rerank: resolveBillingMode({ kind: "rerank", provider: "cohere", secrets }),
+  };
+
+  return { chat, embedding, billing };
 }

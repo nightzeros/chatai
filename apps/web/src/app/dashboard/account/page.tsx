@@ -1,8 +1,11 @@
+import Link from "next/link";
+
 import { AccountForms } from "@/components/account/account-forms";
 import { AboutCard } from "@/components/account/about-card";
 import { ApiKeysPanel } from "@/components/account/api-keys-panel";
 import { AuditLogPanel } from "@/components/account/audit-log-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Separator } from "@/components/ui/separator";
@@ -23,6 +26,20 @@ export default async function AccountPage() {
         title="Account"
         description="Profile, appearance, API keys, audit log, and account deletion."
       />
+
+      <Card className="shadow-none">
+        <CardHeader>
+          <CardTitle>Hosted AI usage</CardTitle>
+          <CardDescription>
+            View period spend, per-assistant breakdown, and recent metering events.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild variant="outline">
+            <Link href="/dashboard/usage">Open usage</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card className="shadow-none">
         <CardHeader>

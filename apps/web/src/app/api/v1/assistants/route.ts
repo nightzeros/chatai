@@ -4,6 +4,7 @@ import { getOwnedAssistantByRef, listAssistantsForUser } from "@/lib/assistants"
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
+import { getOrCreateHostingAccount } from "@/lib/hosting/accounts";
 import { createAssistantPublicId, createId } from "@/lib/ids";
 import {
   assistantCreateSchema,
@@ -36,6 +37,8 @@ export async function POST(request: Request) {
   }
 
   const data = normalizeAssistantWrite(parsed.data);
+  await getOrCreateHostingAccount(auth.auth.userId);
+
   const id = createId();
 
   const [created] = await db()

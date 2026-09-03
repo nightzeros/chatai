@@ -1,9 +1,17 @@
-import { generateChat, type ChatConfig } from "@chatai/ai";
+import {
+  emptyProviderUsage,
+  generateChat,
+  runGenerateChat,
+  type ChatConfig,
+  type GenerateChatFn,
+  type ProviderUsage,
+} from "@chatai/ai";
 
 import { extractCitationIndexes } from "./citations";
 import { FALLBACK_MESSAGE } from "./decide";
 import type { PreparedAnswer } from "./answer";
 import { buildContextBlocks, uniqueContextChunks } from "./prompt";
+import type { ProviderUsageRecord } from "./provider-usage";
 
 export type VerifierVerdict = {
   enabled: boolean;
@@ -16,10 +24,11 @@ export type VerifiedGeneration = {
   text: string;
   usedFallback: boolean;
   verifier: VerifierVerdict;
+  providerUsages: ProviderUsageRecord[];
 };
 
 export type VerifyAnswerDeps = {
-  generateChat: typeof generateChat;
+  generateChat: GenerateChatFn;
 };
 
 const STRICT_RETRY_SYSTEM = [
@@ -71,6 +80,20 @@ export function citationMarkersValid(answer: string, retrievedCount: number) {
   return { ok: true };
 }
 
+function chatUsageRecord(
+  chat: ChatConfig,
+  usage: ProviderUsage,
+  step: string,
+): ProviderUsageRecord {
+  return {
+    kind: "chat_completion",
+    provider: chat.provider,
+    model: chat.model,
+    usage,
+    step,
+  };
+}
+
 export async function verifyAnswer(opts: {
   question: string;
   answer: string;
@@ -78,16 +101,20 @@ export async function verifyAnswer(opts: {
   retrievedCount: number;
   chat: ChatConfig;
   deps?: Partial<VerifyAnswerDeps>;
-}): Promise<{ passed: boolean; reason: string }> {
+}): Promise<{ passed: boolean; reason: string; usage: ProviderUsage }> {
   const citations = citationMarkersValid(opts.answer, opts.retrievedCount);
   if (!citations.ok) {
-    return { passed: false, reason: citations.reason ?? "Invalid citations." };
+    return {
+      passed: false,
+      reason: citations.reason ?? "Invalid citations.",
+      usage: emptyProviderUsage(),
+    };
   }
 
   const generate = opts.deps?.generateChat ?? generateChat;
 
   try {
-    const raw = await generate({
+    const { text: raw, usage } = await runGenerateChat(generate, {
       config: opts.chat,
       system:
         'You verify whether an answer is supported by retrieved sources and uses citation markers correctly. Return ONLY JSON like {"pass":true,"reason":"..."}.',
@@ -98,9 +125,13 @@ export async function verifyAnswer(opts: {
         "Fail if the answer invents facts, contradicts the sources, or uses citation markers that do not match the sources.",
       ].join("\n\n"),
     });
-    return parseVerifierResponse(raw);
+    return { ...parseVerifierResponse(raw), usage };
   } catch {
-    return { passed: true, reason: "Verifier unavailable; accepted the generated answer." };
+    return {
+      passed: true,
+      reason: "Verifier unavailable; accepted the generated answer.",
+      usage: emptyProviderUsage(),
+    };
   }
 }
 
@@ -114,50 +145,57 @@ export async function generateVerifiedAnswer(opts: {
   const contextChunks = uniqueContextChunks(opts.prepared.retrieved);
   const context = buildContextBlocks(contextChunks);
   const retrievedCount = contextChunks.length;
+  const providerUsages: ProviderUsageRecord[] = [];
 
-  const first = await generate({
+  const first = await runGenerateChat(generate, {
     config: opts.chat,
     system: opts.prepared.system,
     prompt: opts.question,
   });
+  providerUsages.push(chatUsageRecord(opts.chat, first.usage, "verified_answer"));
 
   const firstVerdict = await verifyAnswer({
     question: opts.question,
-    answer: first,
+    answer: first.text,
     context,
     retrievedCount,
     chat: opts.chat,
     deps: opts.deps,
   });
+  providerUsages.push(chatUsageRecord(opts.chat, firstVerdict.usage, "verify_answer"));
 
   if (firstVerdict.passed) {
     return {
-      text: first,
+      text: first.text,
       usedFallback: false,
       verifier: { enabled: true, passed: true, reason: firstVerdict.reason, regenerated: false },
+      providerUsages,
     };
   }
 
-  const retry = await generate({
+  const retry = await runGenerateChat(generate, {
     config: opts.chat,
     system: `${opts.prepared.system}\n\n${STRICT_RETRY_SYSTEM}`,
     prompt: opts.question,
   });
+  providerUsages.push(chatUsageRecord(opts.chat, retry.usage, "verified_answer_retry"));
 
   const retryVerdict = await verifyAnswer({
     question: opts.question,
-    answer: retry,
+    answer: retry.text,
     context,
     retrievedCount,
     chat: opts.chat,
     deps: opts.deps,
   });
+  providerUsages.push(chatUsageRecord(opts.chat, retryVerdict.usage, "verify_answer_retry"));
 
   if (retryVerdict.passed) {
     return {
-      text: retry,
+      text: retry.text,
       usedFallback: false,
       verifier: { enabled: true, passed: true, reason: retryVerdict.reason, regenerated: true },
+      providerUsages,
     };
   }
 
@@ -165,6 +203,7 @@ export async function generateVerifiedAnswer(opts: {
     text: FALLBACK_MESSAGE,
     usedFallback: true,
     verifier: { enabled: true, passed: false, reason: retryVerdict.reason, regenerated: true },
+    providerUsages,
   };
 }
 
@@ -173,6 +212,7 @@ export function withVerifierResult(prepared: PreparedAnswer, result: VerifiedGen
     ...prepared,
     outcome: result.usedFallback ? "fallback_no_context" : prepared.outcome,
     shouldGenerate: prepared.shouldGenerate && !result.usedFallback,
+    providerUsages: [...(prepared.providerUsages ?? []), ...(result.providerUsages ?? [])],
     debug: {
       ...prepared.debug,
       verifier: result.verifier,

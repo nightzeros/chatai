@@ -8,6 +8,7 @@ import { nextCookies } from "better-auth/next-js";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { sendEmail } from "@/lib/email";
 import { env } from "@/lib/env";
+import { getOrCreateHostingAccount } from "@/lib/hosting/accounts";
 import { brand } from "@/lib/site";
 
 function requireEnv(value: string | undefined, name: string): string {
@@ -93,6 +94,11 @@ export const auth = betterAuth({
       },
     },
     user: {
+      create: {
+        after: async (user) => {
+          await getOrCreateHostingAccount(user.id);
+        },
+      },
       delete: {
         before: async (user) => {
           await logAuditEvent({

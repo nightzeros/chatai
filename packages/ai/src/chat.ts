@@ -1,6 +1,13 @@
 import { generateText, streamText } from "ai";
 
 import { createChatLanguageModel } from "./models";
+import {
+  asGenerateChatResult,
+  emptyProviderUsage,
+  normalizeLanguageModelUsage,
+  type GenerateChatResult,
+  type ProviderUsage,
+} from "./usage";
 
 export type ChatConfig = {
   apiKey: string;
@@ -14,25 +21,39 @@ export type ChatMessage = {
   content: string;
 };
 
+export type { GenerateChatResult, ProviderUsage };
+
 function requireKey(config: ChatConfig) {
   if (!config.apiKey) {
     throw new Error("AI_API_KEY is required to generate chat completions.");
   }
 }
 
+export type StreamChatResult = {
+  textStream: AsyncIterable<string>;
+  /** Resolves when the provider finishes (includes disconnect / abort cases when available). */
+  usage: Promise<ProviderUsage>;
+};
+
 export function streamChat(opts: {
   config: ChatConfig;
   system: string;
   messages: ChatMessage[];
-}): { textStream: AsyncIterable<string> } {
+}): StreamChatResult {
   requireKey(opts.config);
   const result = streamText({
     model: createChatLanguageModel(opts.config),
     system: opts.system,
     messages: opts.messages,
   });
+
+  const usage = Promise.resolve(result.usage)
+    .then((value) => normalizeLanguageModelUsage(value))
+    .catch(() => emptyProviderUsage());
+
   return {
     textStream: result.textStream,
+    usage,
   };
 }
 
@@ -40,12 +61,30 @@ export async function generateChat(opts: {
   config: ChatConfig;
   system: string;
   prompt: string;
-}): Promise<string> {
+}): Promise<GenerateChatResult> {
   requireKey(opts.config);
   const result = await generateText({
     model: createChatLanguageModel(opts.config),
     system: opts.system,
     prompt: opts.prompt,
   });
-  return result.text.trim();
+  return {
+    text: result.text.trim(),
+    usage: normalizeLanguageModelUsage(result.usage),
+  };
+}
+
+/**
+ * Dependency injection seam for RAG/evals tests.
+ * Accepts either `GenerateChatResult` or a legacy string return.
+ */
+export type GenerateChatFn = (
+  opts: Parameters<typeof generateChat>[0],
+) => Promise<GenerateChatResult | string>;
+
+export async function runGenerateChat(
+  generate: GenerateChatFn,
+  opts: Parameters<typeof generateChat>[0],
+): Promise<GenerateChatResult> {
+  return asGenerateChatResult(await generate(opts));
 }

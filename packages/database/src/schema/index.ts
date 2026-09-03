@@ -14,6 +14,11 @@ export * from "./api-key-rate-buckets";
 export * from "./audit-events";
 export * from "./widget-rate-buckets";
 export * from "./assistant-provider-secrets";
+export * from "./hosting-accounts";
+export * from "./plan-entitlements";
+export * from "./usage-period-balances";
+export * from "./usage-events";
+export * from "./model-pricing";
 
 export * from "./conversations";
 export * from "./pg-types";

@@ -1,6 +1,13 @@
 import { embedMany as sdkEmbedMany } from "ai";
 
 import { createEmbeddingModel } from "./models";
+import {
+  emptyProviderUsage,
+  mergeProviderUsage,
+  normalizeEmbeddingUsage,
+  type EmbedManyResult,
+  type ProviderUsage,
+} from "./usage";
 
 const BATCH_SIZE = 100;
 
@@ -12,21 +19,25 @@ export type EmbeddingConfig = {
   provider?: string;
 };
 
+export type { EmbedManyResult, ProviderUsage };
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function embedMany(texts: string[], config: EmbeddingConfig): Promise<number[][]> {
+export async function embedMany(texts: string[], config: EmbeddingConfig): Promise<EmbedManyResult> {
   if (!config.apiKey) {
     throw new Error("AI_API_KEY is required to generate embeddings.");
   }
 
   if (texts.length === 0) {
-    return [];
+    return { embeddings: [], usage: emptyProviderUsage() };
   }
 
-  const openaiCompatible = !config.provider || config.provider === "openai" || config.provider === "openai-compatible";
+  const openaiCompatible =
+    !config.provider || config.provider === "openai" || config.provider === "openai-compatible";
   const embeddings: number[][] = [];
+  const usages: ProviderUsage[] = [];
 
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE);
@@ -47,6 +58,7 @@ export async function embedMany(texts: string[], config: EmbeddingConfig): Promi
             : {}),
         });
         embeddings.push(...result.embeddings);
+        usages.push(normalizeEmbeddingUsage(result.usage));
         lastError = undefined;
         break;
       } catch (error) {
@@ -60,5 +72,8 @@ export async function embedMany(texts: string[], config: EmbeddingConfig): Promi
     }
   }
 
-  return embeddings;
+  return {
+    embeddings,
+    usage: mergeProviderUsage(...usages),
+  };
 }

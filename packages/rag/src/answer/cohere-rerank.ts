@@ -1,7 +1,18 @@
+import { emptyProviderUsage, type ProviderUsage } from "@chatai/ai";
+
 export type CohereRerankResult = {
   index: number;
   relevanceScore: number;
 };
+
+export type CohereRerankResponse = {
+  results: CohereRerankResult[];
+  usage: ProviderUsage;
+  model: string;
+  provider: "cohere";
+};
+
+const COHERE_RERANK_MODEL = "rerank-english-v3.0";
 
 export async function cohereRerank(opts: {
   apiKey: string;
@@ -9,9 +20,14 @@ export async function cohereRerank(opts: {
   documents: string[];
   topN: number;
   fetchImpl?: typeof fetch;
-}): Promise<CohereRerankResult[]> {
+}): Promise<CohereRerankResponse> {
   if (opts.documents.length === 0) {
-    return [];
+    return {
+      results: [],
+      usage: emptyProviderUsage(),
+      model: COHERE_RERANK_MODEL,
+      provider: "cohere",
+    };
   }
 
   const fetchFn = opts.fetchImpl ?? fetch;
@@ -22,7 +38,7 @@ export async function cohereRerank(opts: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "rerank-english-v3.0",
+      model: COHERE_RERANK_MODEL,
       query: opts.query,
       documents: opts.documents,
       top_n: Math.min(opts.topN, opts.documents.length),
@@ -39,8 +55,14 @@ export async function cohereRerank(opts: {
     results?: Array<{ index: number; relevance_score: number }>;
   };
 
-  return (payload.results ?? []).map((item) => ({
-    index: item.index,
-    relevanceScore: item.relevance_score,
-  }));
+  return {
+    results: (payload.results ?? []).map((item) => ({
+      index: item.index,
+      relevanceScore: item.relevance_score,
+    })),
+    // Cohere bills per request; token fields stay 0 and metering uses units=1.
+    usage: emptyProviderUsage(),
+    model: COHERE_RERANK_MODEL,
+    provider: "cohere",
+  };
 }

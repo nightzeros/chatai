@@ -1,0 +1,20 @@
+{
+  "name": "@chatai/billing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./pricing": "./src/pricing/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.10"
+  }
+}

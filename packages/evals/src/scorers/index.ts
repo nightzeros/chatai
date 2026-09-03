@@ -1,19 +1,19 @@
-import { generateChat, type ChatConfig } from "@chatai/ai";
+import { generateChat, runGenerateChat, type ChatConfig, type GenerateChatFn } from "@chatai/ai";
 
 import { parseJudgeVerdict } from "../parse-score";
 import type { EvalContext, EvalScoreResult } from "../types";
 
 export type ScorerDeps = {
-  generateChat: typeof generateChat;
+  generateChat: GenerateChatFn;
 };
 
 async function judgeScore(opts: {
   chat: ChatConfig;
   system: string;
   prompt: string;
-  generateChat: typeof generateChat;
+  generateChat: GenerateChatFn;
 }) {
-  const raw = await opts.generateChat({
+  const { text: raw } = await runGenerateChat(opts.generateChat, {
     config: opts.chat,
     system: opts.system,
     prompt: opts.prompt,

@@ -109,6 +109,7 @@ describe("runOfflineEvalCase", () => {
           },
         ],
       },
+      providerUsages: [],
     }));
 
     const result = await runOfflineEvalCase({

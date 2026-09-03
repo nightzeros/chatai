@@ -81,7 +81,10 @@ const embedding = { apiKey: "test", baseURL: "https://example.com", model: "emb"
 describe("ingestDocument", () => {
   beforeEach(() => {
     embedMany.mockReset();
-    embedMany.mockResolvedValue([[0.1, 0.2]]);
+    embedMany.mockResolvedValue({
+      embeddings: [[0.1, 0.2]],
+      usage: { inputTokens: 3, outputTokens: 0, cachedInputTokens: 0, totalTokens: 3 },
+    });
   });
 
   it("skips embedding when extracted content has not changed", async () => {
@@ -117,6 +120,37 @@ describe("ingestDocument", () => {
     expect(state.document.chunkCount).toBe(1);
   });
 
+  it("invokes beforeEmbed after chunking and before embedMany", async () => {
+    const { db } = createFakeDb(
+      documentRow({
+        content: "Hello world",
+        contentHash: null,
+        chunkCount: 0,
+      }),
+    );
+    const beforeEmbed = vi.fn(async () => undefined);
+
+    await ingestDocument({
+      documentId: "doc-1",
+      db: db as never,
+      embedding,
+      force: true,
+      beforeEmbed,
+    });
+
+    expect(beforeEmbed).toHaveBeenCalledOnce();
+    expect(beforeEmbed.mock.invocationCallOrder[0]).toBeLessThan(
+      embedMany.mock.invocationCallOrder[0]!,
+    );
+    expect(beforeEmbed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chunkCount: expect.any(Number),
+        approxTokens: expect.any(Number),
+        texts: expect.any(Array),
+      }),
+    );
+  });
+
   it("does not branch on document.type === \"file\"", async () => {
     const source = await import("node:fs/promises").then((mod) => mod.readFile);
     const body = await source(new URL("./ingest-document.ts", import.meta.url), "utf8");
@@ -133,7 +167,10 @@ describe("ingestDocument", () => {
       }),
     );
     state.ragSettings = { chunkingMode: "parent_child" };
-    embedMany.mockImplementation(async (texts: string[]) => texts.map(() => [0.1, 0.2]));
+    embedMany.mockImplementation(async (texts: string[]) => ({
+      embeddings: texts.map(() => [0.1, 0.2]),
+      usage: { inputTokens: texts.length, outputTokens: 0, cachedInputTokens: 0, totalTokens: texts.length },
+    }));
 
     await ingestDocument({
       documentId: "doc-1",

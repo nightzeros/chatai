@@ -4,6 +4,15 @@ import { ingestDocument, syncSource } from "@chatai/rag";
 
 import { resolveAssistantModels } from "@/lib/ai-config";
 import { env } from "@/lib/env";
+import { resolveBillableAccountForAssistant } from "@/lib/hosting/accounts";
+import {
+  abortIngestUsageReservation,
+  beginIngestUsageReservation,
+  finishIngestUsageReservation,
+  type UsageGateReservation,
+} from "@/lib/hosting/usage-gate";
+import { isUsageLimitExceededError } from "@/lib/hosting/usage-limit-error";
+import { createId } from "@/lib/ids";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
@@ -30,10 +39,6 @@ function workerDb() {
   return workerClient;
 }
 
-async function embeddingForAssistant(assistant: typeof assistants.$inferSelect) {
-  return (await resolveAssistantModels(assistant)).embedding;
-}
-
 async function embeddingForDocument(db: ReturnType<typeof createDb>, documentId: string) {
   const [row] = await db
     .select({ assistant: assistants })
@@ -43,10 +48,11 @@ async function embeddingForDocument(db: ReturnType<typeof createDb>, documentId:
     .limit(1);
 
   if (!row) {
-    throw new Error(`Document ${documentId} not found.`);
+    throw new Error(`Document ${documentId} was not found.`);
   }
 
-  return await embeddingForAssistant(row.assistant);
+  const models = await resolveAssistantModels(row.assistant);
+  return { assistant: row.assistant, embedding: models.embedding, billing: models.billing };
 }
 
 async function claimJob(db: ReturnType<typeof createDb>) {
@@ -94,6 +100,8 @@ async function processOnce() {
   const job = await claimJob(db);
   if (!job) return false;
 
+  const hold = { reservation: null as UsageGateReservation | null };
+
   try {
     if (job.kind === "sync") {
       if (!job.sourceId) {
@@ -104,12 +112,38 @@ async function processOnce() {
       if (!job.documentId) {
         throw new Error("Ingest jobs require a documentId.");
       }
-      await ingestDocument({
+      const resolved = await embeddingForDocument(db, job.documentId);
+      const account = await resolveBillableAccountForAssistant(resolved.assistant);
+      const requestId = createId();
+
+      const result = await ingestDocument({
         documentId: job.documentId,
         db,
-        embedding: await embeddingForDocument(db, job.documentId),
-
+        embedding: resolved.embedding,
+        beforeEmbed: async ({ approxTokens }) => {
+          hold.reservation = await beginIngestUsageReservation({
+            account,
+            assistantId: resolved.assistant.id,
+            requestId,
+            embedding: resolved.embedding,
+            billingMode: resolved.billing.embedding,
+            approxTokens,
+          });
+        },
       });
+
+      if (!result.skipped) {
+        await finishIngestUsageReservation({
+          reservation: hold.reservation,
+          accountId: account.id,
+          assistantId: resolved.assistant.id,
+          requestId,
+          embedding: resolved.embedding,
+          billingMode: resolved.billing.embedding,
+          usage: result.embeddingUsage ?? null,
+        });
+        hold.reservation = null;
+      }
     }
 
     await db
@@ -122,8 +156,15 @@ async function processOnce() {
       })
       .where(eq(ingestJobs.id, job.id));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Ingestion failed.";
-    const terminal = job.attempts >= MAX_ATTEMPTS;
+    await abortIngestUsageReservation(hold.reservation);
+
+    const usageBlocked = isUsageLimitExceededError(error);
+    const message = usageBlocked
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : "Ingestion failed.";
+    const terminal = usageBlocked || job.attempts >= MAX_ATTEMPTS;
 
     await db
       .update(ingestJobs)
