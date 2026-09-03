@@ -1,7 +1,9 @@
 import type Stripe from "stripe";
 
-import { requireStripe } from "./client";
 import type { HostingAccount } from "../accounts";
+import { currentStripePriceAllowlist } from "./allowlist";
+import { requireStripe } from "./client";
+import { isAllowedStripePriceId } from "./plans";
 
 export type CreateCheckoutInput = {
   account: HostingAccount;
@@ -19,6 +21,13 @@ export async function createCheckoutSession(
   input: CreateCheckoutInput,
 ): Promise<Stripe.Checkout.Session> {
   const stripe = requireStripe();
+  const allowlist = currentStripePriceAllowlist();
+  if (allowlist.size === 0) {
+    throw new Error("Stripe plan prices are not configured. Set STRIPE_PRICE_ID_PRO / STRIPE_PRICE_ID_TEAM.");
+  }
+  if (!isAllowedStripePriceId(input.priceId, allowlist)) {
+    throw new Error("Price is not an allowed ChatAI plan.");
+  }
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",

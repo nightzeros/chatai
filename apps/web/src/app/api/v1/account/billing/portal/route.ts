@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAccountSession } from "@/lib/hosting/require-account-session";
 import { createPortalSession } from "@/lib/hosting/stripe/checkout";
 import { getStripe } from "@/lib/hosting/stripe/client";
+import {
+  defaultBillingReturnUrl,
+  resolveSameOriginUrl,
+} from "@/lib/hosting/stripe/urls";
 
 /**
  * POST /api/v1/account/billing/portal
@@ -28,7 +32,17 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   const origin = request.nextUrl.origin;
-  const returnUrl = body?.returnUrl ?? `${origin}/settings/billing`;
+  const returnUrl = resolveSameOriginUrl(
+    origin,
+    body?.returnUrl,
+    defaultBillingReturnUrl(origin),
+  );
+  if (!returnUrl) {
+    return NextResponse.json(
+      { error: "returnUrl must be same-origin." },
+      { status: 400 },
+    );
+  }
 
   try {
     const session = await createPortalSession({

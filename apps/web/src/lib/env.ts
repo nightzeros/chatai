@@ -116,6 +116,10 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   /** Stripe publishable key (pk_live_… / pk_test_…). Exposed to client for Checkout redirect. */
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  /** Stripe Price ID for the Pro plan. Checkout rejects any other price. */
+  STRIPE_PRICE_ID_PRO: z.string().optional(),
+  /** Stripe Price ID for the Team plan. Checkout rejects any other price. */
+  STRIPE_PRICE_ID_TEAM: z.string().optional(),
 
   UPLOAD_DIR: z.string().default("./uploads"),
 });
@@ -169,6 +173,8 @@ function loadEnv(): Env {
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+    STRIPE_PRICE_ID_PRO: process.env.STRIPE_PRICE_ID_PRO,
+    STRIPE_PRICE_ID_TEAM: process.env.STRIPE_PRICE_ID_TEAM,
     UPLOAD_DIR: process.env.UPLOAD_DIR,
   });
 

@@ -20,19 +20,23 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 # Publishable key (optional, for client-side Checkout redirect)
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+
+# Allowlisted Price IDs. Checkout rejects any other price.
+STRIPE_PRICE_ID_PRO=price_...
+STRIPE_PRICE_ID_TEAM=price_...
 ```
 
-When `STRIPE_SECRET_KEY` is not set, all billing endpoints return `503` and the system operates in free-tier-only mode.
+When `STRIPE_SECRET_KEY` is not set, all billing endpoints return `503` and the system operates in free-tier-only mode. Checkout also returns `503` until at least one of `STRIPE_PRICE_ID_PRO` / `STRIPE_PRICE_ID_TEAM` is set.
 
 ## Stripe Product Setup
 
 ### 1. Create Products in Stripe Dashboard
 
-Create a Product for each plan tier. On each Price, set **metadata**:
+Create a Product for each plan tier. Copy each Price ID into the matching env var above. Optionally set **metadata** on the Price for documentation:
 
 | Metadata key | Value | Description |
 |---|---|---|
-| `plan_code` | `pro` or `team` | Maps to `plan_entitlements.plan_code` |
+| `plan_code` | `pro` or `team` | Informational. Entitlements come from the Price ID allowlist, not metadata. |
 
 ### 2. Plan Tiers (seeded in migration 0010)
 
@@ -87,6 +91,8 @@ Creates a Stripe Checkout Session for upgrading.
 { "priceId": "price_…" }
 ```
 
+`priceId` must match `STRIPE_PRICE_ID_PRO` or `STRIPE_PRICE_ID_TEAM`. Optional `successUrl` / `cancelUrl` must be same-origin (or a relative path). Defaults: `/dashboard/usage`.
+
 Returns `{ "url": "https://checkout.stripe.com/…" }`.
 
 ### `POST /api/v1/account/billing/portal`
@@ -94,10 +100,10 @@ Returns `{ "url": "https://checkout.stripe.com/…" }`.
 Creates a Stripe Customer Portal session for managing the subscription.
 
 ```json
-{ "returnUrl": "https://your-domain.com/settings/billing" }
+{ "returnUrl": "/dashboard/usage" }
 ```
 
-Returns `{ "url": "https://billing.stripe.com/…" }`.
+`returnUrl` must be same-origin. Returns `{ "url": "https://billing.stripe.com/…" }`.
 
 ## Subscription Lifecycle
 
@@ -110,9 +116,11 @@ User → POST /billing/checkout → Stripe Checkout
                                       ↓
                             customer.subscription.created webhook
                                       ↓
-                            plan_code updated, period aligned,
-                            usage_period_balances.limit_micros synced
+                            plan_code updated from allowlisted Price ID,
+                            period aligned, usage_period_balances.limit_micros synced
 ```
+
+Unmapped Price IDs never grant Pro/Team. The webhook logs a warning and leaves `plan_code` unchanged.
 
 ### Cancellation
 
@@ -129,7 +137,7 @@ When a subscription is canceled or expires:
 
 ## Idempotency
 
-All webhook events are deduplicated via the `stripe_events` table. Redelivered events are silently skipped.
+Webhook events are claimed in `stripe_events` before processing. Successful deliveries stay claimed so Stripe redeliveries are skipped. If processing throws, the claim row is deleted and the handler returns `500` so Stripe can retry.
 
 ## Database Changes (Migration 0010)
 

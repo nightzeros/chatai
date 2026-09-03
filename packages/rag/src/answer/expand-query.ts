@@ -1,4 +1,10 @@
-import { generateChat, runGenerateChat, type ChatConfig, type GenerateChatFn } from "@chatai/ai";
+import {
+  generateChat,
+  runGenerateChat,
+  type ChatConfig,
+  type GenerateChatFn,
+  type ProviderUsage,
+} from "@chatai/ai";
 
 export const EXPANSION_TOKEN_THRESHOLD = 12;
 export const EXPANSION_ALTERNATE_COUNT = 2;
@@ -7,7 +13,7 @@ export type ExpandQueryResult = {
   queries: string[];
   expanded: boolean;
   alternates: string[];
-  usage?: import("@chatai/ai").ProviderUsage;
+  usage?: ProviderUsage;
 };
 
 export type ExpandQueryDeps = {
