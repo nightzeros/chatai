@@ -17,7 +17,7 @@ export const hostingAccountStatusEnum = pgEnum("hosting_account_status", [
   ...HOSTING_ACCOUNT_STATUSES,
 ]);
 
-export const HOSTING_PLAN_CODES = ["free"] as const;
+export const HOSTING_PLAN_CODES = ["free", "pro", "team"] as const;
 export type HostingPlanCode = (typeof HOSTING_PLAN_CODES)[number];
 
 /**

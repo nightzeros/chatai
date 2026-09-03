@@ -19,6 +19,7 @@ export * from "./plan-entitlements";
 export * from "./usage-period-balances";
 export * from "./usage-events";
 export * from "./model-pricing";
+export * from "./stripe-events";
 
 export * from "./conversations";
 export * from "./pg-types";

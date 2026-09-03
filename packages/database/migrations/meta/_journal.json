@@ -71,6 +71,13 @@
       "when": 1788420250808,
       "tag": "0009_lethal_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788500000000,
+      "tag": "0010_stripe_billing",
+      "breakpoints": true
     }
   ]
 }

@@ -110,6 +110,13 @@ const envSchema = z.object({
    */
   ADMIN_USER_IDS: z.string().default(""),
 
+  /** Stripe secret key (sk_live_… / sk_test_…). Required for paid plans. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  /** Stripe webhook signing secret (whsec_…). Required for webhook verification. */
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /** Stripe publishable key (pk_live_… / pk_test_…). Exposed to client for Checkout redirect. */
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+
   UPLOAD_DIR: z.string().default("./uploads"),
 });
 
@@ -159,6 +166,9 @@ function loadEnv(): Env {
     HOSTED_USAGE_RECONCILE_STALE_MINUTES: process.env.HOSTED_USAGE_RECONCILE_STALE_MINUTES,
     HOSTED_USAGE_EXEMPT_PLAYGROUND: process.env.HOSTED_USAGE_EXEMPT_PLAYGROUND,
     ADMIN_USER_IDS: process.env.ADMIN_USER_IDS,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     UPLOAD_DIR: process.env.UPLOAD_DIR,
   });
 
