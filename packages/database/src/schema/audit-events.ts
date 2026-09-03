@@ -30,8 +30,8 @@ export const AUDIT_ACTIONS = [
   "usage_credit_applied",
   "account_suspended",
   "account_status_updated",
-  "stripe_subscription_synced",
-  "stripe_payment_failed",
+  "polar_subscription_synced",
+  "polar_payment_failed",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

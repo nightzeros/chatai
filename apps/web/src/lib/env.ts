@@ -110,16 +110,16 @@ const envSchema = z.object({
    */
   ADMIN_USER_IDS: z.string().default(""),
 
-  /** Stripe secret key (sk_live_… / sk_test_…). Required for paid plans. */
-  STRIPE_SECRET_KEY: z.string().optional(),
-  /** Stripe webhook signing secret (whsec_…). Required for webhook verification. */
-  STRIPE_WEBHOOK_SECRET: z.string().optional(),
-  /** Stripe publishable key (pk_live_… / pk_test_…). Exposed to client for Checkout redirect. */
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
-  /** Stripe Price ID for the Pro plan. Checkout rejects any other price. */
-  STRIPE_PRICE_ID_PRO: z.string().optional(),
-  /** Stripe Price ID for the Team plan. Checkout rejects any other price. */
-  STRIPE_PRICE_ID_TEAM: z.string().optional(),
+  /** Polar organization access token. Required for paid plans. */
+  POLAR_ACCESS_TOKEN: z.string().optional(),
+  /** Polar webhook signing secret. Required for webhook verification. */
+  POLAR_WEBHOOK_SECRET: z.string().optional(),
+  /** Polar API environment. */
+  POLAR_SERVER: z.enum(["sandbox", "production"]).default("sandbox"),
+  /** Polar Product ID for the Pro plan. Checkout rejects any other product. */
+  POLAR_PRODUCT_ID_PRO: z.string().optional(),
+  /** Polar Product ID for the Team plan. Checkout rejects any other product. */
+  POLAR_PRODUCT_ID_TEAM: z.string().optional(),
 
   UPLOAD_DIR: z.string().default("./uploads"),
 });
@@ -170,11 +170,11 @@ function loadEnv(): Env {
     HOSTED_USAGE_RECONCILE_STALE_MINUTES: process.env.HOSTED_USAGE_RECONCILE_STALE_MINUTES,
     HOSTED_USAGE_EXEMPT_PLAYGROUND: process.env.HOSTED_USAGE_EXEMPT_PLAYGROUND,
     ADMIN_USER_IDS: process.env.ADMIN_USER_IDS,
-    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
-    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
-    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-    STRIPE_PRICE_ID_PRO: process.env.STRIPE_PRICE_ID_PRO,
-    STRIPE_PRICE_ID_TEAM: process.env.STRIPE_PRICE_ID_TEAM,
+    POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN,
+    POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET,
+    POLAR_SERVER: process.env.POLAR_SERVER,
+    POLAR_PRODUCT_ID_PRO: process.env.POLAR_PRODUCT_ID_PRO,
+    POLAR_PRODUCT_ID_TEAM: process.env.POLAR_PRODUCT_ID_TEAM,
     UPLOAD_DIR: process.env.UPLOAD_DIR,
   });
 

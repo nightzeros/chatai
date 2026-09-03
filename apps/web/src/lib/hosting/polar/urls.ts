@@ -5,7 +5,7 @@ export function defaultBillingReturnUrl(origin: string): string {
 }
 
 export function defaultCheckoutSuccessUrl(origin: string): string {
-  return `${origin}${DEFAULT_BILLING_RETURN_PATH}?session_id={CHECKOUT_SESSION_ID}`;
+  return `${origin}${DEFAULT_BILLING_RETURN_PATH}?checkout_id={CHECKOUT_ID}`;
 }
 
 /**

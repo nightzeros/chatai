@@ -55,8 +55,8 @@ const account = {
   planCode: "free" as const,
   periodAnchor: new Date("2026-01-01T00:00:00.000Z"),
   limitOverrideMicros: null,
-  stripeCustomerId: null,
-  stripeSubscriptionId: null,
+  polarCustomerId: null,
+  polarSubscriptionId: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

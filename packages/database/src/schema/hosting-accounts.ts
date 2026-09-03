@@ -33,12 +33,12 @@ export const hostingAccounts = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     status: hostingAccountStatusEnum("status").notNull().default("active"),
     planCode: text("plan_code").$type<HostingPlanCode>().notNull().default("free"),
-    /** Billing period anchor (UTC). Stripe can align this later. */
+    /** Billing period anchor (UTC). Polar can align this on subscription sync. */
     periodAnchor: timestamp("period_anchor", { withTimezone: true }).notNull(),
     /** Admin override in micro-dollars. Null uses plan entitlement defaults (Task 2). */
     limitOverrideMicros: bigint("limit_override_micros", { mode: "number" }),
-    stripeCustomerId: text("stripe_customer_id"),
-    stripeSubscriptionId: text("stripe_subscription_id"),
+    polarCustomerId: text("polar_customer_id"),
+    polarSubscriptionId: text("polar_subscription_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

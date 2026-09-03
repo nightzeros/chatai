@@ -15,7 +15,7 @@ export type PlanFeatures = {
 };
 
 /**
- * Plan → monthly allowance mapping. Stripe Price IDs can map here later.
+ * Plan → monthly allowance mapping. Polar Product IDs map via env allowlist.
  * `hosting_accounts.plan_code` references these rows by convention (soft FK).
  */
 export const planEntitlements = pgTable("plan_entitlements", {

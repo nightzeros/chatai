@@ -2,12 +2,10 @@ import { NextResponse } from "next/server";
 
 import { requireAccountSession } from "@/lib/hosting/require-account-session";
 import { resolveEffectiveLimitMicros } from "@/lib/hosting/entitlements";
-import { getStripe } from "@/lib/hosting/stripe/client";
+import { getPolar } from "@/lib/hosting/polar/client";
 
 /**
  * GET /api/v1/account/billing
- *
- * Returns the current billing/subscription status for the authenticated account.
  */
 export async function GET() {
   const auth = await requireAccountSession();
@@ -19,21 +17,22 @@ export async function GET() {
   const billing: Record<string, unknown> = {
     planCode: account.planCode,
     effectiveLimitMicros,
-    stripeConfigured: Boolean(getStripe()),
-    hasSubscription: Boolean(account.stripeSubscriptionId),
+    polarConfigured: Boolean(getPolar()),
+    hasSubscription: Boolean(account.polarSubscriptionId),
   };
 
-  if (account.stripeSubscriptionId && getStripe()) {
+  if (account.polarSubscriptionId && getPolar()) {
     try {
-      const stripe = getStripe()!;
-      const sub = await stripe.subscriptions.retrieve(account.stripeSubscriptionId);
+      const polar = getPolar()!;
+      const sub = await polar.subscriptions.get({ id: account.polarSubscriptionId });
       billing.subscription = {
         id: sub.id,
         status: sub.status,
-        billingCycleAnchor: sub.billing_cycle_anchor,
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
-        cancelAt: sub.cancel_at ?? null,
-        canceledAt: sub.canceled_at ?? null,
+        currentPeriodStart: sub.currentPeriodStart?.toISOString?.() ?? sub.currentPeriodStart,
+        currentPeriodEnd: sub.currentPeriodEnd?.toISOString?.() ?? sub.currentPeriodEnd,
+        cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+        canceledAt: sub.canceledAt ?? null,
+        productId: sub.productId,
       };
     } catch (err) {
       console.warn("[billing] Failed to fetch subscription:", err);
