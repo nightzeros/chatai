@@ -1,4 +1,5 @@
 import type { ChatConfig } from "@chatai/ai";
+import type { ProviderUsageRecord } from "@chatai/rag/answer";
 
 import {
   scoreAnswerRelevance,
@@ -9,19 +10,41 @@ import {
 } from "./scorers";
 import type { EvalContext, EvalScoreResult } from "./types";
 
+function pushUsage(
+  target: ProviderUsageRecord[],
+  collector: ProviderUsageRecord[] | undefined,
+  usage: ProviderUsageRecord | null,
+) {
+  if (!usage) return;
+  target.push(usage);
+  collector?.push(usage);
+}
+
 export async function scoreMessage(opts: {
   chat: ChatConfig;
   context: EvalContext;
   deps?: Partial<ScorerDeps>;
-}): Promise<EvalScoreResult[]> {
-  const [faithfulness, contextRelevance, answerRelevance, citationCorrectness] = await Promise.all([
-    scoreFaithfulness(opts.context, opts.chat, opts.deps),
-    scoreContextRelevance(opts.context, opts.chat, opts.deps),
-    scoreAnswerRelevance(opts.context, opts.chat, opts.deps),
-    scoreCitationCorrectness(opts.context),
+  /** Filled as each judge completes — survives later persistence failures. */
+  usageCollector?: ProviderUsageRecord[];
+}): Promise<{ scores: EvalScoreResult[]; providerUsages: ProviderUsageRecord[] }> {
+  const providerUsages: ProviderUsageRecord[] = [];
+
+  async function track(
+    promise: Promise<{ score: EvalScoreResult; usage: ProviderUsageRecord | null }>,
+  ): Promise<EvalScoreResult> {
+    const result = await promise;
+    pushUsage(providerUsages, opts.usageCollector, result.usage);
+    return result.score;
+  }
+
+  const scores = await Promise.all([
+    track(scoreFaithfulness(opts.context, opts.chat, opts.deps)),
+    track(scoreContextRelevance(opts.context, opts.chat, opts.deps)),
+    track(scoreAnswerRelevance(opts.context, opts.chat, opts.deps)),
+    track(scoreCitationCorrectness(opts.context)),
   ]);
 
-  return [faithfulness, contextRelevance, answerRelevance, citationCorrectness];
+  return { scores, providerUsages };
 }
 
 export function summarizeScores(scores: EvalScoreResult[]) {

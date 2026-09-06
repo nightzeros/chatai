@@ -26,12 +26,12 @@ describe("resolveSameOriginUrl", () => {
 });
 
 describe("billing return defaults", () => {
-  it("point at the usage dashboard with Polar checkout id placeholder", () => {
+  it("point at the billing dashboard with Polar checkout id placeholder", () => {
     expect(defaultBillingReturnUrl("https://app.example")).toBe(
-      "https://app.example/dashboard/usage",
+      "https://app.example/dashboard/billing",
     );
     expect(defaultCheckoutSuccessUrl("https://app.example")).toContain(
-      "/dashboard/usage?checkout_id={CHECKOUT_ID}",
+      "/dashboard/billing?checkout_id={CHECKOUT_ID}",
     );
   });
 });

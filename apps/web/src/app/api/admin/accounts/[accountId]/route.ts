@@ -12,10 +12,14 @@ const patchSchema = z
   .object({
     status: z.enum(HOSTING_ACCOUNT_STATUSES).optional(),
     limitOverrideMicros: z.number().int().nonnegative().nullable().optional(),
+    planCode: z.enum(["free", "starter", "pro", "business"]).optional(),
   })
   .refine(
-    (body) => body.status !== undefined || body.limitOverrideMicros !== undefined,
-    { message: "Provide status and/or limitOverrideMicros." },
+    (body) =>
+      body.status !== undefined ||
+      body.limitOverrideMicros !== undefined ||
+      body.planCode !== undefined,
+    { message: "Provide status, limitOverrideMicros, and/or planCode." },
   );
 
 type RouteContext = { params: Promise<{ accountId: string }> };

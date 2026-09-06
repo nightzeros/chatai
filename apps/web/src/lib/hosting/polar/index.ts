@@ -3,11 +3,17 @@ export { createCheckoutSession } from "./checkout";
 export { createPortalSession } from "./portal";
 export {
   planCodeForProductId,
+  productIdForPlanCode,
   isAllowedPolarProductId,
+  isPaidPlanCode,
   parsePolarProductAllowlist,
+  parsePolarPlanProductMap,
   CANCELED_PLAN_CODE,
 } from "./plans";
-export { currentPolarProductAllowlist } from "./allowlist";
+export {
+  currentPolarProductAllowlist,
+  currentPolarPlanProductMap,
+} from "./allowlist";
 export {
   handlePolarWebhookEvent,
   type WebhookResult,

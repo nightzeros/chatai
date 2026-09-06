@@ -5,149 +5,127 @@ ChatAI supports paid subscription plans via [Polar](https://polar.sh) (Merchant 
 ## Prerequisites
 
 - A [Polar organization](https://polar.sh) (sandbox works for development)
-- Recurring Products created for Pro and Team
+- Recurring Products created for **Starter**, **Pro**, and **Business**
 
 ## Environment Variables
 
-Add these to your `.env`:
-
 ```bash
-# Polar organization access token
 POLAR_ACCESS_TOKEN=polar_oat_...
-
-# Webhook signing secret — from Polar Dashboard → Settings → Webhooks
 POLAR_WEBHOOK_SECRET=polar_whs_...
+POLAR_SERVER=sandbox   # or production
 
-# sandbox | production (default: sandbox)
-POLAR_SERVER=sandbox
-
-# Allowlisted Product IDs. Checkout rejects any other product.
+# Allowlisted Product IDs — checkout resolves these from internal planCode
+POLAR_PRODUCT_ID_STARTER=...
 POLAR_PRODUCT_ID_PRO=...
-POLAR_PRODUCT_ID_TEAM=...
+POLAR_PRODUCT_ID_BUSINESS=...
+
+# Deprecated alias: maps to Business for one release if BUSINESS is unset
+# POLAR_PRODUCT_ID_TEAM=...
+
+# Production hosted SaaS should enforce limits
+HOSTED_USAGE_ENFORCEMENT=enforce
+# Fallback ceiling when plan_entitlements row is missing ($1)
+HOSTED_USAGE_DEFAULT_LIMIT_MICROS=1000000
 ```
 
-When `POLAR_ACCESS_TOKEN` is not set, all billing endpoints return `503` and the system operates in free-tier-only mode. Checkout also returns `503` until at least one product ID is configured.
+When `POLAR_ACCESS_TOKEN` is not set, billing endpoints return `503` and the app stays free-tier + admin upgrades.
+
+No Polar secrets may use `NEXT_PUBLIC_*`.
+
+## Plan ladder (defaults)
+
+Enforceable limits live in `plan_entitlements` (migration `0012`). Display prices live in `apps/web/src/lib/hosting/plan-catalog.ts` and must match Polar Products operationally.
+
+| Plan | Display | Hosted AI | Assistants | Requests | Evals | Team-ready |
+|------|---------|-----------|------------|----------|-------|------------|
+| `free` | $0 | $1.00 | 1 | 75 | no | no |
+| `starter` | $19 | $12.00 | 5 | 2,000 | no | no |
+| `pro` | $49 | $45.00 | 20 | 15,000 | yes | no |
+| `business` | $149 | $150.00 | 100 | 50,000 | yes | flag only |
+
+Seat billing is **not** implemented. `teamMembers` is a UI/entitlement flag.
+
+### Three Free protections
+
+1. Provider-cost ceiling (`monthly_limit_micros`)
+2. Assistant count (`features.maxAssistants`)
+3. Request count (`monthly_request_cap`)
+
+All checks are server-side.
 
 ## Polar Product Setup
 
-### 1. Create Products in Polar Dashboard
+1. Create recurring Products for Starter / Pro / Business; copy IDs into env.
+2. Webhook endpoint: `https://your-domain.com/api/webhooks/polar`
+3. Events: `checkout.updated`, `subscription.created`, `subscription.active`, `subscription.updated`, `subscription.canceled`, `subscription.revoked`, `subscription.uncanceled`, `subscription.past_due`
 
-Create a recurring Product for each plan tier. Copy each Product ID into the matching env var above.
+## Customer UI
 
-### 2. Plan Tiers (seeded in migration 0010)
+- **`/dashboard/billing`** — plans, meters, Upgrade, Manage Billing
+- **`/dashboard/usage`** — detailed spend breakdown + upgrade CTA near limits
 
-| Plan | Monthly Limit | Features |
-|---|---|---|
-| `free` | $5.00 | — |
-| `pro` | $25.00 | evals, 20 assistants |
-| `team` | $100.00 | evals, 100 assistants, team members |
-
-### 3. Webhook Endpoint
-
-In Polar Dashboard → Settings → Webhooks, add an endpoint:
-
-- **URL:** `https://your-domain.com/api/webhooks/polar`
-- **Events:**
-  - `checkout.updated`
-  - `subscription.created`
-  - `subscription.active`
-  - `subscription.updated`
-  - `subscription.canceled`
-  - `subscription.revoked`
-  - `subscription.uncanceled`
-  - `subscription.past_due`
-
-Copy the signing secret to `POLAR_WEBHOOK_SECRET`.
-
-## API Endpoints
+## API
 
 ### `GET /api/v1/account/billing`
 
-Returns current billing status (session auth required).
-
-```json
-{
-  "planCode": "pro",
-  "effectiveLimitMicros": 25000000,
-  "polarConfigured": true,
-  "hasSubscription": true,
-  "subscription": {
-    "id": "…",
-    "status": "active",
-    "currentPeriodStart": "…",
-    "currentPeriodEnd": "…",
-    "cancelAtPeriodEnd": false,
-    "productId": "…"
-  }
-}
-```
+Plan, entitlements, configured products, subscription snapshot.
 
 ### `POST /api/v1/account/billing/checkout`
 
-Creates a Polar Checkout Session for upgrading.
-
 ```json
-{ "productId": "…" }
+{ "planCode": "starter" }
 ```
 
-`productId` must match `POLAR_PRODUCT_ID_PRO` or `POLAR_PRODUCT_ID_TEAM`. Optional `successUrl` must be same-origin (or a relative path). Default: `/dashboard/usage?checkout_id={CHECKOUT_ID}`.
-
-Returns `{ "url": "https://…polar.sh/…" }`.
+Server maps `planCode` → Polar product. **Do not send `productId` from the browser.**
 
 ### `POST /api/v1/account/billing/portal`
 
-Creates a Polar Customer Portal session.
+Requires `polarCustomerId`. Returns Polar customer portal URL.
 
-```json
-{ "returnUrl": "/dashboard/usage" }
-```
-
-`returnUrl` must be same-origin. Returns `{ "url": "…" }`.
-
-## Subscription Lifecycle
+## Lifecycle
 
 ```
-User → POST /billing/checkout → Polar Checkout
-                                      ↓
-                            checkout.updated (succeeded)
-                                      ↓
-                            customer linked to hosting_account
-                                      ↓
-                            subscription.created / .active / .updated
-                                      ↓
-                            plan_code from allowlisted Product ID,
-                            period aligned, usage limit synced
+Upgrade → Polar Checkout → webhook subscription.active/updated
+  → hosting_accounts.plan_code + polar ids
+  → usage_period_balances.limit_micros refreshed
+  → entitlements enforce on next request / assistant create
 ```
 
-Unmapped Product IDs never grant Pro/Team. The webhook logs a warning and leaves `plan_code` unchanged.
+| Event | Behavior |
+|-------|----------|
+| `subscription.active` / `updated` / `created` / `uncanceled` | Sync plan from allowlisted product; refresh period limit |
+| `subscription.canceled` / `revoked` (terminal) | `plan_code = free`, clear subscription id |
+| Cancel at period end (`cancel_at_period_end`) | Keep paid until Polar status is terminal |
+| `subscription.past_due` | Audit only — no immediate downgrade |
+| Unknown product | Do **not** grant a paid plan |
 
-### Cancellation
+### Idempotency
 
-When a subscription is revoked or reaches a terminal canceled status:
-- `plan_code` reverts to `free`
-- `polar_subscription_id` is cleared
-- Usage limit drops to the free tier
+Events claimed in `polar_events` by webhook id before processing. Failures release the claim and return `500` for Polar retry.
 
-End-of-period cancellations (`cancel_at_period_end`) keep the paid plan until `subscription.revoked`.
+## Admin
 
-### Payment Failure
+`PATCH /api/admin/accounts/:id` may set `status`, `limitOverrideMicros`, and/or `planCode` (support override; audit-logged). Credits still raise the effective ceiling for the current period.
 
-- Logged as `polar_payment_failed` audit event on `subscription.past_due`
-- Account stays on the current plan during Polar's recovery window
-- Terminal revoke/cancel → reverts to free
+## Document / ingest note
 
-## Idempotency
+Upload size is capped (20 MB). Embedding spend shares the same monthly hosted AI budget + request cap. There is no separate Free document quota in v1.
 
-Webhook events are claimed in `polar_events` (by `webhook-id` header) before processing. Successful deliveries stay claimed so redeliveries are skipped. If processing throws, the claim row is deleted and the handler returns `500` so Polar can retry.
+## Eval metering
 
-## Database Changes
+`evalsEnabled` is enforced on eval-run APIs. Each offline/online eval job **reserves** estimated hosted cost before provider calls and **reconciles** actual token usage afterward (same ledger as chat/ingest). Provider usages are collected as calls complete, so a later persistence failure still charges incurred spend instead of releasing the reservation at $0. Usage cleanup failures do not leave the job locked in `processing` — the worker always clears the lock and records retry/fail state. Limit-exceeded jobs fail without retry.
 
-- Migration **0007**: hosting account columns (later renamed)
-- Migration **0010**: `stripe_events` table + pro/team plan seeds
-- Migration **0011**: rename `stripe_*` → `polar_*` columns/table
+## Self-hosted / BYOK
 
-## Local Development
+Self-hosted instances typically leave Polar unset and use `HOSTED_USAGE_ENFORCEMENT=off` or their own keys. Full BYOK productization is out of scope for this billing UI.
 
-1. Use `POLAR_SERVER=sandbox`
-2. Expose your local server (e.g. ngrok) and register `https://….ngrok-free.app/api/webhooks/polar` in Polar sandbox webhooks
-3. Copy the sandbox webhook secret into `POLAR_WEBHOOK_SECRET`
+## Migration notes (`0012`)
+
+- Inserts/updates `free` / `starter` / `pro` / `business` entitlements
+- Migrates `hosting_accounts.plan_code` `team` → `business`
+- Deletes legacy `team` entitlement row
+- Refreshes current-period `limit_micros` for accounts without overrides (does **not** reset spend)
+
+## Local development
+
+Use `POLAR_SERVER=sandbox`, expose the app (e.g. ngrok), register the webhook URL, and copy the sandbox signing secret.

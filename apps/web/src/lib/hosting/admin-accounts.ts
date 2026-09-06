@@ -1,9 +1,11 @@
 import {
   eq,
   hostingAccounts,
+  HOSTING_PLAN_CODES,
   sql,
   usagePeriodBalances,
   type HostingAccountStatus,
+  type HostingPlanCode,
 } from "@chatai/database";
 
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
@@ -125,6 +127,7 @@ async function syncCurrentPeriodLimit(
 export type PatchHostingAccountInput = {
   status?: HostingAccountStatus;
   limitOverrideMicros?: number | null;
+  planCode?: HostingPlanCode;
 };
 
 export async function patchHostingAccountAsAdmin(input: {
@@ -138,10 +141,21 @@ export async function patchHostingAccountAsAdmin(input: {
   const updates: Partial<HostingAccount> = { updatedAt: new Date() };
   let limitChanged = false;
   let statusChanged = false;
+  let planChanged = false;
 
   if (input.patch.status !== undefined && input.patch.status !== existing.status) {
     updates.status = input.patch.status;
     statusChanged = true;
+  }
+
+  if (
+    input.patch.planCode !== undefined &&
+    input.patch.planCode !== existing.planCode &&
+    (HOSTING_PLAN_CODES as readonly string[]).includes(input.patch.planCode)
+  ) {
+    updates.planCode = input.patch.planCode;
+    planChanged = true;
+    limitChanged = true; // refresh period limit from new plan when no override
   }
 
   if (
@@ -152,7 +166,7 @@ export async function patchHostingAccountAsAdmin(input: {
     limitChanged = true;
   }
 
-  if (!statusChanged && !limitChanged) {
+  if (!statusChanged && !limitChanged && !planChanged) {
     return existing;
   }
 
@@ -164,7 +178,7 @@ export async function patchHostingAccountAsAdmin(input: {
 
   if (!updated) return null;
 
-  if (limitChanged) {
+  if (limitChanged || planChanged) {
     const effective = await resolveEffectiveLimitMicros(updated);
     await syncCurrentPeriodLimit(updated, effective);
     await logAuditEvent({
@@ -175,8 +189,12 @@ export async function patchHostingAccountAsAdmin(input: {
       metadata: {
         previousOverrideMicros: existing.limitOverrideMicros,
         limitOverrideMicros: updated.limitOverrideMicros,
+        previousPlanCode: existing.planCode,
+        planCode: updated.planCode,
         effectiveLimitMicros: effective,
         targetUserId: updated.userId,
+        via: "admin",
+        planChanged,
       },
     });
   }

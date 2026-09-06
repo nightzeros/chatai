@@ -27,19 +27,19 @@ describe("scoreCitationCorrectness", () => {
   };
 
   it("marks invalid citation indexes as zero", async () => {
-    const score = await scoreCitationCorrectness({
+    const result = await scoreCitationCorrectness({
       ...base,
       answer: "This is wrong [9].",
     });
-    expect(score.score).toBe(0);
+    expect(result.score.score).toBe(0);
   });
 
   it("rewards valid citations that map to attached sources", async () => {
-    const score = await scoreCitationCorrectness({
+    const result = await scoreCitationCorrectness({
       ...base,
       answer: "Supported claim [1].",
       sources: [{ documentId: "doc-1", documentName: "Doc", chunkId: "chunk-1" }],
     });
-    expect(score.score).toBe(1);
+    expect(result.score.score).toBe(1);
   });
 });

@@ -4,14 +4,14 @@ import { ingestDocument, syncSource } from "@chatai/rag";
 
 import { resolveAssistantModels } from "@/lib/ai-config";
 import { env } from "@/lib/env";
-import { resolveBillableAccountForAssistant } from "@/lib/hosting/accounts";
+import { resolveBillableAccountForAssistant, checkHostingAccountAccess } from "@/lib/hosting/accounts";
 import {
   abortIngestUsageReservation,
   beginIngestUsageReservation,
   finishIngestUsageReservation,
   type UsageGateReservation,
 } from "@/lib/hosting/usage-gate";
-import { isUsageLimitExceededError } from "@/lib/hosting/usage-limit-error";
+import { isUsageLimitExceededError, UsageLimitExceededError } from "@/lib/hosting/usage-limit-error";
 import { createId } from "@/lib/ids";
 
 const POLL_MS = 2000;
@@ -114,6 +114,10 @@ async function processOnce() {
       }
       const resolved = await embeddingForDocument(db, job.documentId);
       const account = await resolveBillableAccountForAssistant(resolved.assistant);
+      const access = checkHostingAccountAccess(account);
+      if (!access.ok) {
+        throw new UsageLimitExceededError(access.error);
+      }
       const requestId = createId();
 
       const result = await ingestDocument({

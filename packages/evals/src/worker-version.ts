@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 /** Bumped when eval worker persistence behavior changes; triggers worker restart in dev. */
 export const EVAL_WORKER_VERSION = createHash("sha1")
-  .update("snapshot-v2-citation-mappings")
+  .update("eval-usage-cleanup-unlock-v1")
   .digest("hex")
   .slice(0, 8);
 

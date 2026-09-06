@@ -137,7 +137,8 @@ describe("beginChatUsageReservation (enforce)", () => {
     expect(result).toEqual({
       ok: false,
       status: 402,
-      error: "Usage limit exceeded for this billing period.",
+      error:
+        "You've reached your monthly hosted AI allowance. Upgrade your plan or wait until your usage period resets.",
       reason: "usage_limit_exceeded",
     });
   });
@@ -271,5 +272,153 @@ describe("beginIngestUsageReservation", () => {
         approxTokens: 10_000,
       }),
     ).rejects.toBeInstanceOf(UsageLimitExceededError);
+  });
+});
+
+describe("beginEvalUsageReservation", () => {
+  beforeEach(async () => {
+    envState.HOSTED_USAGE_ENFORCEMENT = "enforce";
+    insertValues.mockClear();
+    const { getOrCreateUsagePeriodBalance } = await import("./period-balance");
+    const { reserveUsage } = await import("./reservation");
+    const { resolvePlanRequestCap } = await import("./entitlements");
+    vi.mocked(getOrCreateUsagePeriodBalance).mockResolvedValue({
+      id: "bal-1",
+      accountId: "acct-1",
+      periodStart: new Date("2026-03-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-04-01T00:00:00.000Z"),
+      limitMicros: 5_000_000,
+      consumedMicros: 0,
+      reservedMicros: 0,
+      requestCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(reserveUsage).mockResolvedValue({
+      ok: true,
+      balanceId: "bal-1",
+      consumedMicros: 0,
+      reservedMicros: 1_000,
+      limitMicros: 5_000_000,
+      estimateMicros: 1_000,
+    });
+    vi.mocked(resolvePlanRequestCap).mockResolvedValue(null);
+  });
+
+  it("reserves before offline eval provider work", async () => {
+    const { beginEvalUsageReservation } = await import("./usage-gate");
+    const { reserveUsage } = await import("./reservation");
+
+    const reservation = await beginEvalUsageReservation({
+      account,
+      assistantId: "asst-1",
+      requestId: "req-eval",
+      kind: "offline",
+      chat,
+      embedding,
+      billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+      message: "What is the refund policy?",
+    });
+
+    expect(reservation).toMatchObject({
+      accountId: "acct-1",
+      requestId: "req-eval",
+      reservationEventId: "evt-1",
+    });
+    expect(reserveUsage).toHaveBeenCalled();
+    expect(insertValues).toHaveBeenCalled();
+  });
+
+  it("throws when the period limit is exhausted", async () => {
+    const { reserveUsage } = await import("./reservation");
+    vi.mocked(reserveUsage).mockResolvedValueOnce({ ok: false, reason: "limit_exceeded" });
+    const { beginEvalUsageReservation } = await import("./usage-gate");
+    const { UsageLimitExceededError } = await import("./usage-limit-error");
+
+    await expect(
+      beginEvalUsageReservation({
+        account,
+        assistantId: "asst-1",
+        requestId: "req-eval",
+        kind: "online",
+        chat,
+        embedding,
+        billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+        message: "",
+      }),
+    ).rejects.toBeInstanceOf(UsageLimitExceededError);
+  });
+
+  it("skips reservation in shadow mode", async () => {
+    envState.HOSTED_USAGE_ENFORCEMENT = "shadow";
+    const { beginEvalUsageReservation } = await import("./usage-gate");
+    const { reserveUsage } = await import("./reservation");
+    vi.mocked(reserveUsage).mockClear();
+
+    await expect(
+      beginEvalUsageReservation({
+        account,
+        assistantId: "asst-1",
+        requestId: "req-eval",
+        kind: "offline",
+        chat,
+        embedding,
+        billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+        message: "hi",
+      }),
+    ).resolves.toBeNull();
+    expect(reserveUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe("finishChatUsageReservation", () => {
+  beforeEach(async () => {
+    const { reconcileUsage } = await import("./reservation");
+    const { recordShadowUsages } = await import("./shadow-meter");
+    vi.mocked(reconcileUsage).mockClear();
+    vi.mocked(reconcileUsage).mockResolvedValue(undefined as never);
+    vi.mocked(recordShadowUsages).mockClear();
+    vi.mocked(recordShadowUsages).mockResolvedValue(0);
+  });
+
+  it("still reconciles when shadow metering throws", async () => {
+    const { recordShadowUsages } = await import("./shadow-meter");
+    const { reconcileUsage } = await import("./reservation");
+    vi.mocked(recordShadowUsages).mockRejectedValueOnce(new Error("ledger write failed"));
+
+    const { finishChatUsageReservation } = await import("./usage-gate");
+    await expect(
+      finishChatUsageReservation({
+        reservation: {
+          accountId: "acct-1",
+          periodStart: new Date("2026-03-01T00:00:00.000Z"),
+          reservedMicros: 1_000,
+          reservationEventId: "evt-res-1",
+          requestId: "req-1",
+          estimateMicros: 1_000,
+        },
+        accountId: "acct-1",
+        assistantId: "asst-1",
+        requestId: "req-1",
+        records: [
+          {
+            kind: "chat_completion",
+            provider: "openai",
+            model: "gpt-4o-mini",
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 0 },
+            step: "test",
+          },
+        ],
+        billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+        catalog: [],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(reconcileUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acct-1",
+        reservedMicros: 1_000,
+      }),
+    );
   });
 });

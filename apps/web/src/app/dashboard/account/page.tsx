@@ -38,6 +38,9 @@ export default async function AccountPage() {
           <Button asChild variant="outline">
             <Link href="/dashboard/usage">Open usage</Link>
           </Button>
+          <Button asChild className="ml-2">
+            <Link href="/dashboard/billing">Plans & billing</Link>
+          </Button>
         </CardContent>
       </Card>
 
