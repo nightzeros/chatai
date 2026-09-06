@@ -111,9 +111,9 @@ Events claimed in `polar_events` by webhook id before processing. Failures relea
 
 Upload size is capped (20 MB). Embedding spend shares the same monthly hosted AI budget + request cap. There is no separate Free document quota in v1.
 
-## Eval note
+## Eval metering
 
-`evalsEnabled` is enforced on eval-run APIs. When enabled, runs preflight remaining budget but are not fully token-reserved like chat (residual risk on paid tiers).
+`evalsEnabled` is enforced on eval-run APIs. Each offline/online eval job **reserves** estimated hosted cost before provider calls and **reconciles** actual token usage afterward (same ledger as chat/ingest). Limit-exceeded jobs fail without retry.
 
 ## Self-hosted / BYOK
 

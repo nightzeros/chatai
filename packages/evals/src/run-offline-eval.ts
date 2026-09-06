@@ -15,6 +15,7 @@ import {
   prepareAnswer,
   resolveRagSettings,
   withVerifierResult,
+  type ProviderUsageRecord,
 } from "@chatai/rag/answer";
 import { nanoid } from "nanoid";
 
@@ -36,7 +37,12 @@ export async function runOfflineEvalCase(opts: {
   embedding: EmbeddingConfig;
   cohereApiKey?: string | null;
   deps?: OfflineEvalDeps;
-}) {
+}): Promise<{
+  scores: Awaited<ReturnType<typeof scoreMessage>>["scores"];
+  answer: string;
+  outcome: string;
+  providerUsages: ProviderUsageRecord[];
+}> {
   const [evalCase] = await opts.db.select().from(evalCases).where(eq(evalCases.id, opts.caseId)).limit(1);
   if (!evalCase) {
     throw new Error(`Eval case ${opts.caseId} was not found.`);
@@ -72,6 +78,8 @@ export async function runOfflineEvalCase(opts: {
     cohereApiKey: opts.cohereApiKey,
   });
 
+  const providerUsages: ProviderUsageRecord[] = [...(prepared.providerUsages ?? [])];
+
   let fullText = prepared.fallbackText;
   if (prepared.shouldGenerate && rag.guardrails.verifyCitations) {
     const verified = await generateVerifiedAnswer({
@@ -82,6 +90,7 @@ export async function runOfflineEvalCase(opts: {
     });
     prepared = withVerifierResult(prepared, verified);
     fullText = verified.text;
+    providerUsages.push(...(verified.providerUsages ?? []));
   } else if (prepared.shouldGenerate) {
     const generated = await runGenerateChat(generate, {
       config: opts.chat,
@@ -89,19 +98,13 @@ export async function runOfflineEvalCase(opts: {
       prompt: evalCase.question,
     });
     fullText = generated.text;
-    prepared = {
-      ...prepared,
-      providerUsages: [
-        ...prepared.providerUsages,
-        {
-          kind: "chat_completion",
-          provider: opts.chat.provider,
-          model: opts.chat.model,
-          usage: generated.usage,
-          step: "offline_eval_answer",
-        },
-      ],
-    };
+    providerUsages.push({
+      kind: "chat_completion",
+      provider: opts.chat.provider,
+      model: opts.chat.model,
+      usage: generated.usage,
+      step: "offline_eval_answer",
+    });
   }
 
   const final = finalizeAnswer(fullText, prepared);
@@ -120,7 +123,7 @@ export async function runOfflineEvalCase(opts: {
 
   assertEvalSnapshot(snapshot, final.outcome, contextChunks.length);
 
-  const scores = await scoreMessage({
+  const { scores, providerUsages: judgeUsages } = await scoreMessage({
     chat: opts.chat,
     context: {
       question: evalCase.question,
@@ -132,6 +135,7 @@ export async function runOfflineEvalCase(opts: {
     },
     deps: opts.deps,
   });
+  providerUsages.push(...judgeUsages);
 
   await opts.db.insert(evalScores).values(
     scores.map((score) => ({
@@ -144,7 +148,7 @@ export async function runOfflineEvalCase(opts: {
     })),
   );
 
-  return { scores, answer: final.answer, outcome: final.outcome };
+  return { scores, answer: final.answer, outcome: final.outcome, providerUsages };
 }
 
 export async function maybeFinalizeOfflineRun(opts: { db: Database; runId: string }) {

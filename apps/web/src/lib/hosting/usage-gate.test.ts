@@ -274,3 +274,99 @@ describe("beginIngestUsageReservation", () => {
     ).rejects.toBeInstanceOf(UsageLimitExceededError);
   });
 });
+
+describe("beginEvalUsageReservation", () => {
+  beforeEach(async () => {
+    envState.HOSTED_USAGE_ENFORCEMENT = "enforce";
+    insertValues.mockClear();
+    const { getOrCreateUsagePeriodBalance } = await import("./period-balance");
+    const { reserveUsage } = await import("./reservation");
+    const { resolvePlanRequestCap } = await import("./entitlements");
+    vi.mocked(getOrCreateUsagePeriodBalance).mockResolvedValue({
+      id: "bal-1",
+      accountId: "acct-1",
+      periodStart: new Date("2026-03-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-04-01T00:00:00.000Z"),
+      limitMicros: 5_000_000,
+      consumedMicros: 0,
+      reservedMicros: 0,
+      requestCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(reserveUsage).mockResolvedValue({
+      ok: true,
+      balanceId: "bal-1",
+      consumedMicros: 0,
+      reservedMicros: 1_000,
+      limitMicros: 5_000_000,
+      estimateMicros: 1_000,
+    });
+    vi.mocked(resolvePlanRequestCap).mockResolvedValue(null);
+  });
+
+  it("reserves before offline eval provider work", async () => {
+    const { beginEvalUsageReservation } = await import("./usage-gate");
+    const { reserveUsage } = await import("./reservation");
+
+    const reservation = await beginEvalUsageReservation({
+      account,
+      assistantId: "asst-1",
+      requestId: "req-eval",
+      kind: "offline",
+      chat,
+      embedding,
+      billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+      message: "What is the refund policy?",
+    });
+
+    expect(reservation).toMatchObject({
+      accountId: "acct-1",
+      requestId: "req-eval",
+      reservationEventId: "evt-1",
+    });
+    expect(reserveUsage).toHaveBeenCalled();
+    expect(insertValues).toHaveBeenCalled();
+  });
+
+  it("throws when the period limit is exhausted", async () => {
+    const { reserveUsage } = await import("./reservation");
+    vi.mocked(reserveUsage).mockResolvedValueOnce({ ok: false, reason: "limit_exceeded" });
+    const { beginEvalUsageReservation } = await import("./usage-gate");
+    const { UsageLimitExceededError } = await import("./usage-limit-error");
+
+    await expect(
+      beginEvalUsageReservation({
+        account,
+        assistantId: "asst-1",
+        requestId: "req-eval",
+        kind: "online",
+        chat,
+        embedding,
+        billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+        message: "",
+      }),
+    ).rejects.toBeInstanceOf(UsageLimitExceededError);
+  });
+
+  it("skips reservation in shadow mode", async () => {
+    envState.HOSTED_USAGE_ENFORCEMENT = "shadow";
+    const { beginEvalUsageReservation } = await import("./usage-gate");
+    const { reserveUsage } = await import("./reservation");
+    vi.mocked(reserveUsage).mockClear();
+
+    await expect(
+      beginEvalUsageReservation({
+        account,
+        assistantId: "asst-1",
+        requestId: "req-eval",
+        kind: "offline",
+        chat,
+        embedding,
+        billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+        message: "hi",
+      }),
+    ).resolves.toBeNull();
+    expect(reserveUsage).not.toHaveBeenCalled();
+  });
+});

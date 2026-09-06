@@ -213,7 +213,7 @@ export async function finishChatUsageReservation(input: {
   accountId: string;
   assistantId: string;
   requestId: string;
-  source?: "playground" | "widget" | "api";
+  source?: "playground" | "widget" | "api" | "eval";
   visitorId?: string | null;
   records: ProviderUsageRecord[];
   billing: AssistantBillingModes;
@@ -437,6 +437,149 @@ export async function finishIngestUsageReservation(input: {
 }
 
 export async function abortIngestUsageReservation(
+  reservation: UsageGateReservation | null,
+): Promise<void> {
+  await abortChatUsageReservation(reservation);
+}
+
+function estimateJudgeCallsMicros(input: {
+  catalog: ModelPricingRow[];
+  chat: import("@chatai/ai").ChatConfig;
+  billing: AssistantBillingModes;
+  judgeCount?: number;
+}): number {
+  if (input.billing.chat !== "hosted") return 0;
+  const at = new Date();
+  const judgeCount = input.judgeCount ?? 3;
+  const perJudge = calculateCostMicros({
+    catalog: input.catalog,
+    provider: input.chat.provider ?? "unknown",
+    model: input.chat.model,
+    usageOperation: "chat_completion",
+    at,
+    inputTokens: 800,
+    outputTokens: 150,
+  }).costMicros;
+  return perJudge * judgeCount;
+}
+
+/**
+ * Reserve estimated cost for an offline/online eval job before provider calls.
+ * Throws UsageLimitExceededError when the account cannot afford the estimate.
+ * Returns null when enforcement is off (shadow/off) — still meters on finish when enabled.
+ */
+export async function beginEvalUsageReservation(input: {
+  account: HostingAccount;
+  assistantId: string;
+  requestId: string;
+  kind: "offline" | "online";
+  chat: import("@chatai/ai").ChatConfig;
+  embedding: import("@chatai/ai").EmbeddingConfig;
+  billing: AssistantBillingModes;
+  message: string;
+  queryExpansionEnabled?: boolean;
+  rerankEnabled?: boolean;
+  verifyCitationsEnabled?: boolean;
+  hasCohereKey?: boolean;
+  catalog?: ModelPricingRow[];
+}): Promise<UsageGateReservation | null> {
+  if (!isUsageEnforcementEnabled()) {
+    return null;
+  }
+
+  const catalog = await resolveCatalog(input.catalog);
+  let estimateMicros = estimateJudgeCallsMicros({
+    catalog,
+    chat: input.chat,
+    billing: input.billing,
+  });
+
+  if (input.kind === "offline") {
+    const chatEstimate = estimateChatRequestCostMicros({
+      catalog,
+      chat: input.chat,
+      embedding: input.embedding,
+      billing: input.billing,
+      message: input.message,
+      hasHistory: false,
+      queryExpansionEnabled: Boolean(input.queryExpansionEnabled),
+      rerankEnabled: Boolean(input.rerankEnabled),
+      verifyCitationsEnabled: Boolean(input.verifyCitationsEnabled),
+      hasCohereKey: Boolean(input.hasCohereKey),
+      maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS,
+    });
+    estimateMicros += chatEstimate.estimateMicros;
+  }
+
+  // Always reserve at least $0.0001 hosted when any hosted billing mode is active,
+  // so concurrent jobs still serialize against the ceiling.
+  if (
+    estimateMicros <= 0 &&
+    (input.billing.chat === "hosted" ||
+      input.billing.embedding === "hosted" ||
+      input.billing.rerank === "hosted")
+  ) {
+    estimateMicros = 100;
+  }
+
+  const balance = await getOrCreateUsagePeriodBalance(input.account);
+  if (!(await assertRequestCapAllows(input.account, balance.requestCount))) {
+    throw new UsageLimitExceededError();
+  }
+
+  const reserved = await reserveUsage({
+    accountId: input.account.id,
+    periodStart: balance.periodStart,
+    estimateMicros,
+  });
+
+  if (!reserved.ok) {
+    throw new UsageLimitExceededError();
+  }
+
+  const reservationEventId = await createReservationEvent({
+    accountId: input.account.id,
+    assistantId: input.assistantId,
+    requestId: input.requestId,
+    operation: "chat_completion",
+    provider: input.chat.provider ?? "unknown",
+    model: input.chat.model,
+    reservedMicros: reserved.estimateMicros,
+    periodStart: balance.periodStart,
+    metadata: {
+      source: "eval",
+      worker: "eval",
+      evalKind: input.kind,
+    },
+  });
+
+  return {
+    accountId: input.account.id,
+    periodStart: balance.periodStart,
+    reservedMicros: reserved.estimateMicros,
+    reservationEventId,
+    requestId: input.requestId,
+    estimateMicros: reserved.estimateMicros,
+  };
+}
+
+export async function finishEvalUsageReservation(input: {
+  reservation: UsageGateReservation | null;
+  accountId: string;
+  assistantId: string;
+  requestId: string;
+  records: ProviderUsageRecord[];
+  billing: AssistantBillingModes;
+  catalog?: ModelPricingRow[];
+  failed?: boolean;
+}): Promise<void> {
+  await finishChatUsageReservation({
+    ...input,
+    source: "eval",
+  });
+}
+
+export async function abortEvalUsageReservation(
   reservation: UsageGateReservation | null,
 ): Promise<void> {
   await abortChatUsageReservation(reservation);

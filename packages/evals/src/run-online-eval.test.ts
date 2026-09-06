@@ -35,7 +35,7 @@ describe("scoreMessage", () => {
       .mockResolvedValueOnce('{"score":0.8}')
       .mockResolvedValueOnce('{"score":0.7}');
 
-    const scores = await scoreMessage({
+    const result = await scoreMessage({
       chat: { apiKey: "test", baseURL: "https://example.com/v1", model: "test" },
       context: {
         question: "What is the refund policy?",
@@ -54,15 +54,16 @@ describe("scoreMessage", () => {
       deps: { generateChat },
     });
 
-    expect(scores).toHaveLength(4);
-    expect(scores.map((score) => score.metric)).toEqual([
+    expect(result.scores).toHaveLength(4);
+    expect(result.scores.map((score) => score.metric)).toEqual([
       "faithfulness",
       "contextRelevance",
       "answerRelevance",
       "citationCorrectness",
     ]);
-    expect(scores[0]?.score).toBe(0.9);
-    expect(scores[3]?.metric).toBe("citationCorrectness");
+    expect(result.scores[0]?.score).toBe(0.9);
+    expect(result.scores[3]?.metric).toBe("citationCorrectness");
+    expect(result.providerUsages.length).toBe(3);
   });
 });
 

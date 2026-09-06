@@ -1,4 +1,5 @@
 import type { ChatConfig } from "@chatai/ai";
+import type { ProviderUsageRecord } from "@chatai/rag/answer";
 
 import {
   scoreAnswerRelevance,
@@ -13,7 +14,7 @@ export async function scoreMessage(opts: {
   chat: ChatConfig;
   context: EvalContext;
   deps?: Partial<ScorerDeps>;
-}): Promise<EvalScoreResult[]> {
+}): Promise<{ scores: EvalScoreResult[]; providerUsages: ProviderUsageRecord[] }> {
   const [faithfulness, contextRelevance, answerRelevance, citationCorrectness] = await Promise.all([
     scoreFaithfulness(opts.context, opts.chat, opts.deps),
     scoreContextRelevance(opts.context, opts.chat, opts.deps),
@@ -21,7 +22,20 @@ export async function scoreMessage(opts: {
     scoreCitationCorrectness(opts.context),
   ]);
 
-  return [faithfulness, contextRelevance, answerRelevance, citationCorrectness];
+  const scores = [
+    faithfulness.score,
+    contextRelevance.score,
+    answerRelevance.score,
+    citationCorrectness.score,
+  ];
+  const providerUsages = [
+    faithfulness.usage,
+    contextRelevance.usage,
+    answerRelevance.usage,
+    citationCorrectness.usage,
+  ].filter((row): row is ProviderUsageRecord => row != null);
+
+  return { scores, providerUsages };
 }
 
 export function summarizeScores(scores: EvalScoreResult[]) {

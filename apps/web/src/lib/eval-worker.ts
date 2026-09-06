@@ -6,9 +6,22 @@ import {
   runOfflineEvalCase,
   runOnlineEvalJob,
 } from "@chatai/evals";
+import { resolveRagSettings } from "@chatai/rag/answer";
 
 import { resolveAssistantModels } from "@/lib/ai-config";
 import { env } from "@/lib/env";
+import {
+  checkHostingAccountAccess,
+  resolveBillableAccountForAssistant,
+} from "@/lib/hosting/accounts";
+import {
+  abortEvalUsageReservation,
+  beginEvalUsageReservation,
+  finishEvalUsageReservation,
+  type UsageGateReservation,
+} from "@/lib/hosting/usage-gate";
+import { isUsageLimitExceededError, UsageLimitExceededError } from "@/lib/hosting/usage-limit-error";
+import { createId } from "@/lib/ids";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
@@ -123,20 +136,78 @@ async function processOnce() {
   const job = await claimJob(db);
   if (!job) return false;
 
+  const hold = { reservation: null as UsageGateReservation | null };
+  let assistantId: string | null = null;
+  let accountId: string | null = null;
+  const requestId = createId();
+
   try {
     if (job.messageId) {
       const assistant = await assistantForMessage(db, job.messageId);
+      assistantId = assistant.id;
       const models = await resolveAssistantModels(assistant);
-      await runOnlineEvalJob({
+      const account = await resolveBillableAccountForAssistant(assistant);
+      accountId = account.id;
+      const access = checkHostingAccountAccess(account);
+      if (!access.ok) {
+        throw new UsageLimitExceededError(access.error);
+      }
+
+      hold.reservation = await beginEvalUsageReservation({
+        account,
+        assistantId: assistant.id,
+        requestId,
+        kind: "online",
+        chat: models.chat,
+        embedding: models.embedding,
+        billing: models.billing,
+        message: "",
+      });
+
+      const result = await runOnlineEvalJob({
         db,
         messageId: job.messageId,
         chat: models.chat,
       });
+
+      await finishEvalUsageReservation({
+        reservation: hold.reservation,
+        accountId: account.id,
+        assistantId: assistant.id,
+        requestId,
+        records: result.providerUsages,
+        billing: models.billing,
+      });
+      hold.reservation = null;
     } else if (job.runId && job.caseId) {
       console.log(`[eval] offline case ${job.caseId} using ${evalWorkerVersionLabel()}`);
       const assistant = await assistantForRun(db, job.runId);
+      assistantId = assistant.id;
       const models = await resolveAssistantModels(assistant);
-      await runOfflineEvalCase({
+      const account = await resolveBillableAccountForAssistant(assistant);
+      accountId = account.id;
+      const access = checkHostingAccountAccess(account);
+      if (!access.ok) {
+        throw new UsageLimitExceededError(access.error);
+      }
+
+      const rag = resolveRagSettings(assistant.ragSettings);
+      hold.reservation = await beginEvalUsageReservation({
+        account,
+        assistantId: assistant.id,
+        requestId,
+        kind: "offline",
+        chat: models.chat,
+        embedding: models.embedding,
+        billing: models.billing,
+        message: `eval-case:${job.caseId}`,
+        queryExpansionEnabled: rag.queryExpansion,
+        rerankEnabled: rag.rerank,
+        verifyCitationsEnabled: rag.guardrails.verifyCitations,
+        hasCohereKey: Boolean(env.COHERE_API_KEY),
+      });
+
+      const result = await runOfflineEvalCase({
         db,
         runId: job.runId,
         caseId: job.caseId,
@@ -144,6 +215,16 @@ async function processOnce() {
         embedding: models.embedding,
         cohereApiKey: env.COHERE_API_KEY ?? null,
       });
+
+      await finishEvalUsageReservation({
+        reservation: hold.reservation,
+        accountId: account.id,
+        assistantId: assistant.id,
+        requestId,
+        records: result.providerUsages,
+        billing: models.billing,
+      });
+      hold.reservation = null;
     } else {
       throw new Error("Eval jobs require a messageId or a runId and caseId.");
     }
@@ -162,8 +243,12 @@ async function processOnce() {
       await maybeFinalizeOfflineRun({ db, runId: job.runId });
     }
   } catch (error) {
+    await abortEvalUsageReservation(hold.reservation);
+    hold.reservation = null;
+
     const message = error instanceof Error ? error.message : "Eval job failed.";
-    const terminal = job.attempts >= MAX_ATTEMPTS;
+    const limitExceeded = isUsageLimitExceededError(error);
+    const terminal = limitExceeded || job.attempts >= MAX_ATTEMPTS;
 
     await db
       .update(evalJobs)
@@ -182,7 +267,12 @@ async function processOnce() {
     const target = job.messageId
       ? `message ${job.messageId}`
       : `run ${job.runId} case ${job.caseId}`;
-    console.error(`[eval] ${target} failed:`, message);
+    console.error(
+      `[eval] ${target} failed${accountId ? ` (account ${accountId})` : ""}${
+        assistantId ? ` assistant ${assistantId}` : ""
+      }:`,
+      message,
+    );
   }
 
   return true;

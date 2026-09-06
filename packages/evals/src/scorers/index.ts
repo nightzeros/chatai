@@ -1,4 +1,12 @@
-import { generateChat, runGenerateChat, type ChatConfig, type GenerateChatFn } from "@chatai/ai";
+import {
+  generateChat,
+  runGenerateChat,
+  type ChatConfig,
+  type GenerateChatFn,
+  type ProviderUsage,
+  emptyProviderUsage,
+} from "@chatai/ai";
+import type { ProviderUsageRecord } from "@chatai/rag/answer";
 
 import { parseJudgeVerdict } from "../parse-score";
 import type { EvalContext, EvalScoreResult } from "../types";
@@ -7,27 +15,52 @@ export type ScorerDeps = {
   generateChat: GenerateChatFn;
 };
 
+export type JudgeScoreResult = {
+  score: number;
+  reason?: string;
+  usage: ProviderUsage;
+};
+
 async function judgeScore(opts: {
   chat: ChatConfig;
   system: string;
   prompt: string;
   generateChat: GenerateChatFn;
-}) {
-  const { text: raw } = await runGenerateChat(opts.generateChat, {
+}): Promise<JudgeScoreResult> {
+  const { text: raw, usage } = await runGenerateChat(opts.generateChat, {
     config: opts.chat,
     system: opts.system,
     prompt: opts.prompt,
   });
-  return parseJudgeVerdict(raw);
+  const verdict = parseJudgeVerdict(raw);
+  return {
+    score: verdict.score,
+    ...(verdict.reason ? { reason: verdict.reason } : {}),
+    usage: usage ?? emptyProviderUsage(),
+  };
+}
+
+function judgeUsageRecord(
+  chat: ChatConfig,
+  usage: ProviderUsage,
+  step: string,
+): ProviderUsageRecord {
+  return {
+    kind: "chat_completion",
+    provider: chat.provider,
+    model: chat.model,
+    usage,
+    step,
+  };
 }
 
 export async function scoreFaithfulness(
   context: EvalContext,
   chat: ChatConfig,
   deps?: Partial<ScorerDeps>,
-): Promise<EvalScoreResult> {
+): Promise<{ score: EvalScoreResult; usage: ProviderUsageRecord | null }> {
   const generate = deps?.generateChat ?? generateChat;
-  const score = await judgeScore({
+  const result = await judgeScore({
     chat,
     generateChat: generate,
     system:
@@ -36,9 +69,12 @@ export async function scoreFaithfulness(
   });
 
   return {
-    metric: "faithfulness",
-    score: score.score,
-    details: { judge: "llm", ...(score.reason ? { reason: score.reason } : {}) },
+    score: {
+      metric: "faithfulness",
+      score: result.score,
+      details: { judge: "llm", ...(result.reason ? { reason: result.reason } : {}) },
+    },
+    usage: judgeUsageRecord(chat, result.usage, "eval_judge_faithfulness"),
   };
 }
 
@@ -46,9 +82,9 @@ export async function scoreContextRelevance(
   context: EvalContext,
   chat: ChatConfig,
   deps?: Partial<ScorerDeps>,
-): Promise<EvalScoreResult> {
+): Promise<{ score: EvalScoreResult; usage: ProviderUsageRecord | null }> {
   const generate = deps?.generateChat ?? generateChat;
-  const score = await judgeScore({
+  const result = await judgeScore({
     chat,
     generateChat: generate,
     system:
@@ -57,9 +93,12 @@ export async function scoreContextRelevance(
   });
 
   return {
-    metric: "contextRelevance",
-    score: score.score,
-    details: { judge: "llm", ...(score.reason ? { reason: score.reason } : {}) },
+    score: {
+      metric: "contextRelevance",
+      score: result.score,
+      details: { judge: "llm", ...(result.reason ? { reason: result.reason } : {}) },
+    },
+    usage: judgeUsageRecord(chat, result.usage, "eval_judge_context_relevance"),
   };
 }
 
@@ -67,9 +106,9 @@ export async function scoreAnswerRelevance(
   context: EvalContext,
   chat: ChatConfig,
   deps?: Partial<ScorerDeps>,
-): Promise<EvalScoreResult> {
+): Promise<{ score: EvalScoreResult; usage: ProviderUsageRecord | null }> {
   const generate = deps?.generateChat ?? generateChat;
-  const score = await judgeScore({
+  const result = await judgeScore({
     chat,
     generateChat: generate,
     system:
@@ -85,22 +124,30 @@ export async function scoreAnswerRelevance(
   });
 
   return {
-    metric: "answerRelevance",
-    score: score.score,
-    details: { judge: "llm", ...(score.reason ? { reason: score.reason } : {}) },
+    score: {
+      metric: "answerRelevance",
+      score: result.score,
+      details: { judge: "llm", ...(result.reason ? { reason: result.reason } : {}) },
+    },
+    usage: judgeUsageRecord(chat, result.usage, "eval_judge_answer_relevance"),
   };
 }
 
-export async function scoreCitationCorrectness(context: EvalContext): Promise<EvalScoreResult> {
+export async function scoreCitationCorrectness(
+  context: EvalContext,
+): Promise<{ score: EvalScoreResult; usage: ProviderUsageRecord | null }> {
   const citations = [...context.answer.matchAll(/\[(\d+)\]/g)]
     .map((match) => Number(match[1]))
     .filter((value) => Number.isInteger(value) && value > 0);
 
   if (citations.length === 0) {
     return {
-      metric: "citationCorrectness",
-      score: context.sources.length === 0 ? 1 : 0.5,
-      details: { citations: [], note: "no_inline_citations" },
+      score: {
+        metric: "citationCorrectness",
+        score: context.sources.length === 0 ? 1 : 0.5,
+        details: { citations: [], note: "no_inline_citations" },
+      },
+      usage: null,
     };
   }
 
@@ -110,9 +157,12 @@ export async function scoreCitationCorrectness(context: EvalContext): Promise<Ev
 
   if (invalid.length > 0) {
     return {
-      metric: "citationCorrectness",
-      score: 0,
-      details: { citations, invalid, maxIndex },
+      score: {
+        metric: "citationCorrectness",
+        score: 0,
+        details: { citations, invalid, maxIndex },
+      },
+      usage: null,
     };
   }
 
@@ -134,14 +184,17 @@ export async function scoreCitationCorrectness(context: EvalContext): Promise<Ev
   });
 
   return {
-    metric: "citationCorrectness",
-    score,
-    details: {
-      citations: valid,
-      citedDocuments: citedSources,
-      matched,
-      citationMappings,
-      retrieval: context.retrieval,
+    score: {
+      metric: "citationCorrectness",
+      score,
+      details: {
+        citations: valid,
+        citedDocuments: citedSources,
+        matched,
+        citationMappings,
+        retrieval: context.retrieval,
+      },
     },
+    usage: null,
   };
 }

@@ -15,7 +15,8 @@ export type EvalAccessResult =
 
 /**
  * Gate eval-run creation: plan feature + account status + remaining budget preflight.
- * Does not fully reserve/meter eval tokens (documented residual risk for paid tiers).
+ * Each eval job also reserves and reconciles hosted usage in the eval worker before
+ * provider calls (see beginEvalUsageReservation / finishEvalUsageReservation).
  */
 export async function assertEvalAccess(account: HostingAccount): Promise<EvalAccessResult> {
   const access = checkHostingAccountAccess(account);

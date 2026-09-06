@@ -61,7 +61,7 @@ export type UsagePricingSnapshot = {
  * Safe billing metadata only — never store message content, prompts, or chunk text.
  */
 export type UsageEventMetadata = {
-  source?: "playground" | "widget" | "api";
+  source?: "playground" | "widget" | "api" | "ingest" | "eval";
   visitorIdHash?: string;
   parentEventId?: string;
   [key: string]: unknown;
