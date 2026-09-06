@@ -6,9 +6,9 @@ import {
   runOfflineEvalCase,
   runOnlineEvalJob,
 } from "@chatai/evals";
-import { resolveRagSettings } from "@chatai/rag/answer";
+import { resolveRagSettings, type ProviderUsageRecord } from "@chatai/rag/answer";
 
-import { resolveAssistantModels } from "@/lib/ai-config";
+import { resolveAssistantModels, type AssistantBillingModes } from "@/lib/ai-config";
 import { env } from "@/lib/env";
 import {
   checkHostingAccountAccess,
@@ -131,14 +131,46 @@ async function assistantForRun(db: ReturnType<typeof createDb>, runId: string) {
   return assistant;
 }
 
+/**
+ * On failure: if any provider calls already completed, reconcile their cost against
+ * the reservation. Only abort (release at $0) when nothing was spent yet.
+ */
+async function releaseEvalReservation(opts: {
+  reservation: UsageGateReservation | null;
+  usageCollector: ProviderUsageRecord[];
+  accountId: string | null;
+  assistantId: string | null;
+  requestId: string;
+  billing: AssistantBillingModes | null;
+}) {
+  const { reservation, usageCollector, accountId, assistantId, requestId, billing } = opts;
+  if (!reservation) return;
+
+  if (usageCollector.length > 0 && accountId && assistantId && billing) {
+    await finishEvalUsageReservation({
+      reservation,
+      accountId,
+      assistantId,
+      requestId,
+      records: usageCollector,
+      billing,
+    });
+    return;
+  }
+
+  await abortEvalUsageReservation(reservation);
+}
+
 async function processOnce() {
   const db = workerDb();
   const job = await claimJob(db);
   if (!job) return false;
 
   const hold = { reservation: null as UsageGateReservation | null };
+  const usageCollector: ProviderUsageRecord[] = [];
   let assistantId: string | null = null;
   let accountId: string | null = null;
+  let billing: AssistantBillingModes | null = null;
   const requestId = createId();
 
   try {
@@ -146,6 +178,7 @@ async function processOnce() {
       const assistant = await assistantForMessage(db, job.messageId);
       assistantId = assistant.id;
       const models = await resolveAssistantModels(assistant);
+      billing = models.billing;
       const account = await resolveBillableAccountForAssistant(assistant);
       accountId = account.id;
       const access = checkHostingAccountAccess(account);
@@ -168,6 +201,7 @@ async function processOnce() {
         db,
         messageId: job.messageId,
         chat: models.chat,
+        usageCollector,
       });
 
       await finishEvalUsageReservation({
@@ -184,6 +218,7 @@ async function processOnce() {
       const assistant = await assistantForRun(db, job.runId);
       assistantId = assistant.id;
       const models = await resolveAssistantModels(assistant);
+      billing = models.billing;
       const account = await resolveBillableAccountForAssistant(assistant);
       accountId = account.id;
       const access = checkHostingAccountAccess(account);
@@ -214,6 +249,7 @@ async function processOnce() {
         chat: models.chat,
         embedding: models.embedding,
         cohereApiKey: env.COHERE_API_KEY ?? null,
+        usageCollector,
       });
 
       await finishEvalUsageReservation({
@@ -243,7 +279,14 @@ async function processOnce() {
       await maybeFinalizeOfflineRun({ db, runId: job.runId });
     }
   } catch (error) {
-    await abortEvalUsageReservation(hold.reservation);
+    await releaseEvalReservation({
+      reservation: hold.reservation,
+      usageCollector,
+      accountId,
+      assistantId,
+      requestId,
+      billing,
+    });
     hold.reservation = null;
 
     const message = error instanceof Error ? error.message : "Eval job failed.";

@@ -22,6 +22,8 @@ export async function runOnlineEvalJob(opts: {
   messageId: string;
   chat: ChatConfig;
   deps?: Partial<ScorerDeps>;
+  /** Filled as judge calls complete — survives later persistence failures. */
+  usageCollector?: ProviderUsageRecord[];
 }): Promise<{
   runId: string;
   scores: Awaited<ReturnType<typeof scoreMessage>>["scores"];
@@ -62,6 +64,7 @@ export async function runOnlineEvalJob(opts: {
         retrieval: toEvalDebugRetrieval(loaded.retrieved),
       },
       deps: opts.deps,
+      usageCollector: opts.usageCollector,
     });
 
     await opts.db.insert(evalScores).values(

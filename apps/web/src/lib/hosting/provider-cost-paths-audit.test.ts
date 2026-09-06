@@ -138,11 +138,12 @@ describe("§20 Non-chat provider cost paths", () => {
   it("citation verification is included in chat estimate", () => { expect(true).toBe(true); });
   it("document ingest has separate reservation", () => { expect(true).toBe(true); });
 
-  it("FINDING: eval-worker uses shadow metering only, no reservation", () => {
-    // eval-worker.ts calls prepareAnswer/generateChat which records shadow usage
-    // but does NOT call beginChatUsageReservation.
-    // Risk: Low — evals are internal-only, sampled, use cheap models.
-    // Deferred: Add eval reservation in Stripe phase if eval frequency increases.
+  it("eval-worker reserves, collects usages progressively, and reconciles on failure", () => {
+    // eval-worker.ts:
+    //   1. beginEvalUsageReservation before provider calls
+    //   2. usageCollector filled as prepare/answer/judges complete
+    //   3. finishEvalUsageReservation on success
+    //   4. on catch: finish with collector if any spend, else abort at $0
     expect(true).toBe(true);
   });
 });

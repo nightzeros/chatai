@@ -10,30 +10,39 @@ import {
 } from "./scorers";
 import type { EvalContext, EvalScoreResult } from "./types";
 
+function pushUsage(
+  target: ProviderUsageRecord[],
+  collector: ProviderUsageRecord[] | undefined,
+  usage: ProviderUsageRecord | null,
+) {
+  if (!usage) return;
+  target.push(usage);
+  collector?.push(usage);
+}
+
 export async function scoreMessage(opts: {
   chat: ChatConfig;
   context: EvalContext;
   deps?: Partial<ScorerDeps>;
+  /** Filled as each judge completes — survives later persistence failures. */
+  usageCollector?: ProviderUsageRecord[];
 }): Promise<{ scores: EvalScoreResult[]; providerUsages: ProviderUsageRecord[] }> {
-  const [faithfulness, contextRelevance, answerRelevance, citationCorrectness] = await Promise.all([
-    scoreFaithfulness(opts.context, opts.chat, opts.deps),
-    scoreContextRelevance(opts.context, opts.chat, opts.deps),
-    scoreAnswerRelevance(opts.context, opts.chat, opts.deps),
-    scoreCitationCorrectness(opts.context),
-  ]);
+  const providerUsages: ProviderUsageRecord[] = [];
 
-  const scores = [
-    faithfulness.score,
-    contextRelevance.score,
-    answerRelevance.score,
-    citationCorrectness.score,
-  ];
-  const providerUsages = [
-    faithfulness.usage,
-    contextRelevance.usage,
-    answerRelevance.usage,
-    citationCorrectness.usage,
-  ].filter((row): row is ProviderUsageRecord => row != null);
+  async function track(
+    promise: Promise<{ score: EvalScoreResult; usage: ProviderUsageRecord | null }>,
+  ): Promise<EvalScoreResult> {
+    const result = await promise;
+    pushUsage(providerUsages, opts.usageCollector, result.usage);
+    return result.score;
+  }
+
+  const scores = await Promise.all([
+    track(scoreFaithfulness(opts.context, opts.chat, opts.deps)),
+    track(scoreContextRelevance(opts.context, opts.chat, opts.deps)),
+    track(scoreAnswerRelevance(opts.context, opts.chat, opts.deps)),
+    track(scoreCitationCorrectness(opts.context)),
+  ]);
 
   return { scores, providerUsages };
 }

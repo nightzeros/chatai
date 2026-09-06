@@ -231,6 +231,90 @@ describe("runOnlineEvalJob", () => {
     expect(inserted.length).toBeGreaterThanOrEqual(5);
     expect(generateChat).toHaveBeenCalled();
   });
+
+  it("keeps judge usages in the collector when score persistence fails", async () => {
+    const collector: Array<{ step?: string }> = [];
+    let scoreInserts = 0;
+
+    let selectCount = 0;
+    const db = {
+      select: () => {
+        selectCount += 1;
+        if (selectCount === 1) {
+          return {
+            from: () => ({
+              where: () => ({
+                limit: async () => [
+                  {
+                    id: "msg-1",
+                    role: "assistant",
+                    conversationId: "conv-1",
+                    content: "Answer [1].",
+                    sources: [{ documentId: "doc-1", documentName: "Policy" }],
+                    debug: {
+                      question: "Question?",
+                      retrieval: [
+                        {
+                          chunkId: "chunk-1",
+                          documentId: "doc-1",
+                          documentName: "Policy",
+                          similarity: 0.5,
+                        },
+                      ],
+                    },
+                  },
+                ],
+              }),
+            }),
+          };
+        }
+        if (selectCount === 2) {
+          return {
+            from: () => ({
+              where: () => ({
+                limit: async () => [{ id: "conv-1", assistantId: "asst-1" }],
+              }),
+            }),
+          };
+        }
+        return {
+          from: () => ({
+            where: async () => [{ id: "chunk-1", content: "Policy text", parentContent: null }],
+          }),
+        };
+      },
+      insert: () => ({
+        values: async (rows: unknown | unknown[]) => {
+          const list = Array.isArray(rows) ? rows : [rows];
+          // First insert is eval_runs; subsequent score insert should fail.
+          if (scoreInserts === 0 && list.length === 1 && "kind" in (list[0] as object)) {
+            scoreInserts += 1;
+            return;
+          }
+          throw new Error("eval_scores insert failed");
+        },
+      }),
+      update: () => ({
+        set: () => ({
+          where: async () => undefined,
+        }),
+      }),
+    };
+
+    const generateChat = vi.fn(async () => '{"score":0.88}');
+    await expect(
+      runOnlineEvalJob({
+        db: db as never,
+        messageId: "msg-1",
+        chat: { apiKey: "test", baseURL: "https://example.com/v1", model: "test" },
+        deps: { generateChat },
+        usageCollector: collector as never,
+      }),
+    ).rejects.toThrow(/eval_scores insert failed/);
+
+    expect(collector.length).toBeGreaterThan(0);
+    expect(collector.some((u) => u.step?.startsWith("eval_judge_"))).toBe(true);
+  });
 });
 
 describe("enqueueOnlineEvalJob", () => {

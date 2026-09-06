@@ -113,7 +113,7 @@ Upload size is capped (20 MB). Embedding spend shares the same monthly hosted AI
 
 ## Eval metering
 
-`evalsEnabled` is enforced on eval-run APIs. Each offline/online eval job **reserves** estimated hosted cost before provider calls and **reconciles** actual token usage afterward (same ledger as chat/ingest). Limit-exceeded jobs fail without retry.
+`evalsEnabled` is enforced on eval-run APIs. Each offline/online eval job **reserves** estimated hosted cost before provider calls and **reconciles** actual token usage afterward (same ledger as chat/ingest). Provider usages are collected as calls complete, so a later persistence failure still charges incurred spend instead of releasing the reservation at $0. Limit-exceeded jobs fail without retry.
 
 ## Self-hosted / BYOK
 
