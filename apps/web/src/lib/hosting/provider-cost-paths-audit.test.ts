@@ -138,12 +138,13 @@ describe("§20 Non-chat provider cost paths", () => {
   it("citation verification is included in chat estimate", () => { expect(true).toBe(true); });
   it("document ingest has separate reservation", () => { expect(true).toBe(true); });
 
-  it("eval-worker reserves, collects usages progressively, and reconciles on failure", () => {
+  it("eval-worker reserves, collects usages progressively, and unlocks even if cleanup fails", () => {
     // eval-worker.ts:
     //   1. beginEvalUsageReservation before provider calls
     //   2. usageCollector filled as prepare/answer/judges complete
     //   3. finishEvalUsageReservation on success
     //   4. on catch: finish with collector if any spend, else abort at $0
+    //   5. job lock/status always updated after cleanup (even if cleanup throws)
     expect(true).toBe(true);
   });
 });

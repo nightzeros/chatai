@@ -207,6 +207,7 @@ function billingModeFor(
 
 /**
  * After provider calls: write ledger events, reconcile reservation, mark parent complete.
+ * Shadow-meter / event-row failures must not leave reserved micros stranded.
  */
 export async function finishChatUsageReservation(input: {
   reservation: UsageGateReservation | null;
@@ -221,22 +222,6 @@ export async function finishChatUsageReservation(input: {
   failed?: boolean;
 }): Promise<void> {
   const catalog = await resolveCatalog(input.catalog);
-
-  await recordShadowUsages({
-    accountId: input.accountId,
-    assistantId: input.assistantId,
-    requestId: input.requestId,
-    source: input.source,
-    visitorId: input.visitorId,
-    records: input.records,
-    catalog,
-    billingModeFor: (kind) => billingModeFor(input.billing, kind),
-  });
-
-  if (!input.reservation) {
-    return;
-  }
-
   const now = new Date();
   let actualMicros = 0;
 
@@ -260,6 +245,25 @@ export async function finishChatUsageReservation(input: {
     }
   }
 
+  try {
+    await recordShadowUsages({
+      accountId: input.accountId,
+      assistantId: input.assistantId,
+      requestId: input.requestId,
+      source: input.source,
+      visitorId: input.visitorId,
+      records: input.records,
+      catalog,
+      billingModeFor: (kind) => billingModeFor(input.billing, kind),
+    });
+  } catch (error) {
+    console.error("[usage] shadow metering failed during finish:", error);
+  }
+
+  if (!input.reservation) {
+    return;
+  }
+
   await reconcileUsage({
     accountId: input.reservation.accountId,
     periodStart: input.reservation.periodStart,
@@ -268,15 +272,19 @@ export async function finishChatUsageReservation(input: {
     incrementRequestCount: !input.failed,
   });
 
-  await db()
-    .update(usageEvents)
-    .set({
-      status: input.failed ? "failed" : "completed",
-      finalCostMicros: input.failed ? 0 : actualMicros,
-      completedAt: now,
-      ...(input.failed ? { errorCode: "provider_or_request_failed" } : {}),
-    })
-    .where(eq(usageEvents.id, input.reservation.reservationEventId));
+  try {
+    await db()
+      .update(usageEvents)
+      .set({
+        status: input.failed ? "failed" : "completed",
+        finalCostMicros: input.failed ? 0 : actualMicros,
+        completedAt: now,
+        ...(input.failed ? { errorCode: "provider_or_request_failed" } : {}),
+      })
+      .where(eq(usageEvents.id, input.reservation.reservationEventId));
+  } catch (error) {
+    console.error("[usage] reservation event finalize failed:", error);
+  }
 }
 
 /** Release reservation without consuming (call from catch; skip finish afterward). */
@@ -291,15 +299,19 @@ export async function abortChatUsageReservation(
     reservedMicros: reservation.reservedMicros,
   });
 
-  await db()
-    .update(usageEvents)
-    .set({
-      status: "failed",
-      completedAt: new Date(),
-      errorCode: "aborted",
-      finalCostMicros: 0,
-    })
-    .where(eq(usageEvents.id, reservation.reservationEventId));
+  try {
+    await db()
+      .update(usageEvents)
+      .set({
+        status: "failed",
+        completedAt: new Date(),
+        errorCode: "aborted",
+        finalCostMicros: 0,
+      })
+      .where(eq(usageEvents.id, reservation.reservationEventId));
+  } catch (error) {
+    console.error("[usage] reservation abort event update failed:", error);
+  }
 }
 
 /**
@@ -379,31 +391,6 @@ export async function finishIngestUsageReservation(input: {
   catalog?: ModelPricingRow[];
 }): Promise<void> {
   const catalog = await resolveCatalog(input.catalog);
-
-  if (input.usage) {
-    await recordShadowUsages({
-      accountId: input.accountId,
-      assistantId: input.assistantId,
-      requestId: input.requestId,
-      source: "ingest",
-      records: [
-        {
-          kind: "embedding",
-          provider: input.embedding.provider,
-          model: input.embedding.model,
-          usage: input.usage,
-          step: "document_ingest",
-        },
-      ],
-      catalog,
-      billingModeFor: () => input.billingMode,
-    });
-  }
-
-  if (!input.reservation) {
-    return;
-  }
-
   const now = new Date();
   let actualMicros = 0;
 
@@ -418,6 +405,34 @@ export async function finishIngestUsageReservation(input: {
     }).costMicros;
   }
 
+  if (input.usage) {
+    try {
+      await recordShadowUsages({
+        accountId: input.accountId,
+        assistantId: input.assistantId,
+        requestId: input.requestId,
+        source: "ingest",
+        records: [
+          {
+            kind: "embedding",
+            provider: input.embedding.provider,
+            model: input.embedding.model,
+            usage: input.usage,
+            step: "document_ingest",
+          },
+        ],
+        catalog,
+        billingModeFor: () => input.billingMode,
+      });
+    } catch (error) {
+      console.error("[usage] shadow metering failed during ingest finish:", error);
+    }
+  }
+
+  if (!input.reservation) {
+    return;
+  }
+
   await reconcileUsage({
     accountId: input.reservation.accountId,
     periodStart: input.reservation.periodStart,
@@ -426,14 +441,18 @@ export async function finishIngestUsageReservation(input: {
     incrementRequestCount: Boolean(input.usage),
   });
 
-  await db()
-    .update(usageEvents)
-    .set({
-      status: "completed",
-      finalCostMicros: actualMicros,
-      completedAt: now,
-    })
-    .where(eq(usageEvents.id, input.reservation.reservationEventId));
+  try {
+    await db()
+      .update(usageEvents)
+      .set({
+        status: "completed",
+        finalCostMicros: actualMicros,
+        completedAt: now,
+      })
+      .where(eq(usageEvents.id, input.reservation.reservationEventId));
+  } catch (error) {
+    console.error("[usage] ingest reservation event finalize failed:", error);
+  }
 }
 
 export async function abortIngestUsageReservation(

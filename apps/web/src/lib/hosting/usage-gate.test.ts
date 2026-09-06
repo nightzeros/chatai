@@ -370,3 +370,55 @@ describe("beginEvalUsageReservation", () => {
     expect(reserveUsage).not.toHaveBeenCalled();
   });
 });
+
+describe("finishChatUsageReservation", () => {
+  beforeEach(async () => {
+    const { reconcileUsage } = await import("./reservation");
+    const { recordShadowUsages } = await import("./shadow-meter");
+    vi.mocked(reconcileUsage).mockClear();
+    vi.mocked(reconcileUsage).mockResolvedValue(undefined as never);
+    vi.mocked(recordShadowUsages).mockClear();
+    vi.mocked(recordShadowUsages).mockResolvedValue(0);
+  });
+
+  it("still reconciles when shadow metering throws", async () => {
+    const { recordShadowUsages } = await import("./shadow-meter");
+    const { reconcileUsage } = await import("./reservation");
+    vi.mocked(recordShadowUsages).mockRejectedValueOnce(new Error("ledger write failed"));
+
+    const { finishChatUsageReservation } = await import("./usage-gate");
+    await expect(
+      finishChatUsageReservation({
+        reservation: {
+          accountId: "acct-1",
+          periodStart: new Date("2026-03-01T00:00:00.000Z"),
+          reservedMicros: 1_000,
+          reservationEventId: "evt-res-1",
+          requestId: "req-1",
+          estimateMicros: 1_000,
+        },
+        accountId: "acct-1",
+        assistantId: "asst-1",
+        requestId: "req-1",
+        records: [
+          {
+            kind: "chat_completion",
+            provider: "openai",
+            model: "gpt-4o-mini",
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 0 },
+            step: "test",
+          },
+        ],
+        billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+        catalog: [],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(reconcileUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acct-1",
+        reservedMicros: 1_000,
+      }),
+    );
+  });
+});
