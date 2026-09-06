@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -72,7 +73,32 @@ export function UsageDashboard({
       <PageHeader
         title="Usage"
         description="Hosted AI spend for the current billing period. Limits apply when enforcement is enabled on this instance."
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/dashboard/billing">Plans & billing</Link>
+          </Button>
+        }
       />
+
+      {summary.usagePercent >= 70 ||
+      (summary.monthlyRequestCap != null &&
+        summary.monthlyRequestCap > 0 &&
+        summary.requestCount / summary.monthlyRequestCap >= 0.7) ? (
+        <Card className="border-warning/40 bg-warning/5 shadow-none">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6 text-sm">
+            <p>
+              {summary.usagePercent >= 100 ||
+              (summary.monthlyRequestCap != null &&
+                summary.requestCount >= summary.monthlyRequestCap)
+                ? "You've reached your monthly hosted AI allowance. Upgrade your plan or wait until your usage period resets."
+                : "You're approaching a plan limit."}
+            </p>
+            <Button asChild size="sm">
+              <Link href="/dashboard/billing">Upgrade plan</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">

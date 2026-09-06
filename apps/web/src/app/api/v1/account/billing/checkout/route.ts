@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAccountSession } from "@/lib/hosting/require-account-session";
-import { currentPolarProductAllowlist } from "@/lib/hosting/polar/allowlist";
+import { currentPolarPlanProductMap } from "@/lib/hosting/polar/allowlist";
 import { createCheckoutSession } from "@/lib/hosting/polar/checkout";
 import { getPolar } from "@/lib/hosting/polar/client";
-import { isAllowedPolarProductId } from "@/lib/hosting/polar/plans";
+import { isPaidPlanCode, productIdForPlanCode } from "@/lib/hosting/polar/plans";
 import {
   defaultCheckoutSuccessUrl,
   resolveSameOriginUrl,
@@ -12,14 +12,17 @@ import {
 
 /**
  * POST /api/v1/account/billing/checkout
- * Body: { productId: string, successUrl?: string }
+ * Body: { planCode: "starter"|"pro"|"business", successUrl?: string }
+ *
+ * Server resolves Polar product from planCode. Client product IDs are ignored.
  */
 export async function POST(request: NextRequest) {
   if (!getPolar()) {
     return NextResponse.json({ error: "Polar is not configured." }, { status: 503 });
   }
 
-  if (currentPolarProductAllowlist().size === 0) {
+  const planProducts = currentPolarPlanProductMap();
+  if (planProducts.size === 0) {
     return NextResponse.json(
       { error: "Polar plan products are not configured." },
       { status: 503 },
@@ -30,12 +33,19 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => null);
-  const productId = body?.productId;
-  if (!productId || typeof productId !== "string") {
-    return NextResponse.json({ error: "productId is required." }, { status: 400 });
+  const planCode = body?.planCode;
+  if (!planCode || typeof planCode !== "string" || !isPaidPlanCode(planCode)) {
+    return NextResponse.json(
+      { error: "planCode must be starter, pro, or business." },
+      { status: 400 },
+    );
   }
-  if (!isAllowedPolarProductId(productId, currentPolarProductAllowlist())) {
-    return NextResponse.json({ error: "Unknown productId." }, { status: 400 });
+
+  if (!productIdForPlanCode(planCode, planProducts)) {
+    return NextResponse.json(
+      { error: `Polar product is not configured for plan "${planCode}".` },
+      { status: 503 },
+    );
   }
 
   const origin = request.nextUrl.origin;
@@ -55,7 +65,7 @@ export async function POST(request: NextRequest) {
     const session = await createCheckoutSession({
       account: auth.account,
       userEmail: auth.session.user.email,
-      productId,
+      planCode,
       successUrl,
     });
 

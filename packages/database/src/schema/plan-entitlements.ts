@@ -9,9 +9,15 @@ import {
 
 import type { HostingPlanCode } from "./hosting-accounts";
 
+/**
+ * Typed plan feature flags stored in `plan_entitlements.features`.
+ * Prefer reading via the app entitlements resolver — never `if (plan === "pro")`.
+ */
 export type PlanFeatures = {
-  /** Reserved for future feature flags (evals, max assistants, etc.). */
-  [key: string]: unknown;
+  maxAssistants: number;
+  evalsEnabled: boolean;
+  /** UI/entitlement flag only; seat billing is not implemented. */
+  teamMembers?: boolean;
 };
 
 /**
@@ -24,7 +30,10 @@ export const planEntitlements = pgTable("plan_entitlements", {
   monthlyLimitMicros: bigint("monthly_limit_micros", { mode: "number" }).notNull(),
   /** Optional secondary request-count backstop. Null = unlimited requests. */
   monthlyRequestCap: integer("monthly_request_cap"),
-  features: jsonb("features").$type<PlanFeatures>().notNull().default({}),
+  features: jsonb("features").$type<PlanFeatures>().notNull().default({
+    maxAssistants: 1,
+    evalsEnabled: false,
+  }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

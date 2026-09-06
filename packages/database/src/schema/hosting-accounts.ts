@@ -17,8 +17,11 @@ export const hostingAccountStatusEnum = pgEnum("hosting_account_status", [
   ...HOSTING_ACCOUNT_STATUSES,
 ]);
 
-export const HOSTING_PLAN_CODES = ["free", "pro", "team"] as const;
+export const HOSTING_PLAN_CODES = ["free", "starter", "pro", "business"] as const;
 export type HostingPlanCode = (typeof HOSTING_PLAN_CODES)[number];
+
+export const PAID_HOSTING_PLAN_CODES = ["starter", "pro", "business"] as const;
+export type PaidHostingPlanCode = (typeof PAID_HOSTING_PLAN_CODES)[number];
 
 /**
  * Billable hosting account for ChatAI Cloud usage.

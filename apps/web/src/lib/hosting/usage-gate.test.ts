@@ -137,7 +137,8 @@ describe("beginChatUsageReservation (enforce)", () => {
     expect(result).toEqual({
       ok: false,
       status: 402,
-      error: "Usage limit exceeded for this billing period.",
+      error:
+        "You've reached your monthly hosted AI allowance. Upgrade your plan or wait until your usage period resets.",
       reason: "usage_limit_exceeded",
     });
   });

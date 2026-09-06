@@ -1,4 +1,4 @@
-export const DEFAULT_BILLING_RETURN_PATH = "/dashboard/usage";
+export const DEFAULT_BILLING_RETURN_PATH = "/dashboard/billing";
 
 export function defaultBillingReturnUrl(origin: string): string {
   return `${origin}${DEFAULT_BILLING_RETURN_PATH}`;

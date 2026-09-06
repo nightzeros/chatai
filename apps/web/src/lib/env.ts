@@ -79,7 +79,7 @@ const envSchema = z.object({
    * Fallback monthly hosted AI provider-cost ceiling in micro-dollars ($1 = 1_000_000).
    * Prefer `plan_entitlements.monthly_limit_micros` / account override when present.
    */
-  HOSTED_USAGE_DEFAULT_LIMIT_MICROS: z.coerce.number().int().nonnegative().default(5_000_000),
+  HOSTED_USAGE_DEFAULT_LIMIT_MICROS: z.coerce.number().int().nonnegative().default(1_000_000),
 
   /**
    * Usage metering mode:
@@ -116,9 +116,15 @@ const envSchema = z.object({
   POLAR_WEBHOOK_SECRET: z.string().optional(),
   /** Polar API environment. */
   POLAR_SERVER: z.enum(["sandbox", "production"]).default("sandbox"),
-  /** Polar Product ID for the Pro plan. Checkout rejects any other product. */
+  /** Polar Product ID for the Starter plan. */
+  POLAR_PRODUCT_ID_STARTER: z.string().optional(),
+  /** Polar Product ID for the Pro plan. */
   POLAR_PRODUCT_ID_PRO: z.string().optional(),
-  /** Polar Product ID for the Team plan. Checkout rejects any other product. */
+  /** Polar Product ID for the Business plan. */
+  POLAR_PRODUCT_ID_BUSINESS: z.string().optional(),
+  /**
+   * @deprecated Prefer POLAR_PRODUCT_ID_BUSINESS. Legacy Team product maps to business.
+   */
   POLAR_PRODUCT_ID_TEAM: z.string().optional(),
 
   UPLOAD_DIR: z.string().default("./uploads"),
@@ -173,7 +179,9 @@ function loadEnv(): Env {
     POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN,
     POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET,
     POLAR_SERVER: process.env.POLAR_SERVER,
+    POLAR_PRODUCT_ID_STARTER: process.env.POLAR_PRODUCT_ID_STARTER,
     POLAR_PRODUCT_ID_PRO: process.env.POLAR_PRODUCT_ID_PRO,
+    POLAR_PRODUCT_ID_BUSINESS: process.env.POLAR_PRODUCT_ID_BUSINESS,
     POLAR_PRODUCT_ID_TEAM: process.env.POLAR_PRODUCT_ID_TEAM,
     UPLOAD_DIR: process.env.UPLOAD_DIR,
   });
