@@ -1,14 +1,16 @@
-import type { HostingPlanCode, PaidHostingPlanCode } from "@chatai/database";
-
 import { BillingDashboard, type BillingPageData } from "@/components/account/billing-dashboard";
 import { getOrCreateHostingAccount } from "@/lib/hosting/accounts";
 import { countAssistantsForUser } from "@/lib/hosting/assistant-limits";
 import { currentPolarPlanProductMap } from "@/lib/hosting/polar/allowlist";
 import { getPolar } from "@/lib/hosting/polar/client";
+import {
+  isHostingPlanCode,
+  type HostingPlanCode,
+  type PaidHostingPlanCode,
+} from "@/lib/hosting/plan-catalog";
 import { resolveAccountEntitlements } from "@/lib/hosting/plan-entitlements";
 import { getUsageSummary } from "@/lib/hosting/usage-reports";
 import { requireSession } from "@/lib/session";
-import { isHostingPlanCode } from "@/lib/hosting/plan-catalog";
 
 export default async function BillingPage() {
   const session = await requireSession();

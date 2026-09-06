@@ -12,6 +12,8 @@ import {
   ALL_PLAN_CODES,
   formatDisplayPrice,
   PLAN_CATALOG,
+  type HostingPlanCode,
+  type PaidHostingPlanCode,
   type PlanCatalogEntry,
 } from "@/lib/hosting/plan-catalog";
 import {
@@ -20,7 +22,6 @@ import {
   formatUsdFromMicros,
   usageBarTone,
 } from "@/lib/hosting/format-usage";
-import type { PaidHostingPlanCode, HostingPlanCode } from "@chatai/database";
 import { cn } from "@/lib/utils";
 
 export type BillingPageData = {

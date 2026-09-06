@@ -1,10 +1,16 @@
-import type { HostingPlanCode, PaidHostingPlanCode } from "@chatai/database";
-import { HOSTING_PLAN_CODES, PAID_HOSTING_PLAN_CODES } from "@chatai/database";
-
 /**
  * Marketing / UI catalog for plans. Enforceable limits live in `plan_entitlements`
  * (DB). Display prices must be kept in sync with Polar Products operationally.
+ *
+ * This module is client-safe: do not import `@chatai/database` (pulls postgres/fs).
  */
+
+export const HOSTING_PLAN_CODES = ["free", "starter", "pro", "business"] as const;
+export type HostingPlanCode = (typeof HOSTING_PLAN_CODES)[number];
+
+export const PAID_HOSTING_PLAN_CODES = ["starter", "pro", "business"] as const;
+export type PaidHostingPlanCode = (typeof PAID_HOSTING_PLAN_CODES)[number];
+
 export type PlanCatalogEntry = {
   planCode: HostingPlanCode;
   name: string;
