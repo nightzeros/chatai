@@ -47,7 +47,7 @@ RUN pnpm --filter @chatai/web build
 # Portable migrate runtime (flat node_modules; migrator is not in Next standalone trace)
 FROM node:22-alpine AS migrate-deps
 WORKDIR /migrate
-RUN npm install --omit=dev drizzle-orm@0.40.1 postgres@3.4.5
+RUN npm install --omit=dev drizzle-orm@0.40.1 postgres@3.4.5 dotenv@16.4.7
 
 FROM base AS runner
 WORKDIR /app
