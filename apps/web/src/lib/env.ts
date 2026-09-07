@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { config as loadDotenv } from "dotenv";
+import "server-only";
 import { z } from "zod";
 
 function loadRootEnv() {
