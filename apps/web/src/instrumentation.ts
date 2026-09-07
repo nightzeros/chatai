@@ -19,5 +19,11 @@ export async function register() {
     } catch (error) {
       console.error("[privacy] failed to start worker:", error);
     }
+    try {
+      const { startUsageReconcileWorker } = await import("./lib/hosting/stale-reservations");
+      startUsageReconcileWorker();
+    } catch (error) {
+      console.error("[usage] failed to start stale reconciler:", error);
+    }
   }
 }

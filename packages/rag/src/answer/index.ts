@@ -1,3 +1,4 @@
+export type { ProviderUsageRecord } from "./provider-usage";
 export { prepareAnswer, finalizeAnswer, FALLBACK_MESSAGE } from "./answer";
 export type { PreparedAnswer, FinalAnswer, ChatHistoryMessage } from "./answer";
 export { thresholds } from "./thresholds";

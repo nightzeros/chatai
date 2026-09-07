@@ -1,4 +1,11 @@
-import { embedMany, generateChat, type ChatConfig, type EmbeddingConfig } from "@chatai/ai";
+import {
+  asEmbedManyResult,
+  embedMany,
+  generateChat,
+  type ChatConfig,
+  type EmbeddingConfig,
+  type ProviderUsage,
+} from "@chatai/ai";
 import type { MessageDebug, MessageOutcome, MessageSource } from "@chatai/database";
 import type { Database } from "@chatai/database";
 
@@ -10,6 +17,7 @@ import { buildContextBlocks, buildSystemPrompt } from "./prompt";
 import { sourcesFromAnswer } from "./citations";
 import { expandQueries } from "./expand-query";
 import { isUnsupportedContextAnswer, resolveFinalOutcome } from "./outcome";
+import type { ProviderUsageRecord } from "./provider-usage";
 
 import { resolveRagSettings, type RagSettings } from "./rag-settings";
 import {
@@ -37,6 +45,8 @@ export type PreparedAnswer = {
   shouldGenerate: boolean;
   fallbackText: string;
   debug: MessageDebug;
+  /** Provider sub-calls during prepare (rewrite/expand/embed/rerank). */
+  providerUsages: ProviderUsageRecord[];
 };
 
 export type FinalAnswer = {
@@ -45,15 +55,16 @@ export type FinalAnswer = {
   confidence: number;
   outcome: MessageOutcome;
   debug: MessageDebug;
+  providerUsages: ProviderUsageRecord[];
 };
 
 async function rewriteQuery(opts: {
   message: string;
   history: ChatHistoryMessage[];
   chat: ChatConfig;
-}): Promise<string> {
+}): Promise<{ query: string; usage?: ProviderUsage }> {
   if (opts.history.length === 0) {
-    return opts.message;
+    return { query: opts.message };
   }
 
   const transcript = opts.history
@@ -68,9 +79,12 @@ async function rewriteQuery(opts: {
         "Rewrite the latest user message as a standalone search query. Use the chat history only for context. Return only the rewritten query.",
       prompt: `${transcript}\nUser: ${opts.message}`,
     });
-    return rewritten || opts.message;
+    return {
+      query: rewritten.text || opts.message,
+      usage: rewritten.usage,
+    };
   } catch {
-    return opts.message;
+    return { query: opts.message };
   }
 }
 
@@ -88,11 +102,23 @@ export async function prepareAnswer(opts: {
 }): Promise<PreparedAnswer> {
   const started = Date.now();
   const rag = resolveRagSettings(opts.ragSettings);
-  const query = await rewriteQuery({
+  const providerUsages: ProviderUsageRecord[] = [];
+
+  const rewritten = await rewriteQuery({
     message: opts.message,
     history: opts.history ?? [],
     chat: opts.chat,
   });
+  const query = rewritten.query;
+  if (rewritten.usage) {
+    providerUsages.push({
+      kind: "chat_completion",
+      provider: opts.chat.provider,
+      model: opts.chat.model,
+      usage: rewritten.usage,
+      step: "rewrite_query",
+    });
+  }
 
   const retrieveStarted = Date.now();
   let retrieved: RetrievedChunk[] = [];
@@ -111,12 +137,29 @@ export async function prepareAnswer(opts: {
       queries: expansion.queries,
       alternates: expansion.alternates,
     };
+    if (expansion.usage) {
+      providerUsages.push({
+        kind: "chat_completion",
+        provider: opts.chat.provider,
+        model: opts.chat.model,
+        usage: expansion.usage,
+        step: "expand_query",
+      });
+    }
 
     const candidateLimit = rag.hybridSearch ? HYBRID_CANDIDATE_LIMIT : VECTOR_ONLY_LIMIT;
-    const embeddings = await embedMany(expansion.queries, opts.embedding);
+    const embedResult = asEmbedManyResult(await embedMany(expansion.queries, opts.embedding));
+    providerUsages.push({
+      kind: "embedding",
+      provider: opts.embedding.provider,
+      model: opts.embedding.model,
+      usage: embedResult.usage,
+      step: "query_embedding",
+    });
+
     const retrievalLists = await Promise.all(
       expansion.queries.map(async (searchQuery, index) => {
-        const queryEmbedding = embeddings[index];
+        const queryEmbedding = embedResult.embeddings[index];
         if (!queryEmbedding) {
           throw new Error("Failed to embed query.");
         }
@@ -144,6 +187,7 @@ export async function prepareAnswer(opts: {
       cohereApiKey: opts.cohereApiKey,
     });
     retrieved = rerankResult.chunks;
+    providerUsages.push(...rerankResult.providerUsages);
     rerankMeta = {
       enabled: rag.rerank,
       provider: rerankResult.provider,
@@ -238,6 +282,7 @@ export async function prepareAnswer(opts: {
     shouldGenerate: decision.action === "generate" && !retrievalError,
     fallbackText: FALLBACK_MESSAGE,
     debug,
+    providerUsages,
   };
 }
 
@@ -260,9 +305,12 @@ export function finalizeAnswer(fullText: string, prepared: PreparedAnswer): Fina
     sources,
     confidence: prepared.confidence,
     outcome,
+    providerUsages: prepared.providerUsages,
     debug: {
       ...prepared.debug,
       sourcesUsed: sources.map((source) => source.documentName),
     },
   };
 }
+
+export type { ProviderUsageRecord };

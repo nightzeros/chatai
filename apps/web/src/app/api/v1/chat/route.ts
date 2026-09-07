@@ -26,6 +26,15 @@ import { startEvalWorker } from "@/lib/eval-worker";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import {
+  checkHostingAccountAccess,
+  resolveBillableAccountForAssistant,
+} from "@/lib/hosting/accounts";
+import {
+  abortChatUsageReservation,
+  beginChatUsageReservation,
+  finishChatUsageReservation,
+} from "@/lib/hosting/usage-gate";
 import { createId } from "@/lib/ids";
 import { policyViolationResponse } from "@/lib/policies/policy-response";
 import { SecurityPolicy } from "@/lib/policies/security-policy";
@@ -93,6 +102,12 @@ export async function POST(request: Request) {
 
   if (!assistant) {
     return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
+  }
+
+  const hostingAccount = await resolveBillableAccountForAssistant(assistant);
+  const hostingAccess = checkHostingAccountAccess(hostingAccount);
+  if (!hostingAccess.ok) {
+    return jsonWithCors({ error: hostingAccess.error }, { status: hostingAccess.status });
   }
 
   if (!usesApiKeyAuth(request)) {
@@ -170,6 +185,34 @@ export async function POST(request: Request) {
     });
   }
 
+  const models = await resolveAssistantModels(assistant);
+  const usageRequestId = createId();
+  const rag = resolveRagSettings(assistant.ragSettings);
+
+  const gate = await beginChatUsageReservation({
+    account: hostingAccount,
+    assistantId: assistant.id,
+    requestId: usageRequestId,
+    chat: models.chat,
+    embedding: models.embedding,
+    billing: models.billing,
+    message: input.message,
+    hasHistory: history.length > 0,
+    queryExpansionEnabled: rag.queryExpansion,
+    rerankEnabled: rag.rerank,
+    verifyCitationsEnabled: rag.guardrails.verifyCitations,
+    hasCohereKey: Boolean(env.COHERE_API_KEY),
+    source,
+  });
+
+  if (!gate.ok) {
+    return jsonWithCors(
+      { error: gate.error, reason: gate.reason },
+      { status: gate.status },
+    );
+  }
+
+  const reservation = gate.reservation;
   const encoder = new TextEncoder();
   const assistantMessageId = createId();
 
@@ -177,10 +220,7 @@ export async function POST(request: Request) {
     async start(controller) {
       const send = (payload: unknown) => controller.enqueue(encoder.encode(sseLine(payload)));
 
-      const models = await resolveAssistantModels(assistant);
-
       try {
-        const rag = resolveRagSettings(assistant.ragSettings);
         let prepared = await prepareAnswer({
           db: db(),
           assistantId: assistant.id,
@@ -196,6 +236,7 @@ export async function POST(request: Request) {
         });
 
         let fullText = prepared.fallbackText;
+        let answerUsages = [...prepared.providerUsages];
 
         if (!prepared.shouldGenerate) {
           send({ type: "token", text: prepared.fallbackText });
@@ -208,6 +249,7 @@ export async function POST(request: Request) {
           });
           prepared = withVerifierResult(prepared, verified);
           fullText = verified.text;
+          answerUsages = prepared.providerUsages;
           send({ type: "token", text: fullText });
         } else {
           fullText = "";
@@ -221,11 +263,35 @@ export async function POST(request: Request) {
             fullText += delta;
             send({ type: "token", text: delta });
           }
+
+          const streamUsage = await result.usage;
+          answerUsages = [
+            ...prepared.providerUsages,
+            {
+              kind: "chat_completion",
+              provider: models.chat.provider,
+              model: models.chat.model,
+              usage: streamUsage,
+              step: "stream_answer",
+            },
+          ];
         }
+
+        await finishChatUsageReservation({
+          reservation,
+          accountId: hostingAccount.id,
+          assistantId: assistant.id,
+          requestId: usageRequestId,
+          source,
+          visitorId: input.visitorId,
+          records: answerUsages,
+          billing: models.billing,
+        });
 
         const latencyMs = Date.now() - started;
         const final = finalizeAnswer(fullText, {
           ...prepared,
+          providerUsages: answerUsages,
           debug: { ...prepared.debug, latencyMs, model: models.chat.model, provider: models.chat.provider },
         });
 
@@ -263,6 +329,8 @@ export async function POST(request: Request) {
         }, source, includeDebug));
         send({ type: "done" });
       } catch (error) {
+        await abortChatUsageReservation(reservation);
+
         const message = error instanceof Error ? error.message : "Model failed.";
         const latencyMs = Date.now() - started;
 

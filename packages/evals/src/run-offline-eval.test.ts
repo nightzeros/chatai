@@ -109,6 +109,7 @@ describe("runOfflineEvalCase", () => {
           },
         ],
       },
+      providerUsages: [],
     }));
 
     const result = await runOfflineEvalCase({
@@ -145,6 +146,114 @@ describe("runOfflineEvalCase", () => {
         }),
       }),
     });
+  });
+
+  it("keeps provider usages in the collector when score persistence fails", async () => {
+    const collector: Array<{ step?: string; kind: string }> = [];
+    let selectCount = 0;
+    const db = {
+      select: () => {
+        selectCount += 1;
+        if (selectCount === 1) {
+          return {
+            from: () => ({
+              where: () => ({
+                limit: async () => [
+                  { id: "case-1", question: "What is the refund policy?", expectedAnswer: "30 days" },
+                ],
+              }),
+            }),
+          };
+        }
+        if (selectCount === 2) {
+          return {
+            from: () => ({
+              where: () => ({
+                limit: async () => [{ id: "run-1", assistantId: "asst-1", kind: "offline" }],
+              }),
+            }),
+          };
+        }
+        return {
+          from: () => ({
+            where: () => ({
+              limit: async () => [
+                {
+                  id: "asst-1",
+                  instructions: "Be helpful.",
+                  hallucinationMode: "balanced",
+                  ragSettings: {},
+                },
+              ],
+            }),
+          }),
+        };
+      },
+      insert: () => ({
+        values: async () => {
+          throw new Error("eval_scores insert failed");
+        },
+      }),
+    };
+
+    const generateChat = vi.fn(async () => '{"score":0.9}');
+    const prepareAnswer = vi.fn(async () => ({
+      query: "What is the refund policy?",
+      retrieved: [
+        {
+          chunkId: "chunk-1",
+          documentId: "doc-1",
+          documentName: "Policy",
+          content: "Refunds are available within 30 days.",
+          similarity: 0.9,
+        },
+      ],
+      decision: { action: "generate", contextSufficient: true, confidence: "high", mode: "balanced" },
+      outcome: "answered_with_context",
+      confidence: 0.9,
+      system: "You are a helpful assistant.",
+      shouldGenerate: true,
+      fallbackText: "I could not find enough information.",
+      debug: {
+        retrieval: [
+          {
+            chunkId: "chunk-1",
+            documentId: "doc-1",
+            documentName: "Policy",
+            similarity: 0.9,
+          },
+        ],
+      },
+      providerUsages: [
+        {
+          kind: "embedding",
+          provider: "openai",
+          model: "text-embedding-3-small",
+          usage: { inputTokens: 12, outputTokens: 0, totalTokens: 12 },
+          step: "offline_eval_embed",
+        },
+      ],
+    }));
+
+    await expect(
+      runOfflineEvalCase({
+        db: db as never,
+        runId: "run-1",
+        caseId: "case-1",
+        chat: { apiKey: "test", baseURL: "https://example.com/v1", model: "test" },
+        embedding: { apiKey: "test", baseURL: "https://example.com/v1", model: "emb", dimensions: 1536 },
+        usageCollector: collector as never,
+        deps: {
+          prepareAnswer: prepareAnswer as never,
+          generateChat,
+        },
+      }),
+    ).rejects.toThrow(/eval_scores insert failed/);
+
+    expect(collector.length).toBeGreaterThan(0);
+    expect(collector.some((u) => u.step === "offline_eval_embed")).toBe(true);
+    expect(collector.some((u) => u.step === "offline_eval_answer")).toBe(true);
+    expect(collector.some((u) => u.step?.startsWith("eval_judge_"))).toBe(true);
   });
 });
 

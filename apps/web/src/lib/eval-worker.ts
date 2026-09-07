@@ -6,9 +6,22 @@ import {
   runOfflineEvalCase,
   runOnlineEvalJob,
 } from "@chatai/evals";
+import { resolveRagSettings, type ProviderUsageRecord } from "@chatai/rag/answer";
 
-import { resolveAssistantModels } from "@/lib/ai-config";
+import { resolveAssistantModels, type AssistantBillingModes } from "@/lib/ai-config";
 import { env } from "@/lib/env";
+import {
+  checkHostingAccountAccess,
+  resolveBillableAccountForAssistant,
+} from "@/lib/hosting/accounts";
+import {
+  abortEvalUsageReservation,
+  beginEvalUsageReservation,
+  finishEvalUsageReservation,
+  type UsageGateReservation,
+} from "@/lib/hosting/usage-gate";
+import { isUsageLimitExceededError, UsageLimitExceededError } from "@/lib/hosting/usage-limit-error";
+import { createId } from "@/lib/ids";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
@@ -118,71 +131,220 @@ async function assistantForRun(db: ReturnType<typeof createDb>, runId: string) {
   return assistant;
 }
 
+/**
+ * On failure: if any provider calls already completed, reconcile their cost against
+ * the reservation. Only abort (release at $0) when nothing was spent yet.
+ * Falls back to abort if finish throws so reserved micros are not stranded.
+ */
+async function releaseEvalReservation(opts: {
+  reservation: UsageGateReservation | null;
+  usageCollector: ProviderUsageRecord[];
+  accountId: string | null;
+  assistantId: string | null;
+  requestId: string;
+  billing: AssistantBillingModes | null;
+}) {
+  const { reservation, usageCollector, accountId, assistantId, requestId, billing } = opts;
+  if (!reservation) return;
+
+  try {
+    if (usageCollector.length > 0 && accountId && assistantId && billing) {
+      await finishEvalUsageReservation({
+        reservation,
+        accountId,
+        assistantId,
+        requestId,
+        records: usageCollector,
+        billing,
+      });
+      return;
+    }
+
+    await abortEvalUsageReservation(reservation);
+  } catch (error) {
+    console.error("[eval] reservation cleanup failed, attempting abort:", error);
+    await abortEvalUsageReservation(reservation);
+  }
+}
+
+async function unlockEvalJob(opts: {
+  db: ReturnType<typeof createDb>;
+  job: ClaimedEvalJob;
+  status: "completed" | "pending" | "failed";
+  error: string | null;
+  finalizeRun: boolean;
+}) {
+  await opts.db
+    .update(evalJobs)
+    .set({
+      status: opts.status,
+      error: opts.error,
+      lockedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(evalJobs.id, opts.job.id));
+
+  if (opts.finalizeRun && opts.job.runId) {
+    await maybeFinalizeOfflineRun({ db: opts.db, runId: opts.job.runId });
+  }
+}
+
 async function processOnce() {
   const db = workerDb();
   const job = await claimJob(db);
   if (!job) return false;
 
+  const hold = { reservation: null as UsageGateReservation | null };
+  const usageCollector: ProviderUsageRecord[] = [];
+  let assistantId: string | null = null;
+  let accountId: string | null = null;
+  let billing: AssistantBillingModes | null = null;
+  const requestId = createId();
+  let jobError: unknown = null;
+
   try {
     if (job.messageId) {
       const assistant = await assistantForMessage(db, job.messageId);
+      assistantId = assistant.id;
       const models = await resolveAssistantModels(assistant);
-      await runOnlineEvalJob({
+      billing = models.billing;
+      const account = await resolveBillableAccountForAssistant(assistant);
+      accountId = account.id;
+      const access = checkHostingAccountAccess(account);
+      if (!access.ok) {
+        throw new UsageLimitExceededError(access.error);
+      }
+
+      hold.reservation = await beginEvalUsageReservation({
+        account,
+        assistantId: assistant.id,
+        requestId,
+        kind: "online",
+        chat: models.chat,
+        embedding: models.embedding,
+        billing: models.billing,
+        message: "",
+      });
+
+      const result = await runOnlineEvalJob({
         db,
         messageId: job.messageId,
         chat: models.chat,
+        usageCollector,
       });
+
+      await finishEvalUsageReservation({
+        reservation: hold.reservation,
+        accountId: account.id,
+        assistantId: assistant.id,
+        requestId,
+        records: result.providerUsages,
+        billing: models.billing,
+      });
+      hold.reservation = null;
     } else if (job.runId && job.caseId) {
       console.log(`[eval] offline case ${job.caseId} using ${evalWorkerVersionLabel()}`);
       const assistant = await assistantForRun(db, job.runId);
+      assistantId = assistant.id;
       const models = await resolveAssistantModels(assistant);
-      await runOfflineEvalCase({
+      billing = models.billing;
+      const account = await resolveBillableAccountForAssistant(assistant);
+      accountId = account.id;
+      const access = checkHostingAccountAccess(account);
+      if (!access.ok) {
+        throw new UsageLimitExceededError(access.error);
+      }
+
+      const rag = resolveRagSettings(assistant.ragSettings);
+      hold.reservation = await beginEvalUsageReservation({
+        account,
+        assistantId: assistant.id,
+        requestId,
+        kind: "offline",
+        chat: models.chat,
+        embedding: models.embedding,
+        billing: models.billing,
+        message: `eval-case:${job.caseId}`,
+        queryExpansionEnabled: rag.queryExpansion,
+        rerankEnabled: rag.rerank,
+        verifyCitationsEnabled: rag.guardrails.verifyCitations,
+        hasCohereKey: Boolean(env.COHERE_API_KEY),
+      });
+
+      const result = await runOfflineEvalCase({
         db,
         runId: job.runId,
         caseId: job.caseId,
         chat: models.chat,
         embedding: models.embedding,
         cohereApiKey: env.COHERE_API_KEY ?? null,
+        usageCollector,
       });
+
+      await finishEvalUsageReservation({
+        reservation: hold.reservation,
+        accountId: account.id,
+        assistantId: assistant.id,
+        requestId,
+        records: result.providerUsages,
+        billing: models.billing,
+      });
+      hold.reservation = null;
     } else {
       throw new Error("Eval jobs require a messageId or a runId and caseId.");
     }
+  } catch (error) {
+    jobError = error;
+    try {
+      await releaseEvalReservation({
+        reservation: hold.reservation,
+        usageCollector,
+        accountId,
+        assistantId,
+        requestId,
+        billing,
+      });
+    } catch (cleanupError) {
+      console.error("[eval] reservation cleanup failed:", cleanupError);
+    } finally {
+      hold.reservation = null;
+    }
+  }
 
-    await db
-      .update(evalJobs)
-      .set({
+  // Always clear processing lock / retry state, even when usage cleanup fails.
+  try {
+    if (!jobError) {
+      await unlockEvalJob({
+        db,
+        job,
         status: "completed",
         error: null,
-        lockedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(evalJobs.id, job.id));
-
-    if (job.runId) {
-      await maybeFinalizeOfflineRun({ db, runId: job.runId });
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Eval job failed.";
-    const terminal = job.attempts >= MAX_ATTEMPTS;
-
-    await db
-      .update(evalJobs)
-      .set({
+        finalizeRun: Boolean(job.runId),
+      });
+    } else {
+      const message = jobError instanceof Error ? jobError.message : "Eval job failed.";
+      const limitExceeded = isUsageLimitExceededError(jobError);
+      const terminal = limitExceeded || job.attempts >= MAX_ATTEMPTS;
+      await unlockEvalJob({
+        db,
+        job,
         status: terminal ? "failed" : "pending",
         error: message,
-        lockedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(evalJobs.id, job.id));
+        finalizeRun: terminal,
+      });
 
-    if (terminal && job.runId) {
-      await maybeFinalizeOfflineRun({ db, runId: job.runId });
+      const target = job.messageId
+        ? `message ${job.messageId}`
+        : `run ${job.runId} case ${job.caseId}`;
+      console.error(
+        `[eval] ${target} failed${accountId ? ` (account ${accountId})` : ""}${
+          assistantId ? ` assistant ${assistantId}` : ""
+        }:`,
+        message,
+      );
     }
-
-    const target = job.messageId
-      ? `message ${job.messageId}`
-      : `run ${job.runId} case ${job.caseId}`;
-    console.error(`[eval] ${target} failed:`, message);
+  } catch (unlockError) {
+    console.error("[eval] failed to unlock job after processing:", unlockError);
   }
 
   return true;

@@ -54,6 +54,12 @@ function DashboardNavLinks({
         Contribute
       </a>
       <Separator className="my-2" />
+      <NavLink href="/dashboard/usage" onClick={onNavigate}>
+        Usage
+      </NavLink>
+      <NavLink href="/dashboard/billing" onClick={onNavigate}>
+        Billing
+      </NavLink>
       <NavLink href="/dashboard/account" onClick={onNavigate}>
         Account
       </NavLink>

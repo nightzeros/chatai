@@ -1,4 +1,4 @@
-import { embedMany, type EmbeddingConfig } from "@chatai/ai";
+import { embedMany, type EmbeddingConfig, type ProviderUsage } from "@chatai/ai";
 import { assistants, chunks, documents, eq, type Database } from "@chatai/database";
 import { nanoid } from "nanoid";
 
@@ -12,7 +12,16 @@ export async function ingestDocument(opts: {
   db: Database;
   embedding: EmbeddingConfig;
   force?: boolean;
-}): Promise<{ chunkCount: number; skipped?: boolean }> {
+  /**
+   * Called after chunking and before `embedMany`.
+   * Hosted enforcement uses this to reserve estimated embedding cost.
+   */
+  beforeEmbed?: (info: {
+    chunkCount: number;
+    approxTokens: number;
+    texts: string[];
+  }) => Promise<void>;
+}): Promise<{ chunkCount: number; skipped?: boolean; embeddingUsage?: ProviderUsage }> {
   const [row] = await opts.db
     .select({
       document: documents,
@@ -77,10 +86,18 @@ export async function ingestDocument(opts: {
     throw new Error("Document produced no chunks.");
   }
 
-  const embeddings = await embedMany(
-    chunked.map((chunk) => chunk.content),
-    opts.embedding,
+  const texts = chunked.map((chunk) => chunk.content);
+  const approxTokens = Math.max(
+    1,
+    texts.reduce((sum, text) => sum + Math.ceil(text.length / 4), 0),
   );
+
+  if (opts.beforeEmbed) {
+    await opts.beforeEmbed({ chunkCount: chunked.length, approxTokens, texts });
+  }
+
+  const embedResult = await embedMany(texts, opts.embedding);
+  const embeddings = embedResult.embeddings;
 
   if (embeddings.length !== chunked.length) {
     throw new Error("Embedding count did not match chunk count.");
@@ -128,5 +145,5 @@ export async function ingestDocument(opts: {
     })
     .where(eq(documents.id, document.id));
 
-  return { chunkCount: chunked.length };
+  return { chunkCount: chunked.length, embeddingUsage: embedResult.usage };
 }

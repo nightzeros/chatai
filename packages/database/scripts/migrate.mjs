@@ -5,15 +5,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { config as loadDotenv } from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
 const pkgRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const rootDir = path.join(pkgRoot, "../..");
+loadDotenv({ path: path.join(rootDir, ".env") });
+
 const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
 
 if (!url) {
   console.error("DATABASE_URL (or DATABASE_URL_UNPOOLED) is required to run migrations.");
+  console.error("Copy .env.example to the repo root .env, or export the variable in your shell.");
   process.exit(1);
 }
 

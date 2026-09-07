@@ -29,6 +29,7 @@ function prepared(overrides: Partial<PreparedAnswer> = {}): PreparedAnswer {
     shouldGenerate: true,
     fallbackText: FALLBACK_MESSAGE,
     debug: {},
+    providerUsages: [],
     ...overrides,
   };
 }
@@ -114,6 +115,7 @@ describe("finalizeAnswer outcome classification", () => {
       text: FALLBACK_MESSAGE,
       usedFallback: true,
       verifier: { enabled: true, passed: false, reason: "Unsupported.", regenerated: true },
+      providerUsages: [],
     });
 
     const result = finalizeAnswer(attached.fallbackText, attached);

@@ -66,7 +66,20 @@ export function CreateAssistantDialog() {
               placeholder="Answer using the knowledge base. Do not make up information."
             />
           </div>
-          {state && "error" in state ? <p className="text-sm text-destructive">{state.error}</p> : null}
+          {state && "error" in state ? (
+            <div className="space-y-2 text-sm">
+              <p className="text-destructive">{state.error}</p>
+              {state.error.toLowerCase().includes("assistant limit") ||
+              state.error.toLowerCase().includes("upgrade") ? (
+                <a
+                  href="/dashboard/billing"
+                  className="font-medium text-primary underline underline-offset-2"
+                >
+                  Upgrade plan
+                </a>
+              ) : null}
+            </div>
+          ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel

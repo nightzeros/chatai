@@ -26,6 +26,12 @@ export const AUDIT_ACTIONS = [
   "account_deleted",
   "security_settings_updated",
   "privacy_settings_updated",
+  "usage_limit_updated",
+  "usage_credit_applied",
+  "account_suspended",
+  "account_status_updated",
+  "polar_subscription_synced",
+  "polar_payment_failed",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

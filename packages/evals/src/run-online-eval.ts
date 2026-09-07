@@ -7,6 +7,7 @@ import {
   type EvalRunSummary,
 } from "@chatai/database";
 import type { ChatConfig } from "@chatai/ai";
+import type { ProviderUsageRecord } from "@chatai/rag/answer";
 import { nanoid } from "nanoid";
 
 import type { ScorerDeps } from "./scorers";
@@ -21,7 +22,13 @@ export async function runOnlineEvalJob(opts: {
   messageId: string;
   chat: ChatConfig;
   deps?: Partial<ScorerDeps>;
-}): Promise<{ runId: string; scores: Awaited<ReturnType<typeof scoreMessage>> }> {
+  /** Filled as judge calls complete — survives later persistence failures. */
+  usageCollector?: ProviderUsageRecord[];
+}): Promise<{
+  runId: string;
+  scores: Awaited<ReturnType<typeof scoreMessage>>["scores"];
+  providerUsages: ProviderUsageRecord[];
+}> {
   const loaded = await loadOnlineEvalContext(opts.db, opts.messageId);
   if (!loaded) {
     throw new Error(`Message ${opts.messageId} is not scoreable.`);
@@ -49,7 +56,7 @@ export async function runOnlineEvalJob(opts: {
 
     assertEvalSnapshot(snapshot, loaded.outcome ?? "answered_with_context", loaded.retrieved.length);
 
-    const scores = await scoreMessage({
+    const { scores, providerUsages } = await scoreMessage({
       chat: opts.chat,
       context: {
         ...loaded.context,
@@ -57,6 +64,7 @@ export async function runOnlineEvalJob(opts: {
         retrieval: toEvalDebugRetrieval(loaded.retrieved),
       },
       deps: opts.deps,
+      usageCollector: opts.usageCollector,
     });
 
     await opts.db.insert(evalScores).values(
@@ -80,7 +88,7 @@ export async function runOnlineEvalJob(opts: {
       })
       .where(eq(evalRuns.id, runId));
 
-    return { runId, scores };
+    return { runId, scores, providerUsages };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Online eval failed.";
     await opts.db

@@ -1,6 +1,7 @@
 name: Publish npm packages (token fallback)
 
-# Emergency/manual fallback only. Default releases use publish-npm.yml with npm Trusted Publishing (OIDC).
+# EMERGENCY ONLY — never enable on main for routine releases.
+# Bootstrap @nightzeros/chatai-* 1.0.0 is complete. Default path: publish-npm.yml (OIDC Trusted Publishing).
 # Do not attach this workflow to v* tags.
 
 on:
@@ -14,6 +15,10 @@ on:
         description: npm publish --dry-run
         type: boolean
         default: true
+
+concurrency:
+  group: publish-npm-token-fallback
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -35,9 +40,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "22.14"
           registry-url: https://registry.npmjs.org
           always-auth: true
+
+      - name: Install npm
+        run: npm install -g npm@11.5.1
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -45,6 +53,7 @@ jobs:
       - name: Sync and build
         run: |
           pnpm packages:sync-versions
+          node scripts/sync-package-versions.mjs --check
           pnpm packages:build
 
       - name: Publish with token
@@ -58,5 +67,5 @@ jobs:
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             node scripts/publish-npm-packages.mjs --dry-run
           else
-            node scripts/publish-npm-packages.mjs
+            ALLOW_LOCAL_NPM_PUBLISH=1 node scripts/publish-npm-packages.mjs --publish
           fi

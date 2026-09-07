@@ -1,4 +1,10 @@
-import { generateChat, type ChatConfig } from "@chatai/ai";
+import {
+  generateChat,
+  runGenerateChat,
+  type ChatConfig,
+  type GenerateChatFn,
+  type ProviderUsage,
+} from "@chatai/ai";
 
 export const EXPANSION_TOKEN_THRESHOLD = 12;
 export const EXPANSION_ALTERNATE_COUNT = 2;
@@ -7,10 +13,11 @@ export type ExpandQueryResult = {
   queries: string[];
   expanded: boolean;
   alternates: string[];
+  usage?: ProviderUsage;
 };
 
 export type ExpandQueryDeps = {
-  generateChat: typeof generateChat;
+  generateChat: GenerateChatFn;
 };
 
 function countTokens(text: string) {
@@ -66,7 +73,7 @@ export async function expandQueries(opts: {
   const generate = opts.deps?.generateChat ?? generateChat;
 
   try {
-    const raw = await generate({
+    const { text: raw, usage } = await runGenerateChat(generate, {
       config: opts.chat,
       system:
         "Generate alternate search queries for retrieval. Return ONLY a JSON array of strings with no markdown.",
@@ -80,6 +87,7 @@ export async function expandQueries(opts: {
       queries,
       expanded: alternates.length > 0,
       alternates,
+      usage,
     };
   } catch {
     return { queries: [query], expanded: false, alternates: [] };

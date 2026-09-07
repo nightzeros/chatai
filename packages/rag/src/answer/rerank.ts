@@ -1,6 +1,13 @@
-import { generateChat, type ChatConfig } from "@chatai/ai";
+import {
+  generateChat,
+  runGenerateChat,
+  type ChatConfig,
+  type GenerateChatFn,
+  type ProviderUsage,
+} from "@chatai/ai";
 
-import { cohereRerank, type CohereRerankResult } from "./cohere-rerank";
+import { cohereRerank, type CohereRerankResponse } from "./cohere-rerank";
+import type { ProviderUsageRecord } from "./provider-usage";
 import { HYBRID_CANDIDATE_LIMIT, type RetrievedChunk } from "./retrieve";
 
 export const RERANK_OUTPUT_LIMIT = 8;
@@ -18,10 +25,11 @@ export type RerankResult = {
   chunks: RetrievedChunk[];
   provider: RerankProvider;
   order: RerankOrderEntry[];
+  providerUsages: ProviderUsageRecord[];
 };
 
 export type RerankDeps = {
-  generateChat: typeof generateChat;
+  generateChat: GenerateChatFn;
   cohereRerank: typeof cohereRerank;
 };
 
@@ -43,6 +51,7 @@ function buildPassthroughResult(chunks: RetrievedChunk[], limit: number): Rerank
       priorRank: index + 1,
       rank: index + 1,
     })),
+    providerUsages: [],
   };
 }
 
@@ -87,6 +96,7 @@ function orderChunksByIds(
   limit: number,
   provider: Exclude<RerankProvider, "none">,
   scores?: Map<string, number>,
+  providerUsages: ProviderUsageRecord[] = [],
 ): RerankResult {
   const priorRank = new Map(chunks.map((chunk, index) => [chunk.chunkId, index + 1]));
   const byId = new Map(chunks.map((chunk) => [chunk.chunkId, chunk]));
@@ -130,6 +140,7 @@ function orderChunksByIds(
     })),
     provider,
     order,
+    providerUsages,
   };
 }
 
@@ -138,9 +149,9 @@ async function rerankWithLlm(opts: {
   query: string;
   chat: ChatConfig;
   limit: number;
-  generateChat: typeof generateChat;
+  generateChat: GenerateChatFn;
 }): Promise<RerankResult> {
-  const raw = await opts.generateChat({
+  const { text: raw, usage } = await runGenerateChat(opts.generateChat, {
     config: opts.chat,
     system:
       "You rerank retrieval passages for question answering. Return ONLY a JSON array of passage IDs from most to least relevant.",
@@ -148,11 +159,21 @@ async function rerankWithLlm(opts: {
   });
 
   const rankedIds = parseRankedChunkIds(raw, opts.chunks.map((chunk) => chunk.chunkId));
+  const providerUsages: ProviderUsageRecord[] = [
+    {
+      kind: "chat_completion",
+      provider: opts.chat.provider,
+      model: opts.chat.model,
+      usage,
+      step: "rerank_llm",
+    },
+  ];
+
   if (!rankedIds) {
-    return buildPassthroughResult(opts.chunks, opts.limit);
+    return { ...buildPassthroughResult(opts.chunks, opts.limit), providerUsages };
   }
 
-  return orderChunksByIds(opts.chunks, rankedIds, opts.limit, "llm");
+  return orderChunksByIds(opts.chunks, rankedIds, opts.limit, "llm", undefined, providerUsages);
 }
 
 async function rerankWithCohere(opts: {
@@ -162,23 +183,35 @@ async function rerankWithCohere(opts: {
   limit: number;
   cohereRerank: typeof cohereRerank;
 }): Promise<RerankResult> {
-  const results: CohereRerankResult[] = await opts.cohereRerank({
+  const response: CohereRerankResponse = await opts.cohereRerank({
     apiKey: opts.apiKey,
     query: opts.query,
     documents: opts.chunks.map((chunk) => chunk.content),
     topN: opts.limit,
   });
 
-  const rankedIds = results.map((item) => opts.chunks[item.index]?.chunkId).filter(Boolean) as string[];
+  const rankedIds = response.results
+    .map((item) => opts.chunks[item.index]?.chunkId)
+    .filter(Boolean) as string[];
   const scores = new Map<string, number>();
-  for (const item of results) {
+  for (const item of response.results) {
     const chunkId = opts.chunks[item.index]?.chunkId;
     if (chunkId) {
       scores.set(chunkId, item.relevanceScore);
     }
   }
 
-  return orderChunksByIds(opts.chunks, rankedIds, opts.limit, "cohere", scores);
+  const providerUsages: ProviderUsageRecord[] = [
+    {
+      kind: "rerank",
+      provider: response.provider,
+      model: response.model,
+      usage: response.usage,
+      step: "rerank_cohere",
+    },
+  ];
+
+  return orderChunksByIds(opts.chunks, rankedIds, opts.limit, "cohere", scores, providerUsages);
 }
 
 export async function rerank(opts: {
@@ -231,3 +264,5 @@ export async function rerank(opts: {
     return buildPassthroughResult(chunks, limit);
   }
 }
+
+export type { ProviderUsage };

@@ -1,9 +1,8 @@
-import { assistants } from "@chatai/database";
-
-import { getOwnedAssistantByRef, listAssistantsForUser } from "@/lib/assistants";
+import { listAssistantsForUser } from "@/lib/assistants";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { jsonWithCors } from "@/lib/cors";
-import { db } from "@/lib/db";
+import { getOrCreateHostingAccount } from "@/lib/hosting/accounts";
+import { createAssistantWithLimit } from "@/lib/hosting/assistant-limits";
 import { createAssistantPublicId, createId } from "@/lib/ids";
 import {
   assistantCreateSchema,
@@ -36,11 +35,13 @@ export async function POST(request: Request) {
   }
 
   const data = normalizeAssistantWrite(parsed.data);
+  const account = await getOrCreateHostingAccount(auth.auth.userId);
   const id = createId();
 
-  const [created] = await db()
-    .insert(assistants)
-    .values({
+  const created = await createAssistantWithLimit({
+    account,
+    userId: auth.auth.userId,
+    values: {
       id,
       publicId: createAssistantPublicId(),
       userId: auth.auth.userId,
@@ -50,31 +51,30 @@ export async function POST(request: Request) {
       instructions: data.instructions ?? DEFAULT_INSTRUCTIONS,
       hallucinationMode: data.hallucinationMode ?? "balanced",
       settings: {},
-    })
-    .returning();
+    },
+  });
 
-  if (!created) {
-    const assistant = await getOwnedAssistantByRef(auth.auth.userId, id);
-    if (!assistant) {
-      return jsonWithCors({ error: "Could not create assistant." }, { status: 500 });
-    }
-    await logAuditEvent({
-      userId: auth.auth.userId,
-      action: "assistant_created",
-      resourceType: "assistant",
-      resourceId: assistant.id,
-      metadata: { name: assistant.name, via: "api" },
-    });
-    return jsonWithCors({ assistant: serializeAssistant(assistant) }, { status: 201 });
+  if (!created.ok) {
+    const err = created.error;
+    return jsonWithCors(
+      {
+        error: err.message,
+        code: err.code,
+        resource: err.resource,
+        current: err.current,
+        limit: err.limit,
+      },
+      { status: 403 },
+    );
   }
 
   await logAuditEvent({
     userId: auth.auth.userId,
     action: "assistant_created",
     resourceType: "assistant",
-    resourceId: created.id,
-    metadata: { name: created.name, via: "api" },
+    resourceId: created.assistant.id,
+    metadata: { name: created.assistant.name, via: "api" },
   });
 
-  return jsonWithCors({ assistant: serializeAssistant(created) }, { status: 201 });
+  return jsonWithCors({ assistant: serializeAssistant(created.assistant) }, { status: 201 });
 }

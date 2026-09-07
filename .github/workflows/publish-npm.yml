@@ -15,10 +15,6 @@ on:
         type: boolean
         default: true
 
-permissions:
-  id-token: write
-  contents: read
-
 concurrency:
   group: publish-npm-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -27,6 +23,8 @@ jobs:
   validate:
     name: Validate and pack
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,14 +37,20 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "22.14"
           cache: "pnpm"
+
+      - name: Install npm (Trusted Publishing minimum)
+        run: npm --version && npm install -g npm@11.5.1 && npm --version
 
       - name: Install
         run: pnpm install --frozen-lockfile
 
       - name: Sync package versions
         run: pnpm packages:sync-versions
+
+      - name: Verify package versions match VERSION
+        run: node scripts/sync-package-versions.mjs --check
 
       - name: Lint
         run: pnpm lint
@@ -69,6 +73,9 @@ jobs:
       - name: Verify tarball install smoke
         run: pnpm packages:verify-install
 
+      - name: Verify npm publish workflow gates
+        run: node scripts/check-publish-npm-workflow.mjs
+
       - name: Upload packed tarballs
         uses: actions/upload-artifact@v4
         with:
@@ -80,10 +87,22 @@ jobs:
     name: Publish to npm
     needs: validate
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.publish == true) ||
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+      github.repository == 'master-tecs/chatai' &&
+      (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+      ) &&
+      (
+        startsWith(github.ref, 'refs/tags/v') ||
+        github.ref == 'refs/heads/main'
+      )
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      did_publish: ${{ steps.publish_mode.outputs.did_publish }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,9 +115,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "22.14"
           registry-url: https://registry.npmjs.org
           cache: "pnpm"
+
+      - name: Install npm (Trusted Publishing minimum)
+        run: npm --version && npm install -g npm@11.5.1 && npm --version
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -106,15 +128,61 @@ jobs:
       - name: Sync package versions
         run: pnpm packages:sync-versions
 
+      - name: Verify package versions match VERSION
+        run: node scripts/sync-package-versions.mjs --check
+
+      - name: Verify tag matches VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          expected="$(tr -d '[:space:]' < VERSION)"
+          if [ "$tag" != "$expected" ]; then
+            echo "Tag v$tag does not match VERSION ($expected)" >&2
+            exit 1
+          fi
+
       - name: Build publishable packages
         run: pnpm packages:build
 
-      - name: Publish (OIDC + provenance)
-        env:
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true && '1' || '0' }}
+      - name: Determine publish mode
+        id: publish_mode
         run: |
-          if [ "$DRY_RUN" = "1" ]; then
-            node scripts/publish-npm-packages.mjs --dry-run
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "mode=dry-run" >> "$GITHUB_OUTPUT"
+            echo "did_publish=false" >> "$GITHUB_OUTPUT"
           else
-            node scripts/publish-npm-packages.mjs
+            echo "mode=publish" >> "$GITHUB_OUTPUT"
+            echo "did_publish=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Dry-run publish manifests
+        if: steps.publish_mode.outputs.mode == 'dry-run'
+        run: node scripts/publish-npm-packages.mjs --dry-run
+
+      - name: Publish (OIDC + provenance)
+        if: steps.publish_mode.outputs.mode == 'publish'
+        run: |
+          node scripts/publish-npm-packages.mjs --dry-run
+          node scripts/publish-npm-packages.mjs --publish
+
+  verify-registry:
+    name: Verify npm registry
+    needs: publish
+    if: needs.publish.outputs.did_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.14"
+
+      - name: Install npm
+        run: npm install -g npm@11.5.1
+
+      - name: Verify published packages on registry
+        run: node scripts/verify-npm-registry.mjs

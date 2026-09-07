@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getOwnedAssistant } from "@/lib/assistants";
 import { getOwnedEvalSet, listEvalRunsForAssistant, startOfflineEvalRun } from "@/lib/eval-sets";
+import { getOrCreateHostingAccount } from "@/lib/hosting/accounts";
+import { assertEvalAccess } from "@/lib/hosting/eval-access";
 import { requireSession } from "@/lib/session";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -24,6 +26,15 @@ export async function POST(request: Request, context: RouteContext) {
   const assistant = await getOwnedAssistant(session.user.id, id);
   if (!assistant) {
     return NextResponse.json({ error: "Assistant not found." }, { status: 404 });
+  }
+
+  const account = await getOrCreateHostingAccount(session.user.id);
+  const evalAccess = await assertEvalAccess(account);
+  if (!evalAccess.ok) {
+    return NextResponse.json(
+      { error: evalAccess.error, code: evalAccess.code },
+      { status: evalAccess.status },
+    );
   }
 
   const body = (await request.json().catch(() => null)) as { evalSetId?: unknown } | null;

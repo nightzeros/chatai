@@ -11,6 +11,8 @@ import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { db } from "@/lib/db";
 import { enqueueReprocessForAssistant } from "@/lib/enqueue-reprocess";
 import { env } from "@/lib/env";
+import { getOrCreateHostingAccount } from "@/lib/hosting/accounts";
+import { createAssistantWithLimit } from "@/lib/hosting/assistant-limits";
 import { createAssistantPublicId, createId } from "@/lib/ids";
 import {
   embeddingSettingsChanged,
@@ -68,30 +70,39 @@ export async function createAssistant(_prev: ActionState, formData: FormData): P
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
+  const account = await getOrCreateHostingAccount(session.user.id);
   const id = createId();
 
-  await db().insert(assistants).values({
-    id,
-    publicId: createAssistantPublicId(),
+  const created = await createAssistantWithLimit({
+    account,
     userId: session.user.id,
-    name: parsed.data.name,
-    description: parsed.data.description ?? null,
-    welcomeMessage: parsed.data.welcomeMessage ?? DEFAULT_WELCOME,
-    instructions: parsed.data.instructions ?? DEFAULT_INSTRUCTIONS,
-    hallucinationMode: "balanced",
-    settings: {},
+    values: {
+      id,
+      publicId: createAssistantPublicId(),
+      userId: session.user.id,
+      name: parsed.data.name,
+      description: parsed.data.description ?? null,
+      welcomeMessage: parsed.data.welcomeMessage ?? DEFAULT_WELCOME,
+      instructions: parsed.data.instructions ?? DEFAULT_INSTRUCTIONS,
+      hallucinationMode: "balanced",
+      settings: {},
+    },
   });
+
+  if (!created.ok) {
+    return { error: created.error.message };
+  }
 
   await logAuditEvent({
     userId: session.user.id,
     action: "assistant_created",
     resourceType: "assistant",
-    resourceId: id,
-    metadata: { name: parsed.data.name },
+    resourceId: created.assistant.id,
+    metadata: { name: created.assistant.name },
   });
 
   revalidatePath("/dashboard");
-  redirect(`/dashboard/assistants/${id}`);
+  redirect(`/dashboard/assistants/${created.assistant.id}`);
 }
 
 export async function updateAssistant(_prev: ActionState, formData: FormData): Promise<ActionState> {

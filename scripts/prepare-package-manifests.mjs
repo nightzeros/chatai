@@ -12,6 +12,12 @@ const version = readFileSync(path.join(root, "VERSION"), "utf8").trim();
 
 function rewriteWorkspaceDeps(manifest) {
   const next = structuredClone(manifest);
+  if (next.publishConfig?.provenance !== undefined) {
+    delete next.publishConfig.provenance;
+    if (Object.keys(next.publishConfig).length === 0) {
+      delete next.publishConfig;
+    }
+  }
   for (const section of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
     const deps = next[section];
     if (!deps) continue;

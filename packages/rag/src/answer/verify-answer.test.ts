@@ -34,6 +34,7 @@ function prepared(overrides: Partial<PreparedAnswer> = {}): PreparedAnswer {
     shouldGenerate: true,
     fallbackText: FALLBACK_MESSAGE,
     debug: {},
+    providerUsages: [],
     ...overrides,
   };
 }

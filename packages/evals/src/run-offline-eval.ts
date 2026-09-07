@@ -1,4 +1,4 @@
-import { generateChat, type ChatConfig, type EmbeddingConfig } from "@chatai/ai";
+import { generateChat, runGenerateChat, type ChatConfig, type EmbeddingConfig } from "@chatai/ai";
 import {
   assistants,
   evalCases,
@@ -15,6 +15,7 @@ import {
   prepareAnswer,
   resolveRagSettings,
   withVerifierResult,
+  type ProviderUsageRecord,
 } from "@chatai/rag/answer";
 import { nanoid } from "nanoid";
 
@@ -36,7 +37,21 @@ export async function runOfflineEvalCase(opts: {
   embedding: EmbeddingConfig;
   cohereApiKey?: string | null;
   deps?: OfflineEvalDeps;
-}) {
+  /** Filled as provider calls complete — survives later persistence failures. */
+  usageCollector?: ProviderUsageRecord[];
+}): Promise<{
+  scores: Awaited<ReturnType<typeof scoreMessage>>["scores"];
+  answer: string;
+  outcome: string;
+  providerUsages: ProviderUsageRecord[];
+}> {
+  const providerUsages: ProviderUsageRecord[] = [];
+  const publish = (records: ProviderUsageRecord[]) => {
+    if (records.length === 0) return;
+    providerUsages.push(...records);
+    opts.usageCollector?.push(...records);
+  };
+
   const [evalCase] = await opts.db.select().from(evalCases).where(eq(evalCases.id, opts.caseId)).limit(1);
   if (!evalCase) {
     throw new Error(`Eval case ${opts.caseId} was not found.`);
@@ -72,6 +87,8 @@ export async function runOfflineEvalCase(opts: {
     cohereApiKey: opts.cohereApiKey,
   });
 
+  publish([...(prepared.providerUsages ?? [])]);
+
   let fullText = prepared.fallbackText;
   if (prepared.shouldGenerate && rag.guardrails.verifyCitations) {
     const verified = await generateVerifiedAnswer({
@@ -82,12 +99,23 @@ export async function runOfflineEvalCase(opts: {
     });
     prepared = withVerifierResult(prepared, verified);
     fullText = verified.text;
+    publish([...(verified.providerUsages ?? [])]);
   } else if (prepared.shouldGenerate) {
-    fullText = await generate({
+    const generated = await runGenerateChat(generate, {
       config: opts.chat,
       system: prepared.system,
       prompt: evalCase.question,
     });
+    fullText = generated.text;
+    publish([
+      {
+        kind: "chat_completion",
+        provider: opts.chat.provider,
+        model: opts.chat.model,
+        usage: generated.usage,
+        step: "offline_eval_answer",
+      },
+    ]);
   }
 
   const final = finalizeAnswer(fullText, prepared);
@@ -106,7 +134,7 @@ export async function runOfflineEvalCase(opts: {
 
   assertEvalSnapshot(snapshot, final.outcome, contextChunks.length);
 
-  const scores = await scoreMessage({
+  const { scores, providerUsages: judgeUsages } = await scoreMessage({
     chat: opts.chat,
     context: {
       question: evalCase.question,
@@ -117,7 +145,10 @@ export async function runOfflineEvalCase(opts: {
       ...(evalCase.expectedAnswer ? { expectedAnswer: evalCase.expectedAnswer } : {}),
     },
     deps: opts.deps,
+    usageCollector: opts.usageCollector,
   });
+  // Judge usages already mirrored into usageCollector inside scoreMessage.
+  providerUsages.push(...judgeUsages);
 
   await opts.db.insert(evalScores).values(
     scores.map((score) => ({
@@ -130,7 +161,7 @@ export async function runOfflineEvalCase(opts: {
     })),
   );
 
-  return { scores, answer: final.answer, outcome: final.outcome };
+  return { scores, answer: final.answer, outcome: final.outcome, providerUsages };
 }
 
 export async function maybeFinalizeOfflineRun(opts: { db: Database; runId: string }) {

@@ -1,0 +1,281 @@
+[
+  {
+    "id": "mp_openai_gpt4o_mini_in",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 150000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_gpt4o_mini_out",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 600000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_gpt4o_mini_cached",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "operation": "chat_cached_input",
+    "priceMicrosPerUnit": 75000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_gpt4o_in",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 2500000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_gpt4o_out",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 10000000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_gpt4o_cached",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "operation": "chat_cached_input",
+    "priceMicrosPerUnit": 1250000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_default_in",
+    "provider": "openai",
+    "model": "*",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 150000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_default_out",
+    "provider": "openai",
+    "model": "*",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 600000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_default_cached",
+    "provider": "openai",
+    "model": "*",
+    "operation": "chat_cached_input",
+    "priceMicrosPerUnit": 75000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_embedding_3_small",
+    "provider": "openai",
+    "model": "text-embedding-3-small",
+    "operation": "embedding",
+    "priceMicrosPerUnit": 20000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_embedding_3_large",
+    "provider": "openai",
+    "model": "text-embedding-3-large",
+    "operation": "embedding",
+    "priceMicrosPerUnit": 130000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_embedding_default",
+    "provider": "openai",
+    "model": "*",
+    "operation": "embedding",
+    "priceMicrosPerUnit": 20000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_compatible_default_in",
+    "provider": "openai-compatible",
+    "model": "*",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 150000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_compatible_default_out",
+    "provider": "openai-compatible",
+    "model": "*",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 600000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_compatible_embedding",
+    "provider": "openai-compatible",
+    "model": "*",
+    "operation": "embedding",
+    "priceMicrosPerUnit": 20000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openrouter_default_in",
+    "provider": "openrouter",
+    "model": "*",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 150000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openrouter_default_out",
+    "provider": "openrouter",
+    "model": "*",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 600000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_groq_default_in",
+    "provider": "groq",
+    "model": "*",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 50000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_groq_default_out",
+    "provider": "groq",
+    "model": "*",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 100000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_anthropic_default_in",
+    "provider": "anthropic",
+    "model": "*",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 3000000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_anthropic_default_out",
+    "provider": "anthropic",
+    "model": "*",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 15000000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_google_default_in",
+    "provider": "google",
+    "model": "*",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 100000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_google_default_out",
+    "provider": "google",
+    "model": "*",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 400000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_azure_default_in",
+    "provider": "azure",
+    "model": "*",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 150000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_azure_default_out",
+    "provider": "azure",
+    "model": "*",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 600000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_azure_embedding",
+    "provider": "azure",
+    "model": "*",
+    "operation": "embedding",
+    "priceMicrosPerUnit": 20000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_cohere_rerank",
+    "provider": "cohere",
+    "model": "*",
+    "operation": "rerank",
+    "priceMicrosPerUnit": 2000,
+    "unit": "per_request",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_cohere_embedding",
+    "provider": "cohere",
+    "model": "*",
+    "operation": "embedding",
+    "priceMicrosPerUnit": 100000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_voyage_embedding",
+    "provider": "voyage",
+    "model": "*",
+    "operation": "embedding",
+    "priceMicrosPerUnit": 60000,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_ollama_chat_in",
+    "provider": "ollama",
+    "model": "*",
+    "operation": "chat_input",
+    "priceMicrosPerUnit": 0,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_ollama_chat_out",
+    "provider": "ollama",
+    "model": "*",
+    "operation": "chat_output",
+    "priceMicrosPerUnit": 0,
+    "unit": "per_million_tokens",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  }
+]

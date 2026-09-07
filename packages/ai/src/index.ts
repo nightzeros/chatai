@@ -1,5 +1,23 @@
-export { embedMany, type EmbeddingConfig } from "./embeddings";
-export { generateChat, streamChat, type ChatConfig, type ChatMessage } from "./chat";
+export { embedMany, type EmbeddingConfig, type EmbedManyResult } from "./embeddings";
+export {
+  generateChat,
+  runGenerateChat,
+  streamChat,
+  type ChatConfig,
+  type ChatMessage,
+  type GenerateChatFn,
+  type GenerateChatResult,
+  type StreamChatResult,
+} from "./chat";
+export {
+  asEmbedManyResult,
+  asGenerateChatResult,
+  emptyProviderUsage,
+  mergeProviderUsage,
+  normalizeEmbeddingUsage,
+  normalizeLanguageModelUsage,
+  type ProviderUsage,
+} from "./usage";
 export {
   CHAT_PROVIDERS,
   EMBEDDING_PROVIDERS,

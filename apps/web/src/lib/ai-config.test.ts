@@ -26,6 +26,8 @@ describe("resolveAssistantModels", () => {
       model: "text-embedding-3-small",
       dimensions: 1536,
     });
+    expect(models.billing.chat).toBe("hosted");
+    expect(models.billing.embedding).toBe("hosted");
   });
 
   it("applies per-assistant chat overrides", async () => {
@@ -54,6 +56,11 @@ describe("resolveAssistantModels", () => {
     );
     expect(models.chat.apiKey).toBe("asst-chat-key");
     expect(models.embedding.apiKey).toBe("asst-embed-key");
+    expect(models.billing).toEqual({
+      chat: "byok",
+      embedding: "byok",
+      rerank: "hosted",
+    });
   });
 
   it("ignores decrypted keys when provider does not match", async () => {
