@@ -27,7 +27,7 @@ This document is the launch checklist from the pre-public security/licensing aud
 - [ ] Merge this audit PR (or equivalent remediations) into `main`
 - [ ] Rotate any live keys that lived in local `.env` / shared channels
 - [ ] Confirm `.env` / `.env.production` / SSH private keys remain untracked (`git status`, `git check-ignore`)
-- [ ] Confirm ChatAI Cloud VPS has `HOSTED_USAGE_ENFORCEMENT=enforce` and Polar production vars (not sandbox)
+- [ ] Confirm ChatAI Cloud VPS has `HOSTED_USAGE_ENFORCEMENT=enforce` and Polar production vars (not sandbox). The committed `.env.production.example` defaults to `shadow` so self-hosters who copy it are not blocked by free-plan limits.
 - [ ] Enable GitHub secret scanning + push protection (section C)
 - [ ] Decide whether GitHub org/repo rename from `master-tecs` → NightZeros is required for brand (optional; docs currently match real owner)
 - [ ] Smoke: clean clone → `pnpm install` → `pnpm build` / docs quickstart
