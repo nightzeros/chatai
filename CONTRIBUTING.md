@@ -66,3 +66,7 @@ Use the Bug Report issue template and include steps to reproduce, expected vs ac
 ## Roadmap
 
 See [ROADMAP.md](./ROADMAP.md).
+
+## License
+
+Contributions are licensed under the [Apache License 2.0](./LICENSE).
