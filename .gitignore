@@ -12,12 +12,11 @@ build
 apps/web/public/widget/chat.js
 examples/html-widget/chat.js
 
-# env
+# env — ignore all env files except committed examples
 .env
-.env.local
-.env.*.local
-.env.e2e
+.env.*
 !.env.example
+!.env.*.example
 
 # uploads
 uploads

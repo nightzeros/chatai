@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "React bindings for the ChatAI widget, an open-source project by NightZeros",
   "author": "NightZeros",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "homepage": "https://nightzeros.com/chatai",
   "repository": {
     "type": "git",

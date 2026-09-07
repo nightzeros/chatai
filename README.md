@@ -1,7 +1,7 @@
 # ChatAI
 
 [![CI](https://github.com/master-tecs/chatai/actions/workflows/ci.yml/badge.svg)](https://github.com/master-tecs/chatai/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-0F766E.svg)](./VERSION)
 
 Open-source AI assistants grounded in your knowledge.
@@ -385,4 +385,4 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 
-[MIT](./LICENSE)
+[Apache License 2.0](./LICENSE)
