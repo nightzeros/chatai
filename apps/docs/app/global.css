@@ -22,6 +22,12 @@
     background-color: var(--color-fd-background);
     color: var(--color-fd-foreground);
   }
+
+  /* NightZeros-branded docs home: match marketing site chrome */
+  #nd-home-layout:has(.nz-docs-home) {
+    background-color: #05060c;
+    color: #f4f6fb;
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -117,4 +123,321 @@
 /* Keep Scalar styles scoped to the explorer card */
 .openapi-explorer {
   background-color: var(--color-fd-card);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Docs home — NightZeros-branded landing                                     */
+/* -------------------------------------------------------------------------- */
+
+.nz-docs-home {
+  --nz-ink: #f4f6fb;
+  --nz-muted: color-mix(in oklab, #f4f6fb 62%, transparent);
+  --nz-line: color-mix(in oklab, #8b9cc8 28%, transparent);
+  --nz-glow: color-mix(in oklab, #5b4dff 42%, transparent);
+  --nz-surface: #05060c;
+  --nz-accent: #e8ecff;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-nz-display), ui-sans-serif, system-ui, sans-serif;
+  color: var(--nz-ink);
+  background: var(--nz-surface);
+}
+
+.nz-docs-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: min(78vh, 44rem);
+  display: flex;
+  align-items: center;
+  border-bottom: 1px dashed var(--nz-line);
+}
+
+.nz-docs-hero__grid {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, #8b9cc8 14%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, #8b9cc8 14%, transparent) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(ellipse 80% 70% at 40% 35%, #000 20%, transparent 75%);
+  opacity: 0.45;
+  animation: nz-docs-fade-in 1.1s ease both;
+}
+
+.nz-docs-hero__glow {
+  pointer-events: none;
+  position: absolute;
+  inset: auto auto -20% -15%;
+  width: min(70vw, 42rem);
+  height: min(70vw, 42rem);
+  background: radial-gradient(circle, var(--nz-glow), transparent 68%);
+  filter: blur(8px);
+  opacity: 0.85;
+  animation: nz-docs-glow 8s ease-in-out infinite alternate;
+}
+
+.nz-docs-hero__frame {
+  pointer-events: none;
+  position: absolute;
+  inset: 1.25rem;
+  border: 1px dashed var(--nz-line);
+  border-radius: 0.25rem;
+  opacity: 0.55;
+  animation: nz-docs-fade-in 1.2s ease 0.08s both;
+}
+
+.nz-docs-hero__inner {
+  position: relative;
+  z-index: 1;
+  width: min(52rem, 100%);
+  margin-inline: auto;
+  padding: clamp(4.5rem, 12vh, 7rem) clamp(1.25rem, 4vw, 2.5rem);
+}
+
+.nz-docs-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+  font-family: var(--font-nz-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nz-muted);
+  animation: nz-docs-rise 0.7s ease both;
+}
+
+.nz-docs-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--nz-line);
+  border-radius: 0.3rem;
+  background: color-mix(in oklab, #0b0d16 80%, #5b4dff 20%);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  color: var(--nz-ink);
+}
+
+.nz-docs-eyebrow {
+  margin: 0 0 0.85rem;
+  font-family: var(--font-nz-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--nz-muted);
+  animation: nz-docs-rise 0.75s ease 0.06s both;
+}
+
+.nz-docs-brand {
+  margin: 0;
+  max-width: 12ch;
+  font-size: clamp(3.4rem, 10vw, 6.5rem);
+  font-weight: 650;
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+  color: var(--nz-ink);
+  animation: nz-docs-rise 0.8s ease 0.1s both;
+}
+
+.nz-docs-tagline {
+  margin: 1.1rem 0 0;
+  max-width: 18ch;
+  font-size: clamp(1.35rem, 3.2vw, 2rem);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--nz-accent);
+  animation: nz-docs-rise 0.85s ease 0.16s both;
+}
+
+.nz-docs-lede {
+  margin: 1.25rem 0 0;
+  max-width: 36rem;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--nz-muted);
+  animation: nz-docs-rise 0.9s ease 0.22s both;
+}
+
+.nz-docs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  animation: nz-docs-rise 0.95s ease 0.28s both;
+}
+
+.nz-docs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.7rem 1.15rem;
+  border-radius: 999px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.nz-docs-btn:hover {
+  transform: translateY(-1px);
+}
+
+.nz-docs-btn--primary {
+  background: #f7f8ff;
+  color: #07080f;
+}
+
+.nz-docs-btn--primary:hover {
+  background: #ffffff;
+}
+
+.nz-docs-btn--ghost {
+  border: 1px solid var(--nz-line);
+  background: color-mix(in oklab, #0b0d16 70%, transparent);
+  color: var(--nz-ink);
+}
+
+.nz-docs-btn--ghost:hover {
+  border-color: color-mix(in oklab, #c9d2f0 55%, transparent);
+  background: color-mix(in oklab, #15192a 80%, transparent);
+}
+
+.nz-docs-paths {
+  position: relative;
+  padding: clamp(2.5rem, 6vh, 4rem) clamp(1.25rem, 4vw, 2.5rem) clamp(3rem, 8vh, 5rem);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, #090b14 92%, #5b4dff 8%), #05060c 55%);
+}
+
+.nz-docs-paths__label {
+  width: min(64rem, 100%);
+  margin: 0 auto 1.25rem;
+  font-family: var(--font-nz-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nz-muted);
+}
+
+.nz-docs-paths__list {
+  list-style: none;
+  display: grid;
+  gap: 0.85rem;
+  width: min(64rem, 100%);
+  margin: 0 auto;
+  padding: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.nz-docs-path {
+  display: grid;
+  gap: 0.45rem;
+  min-height: 100%;
+  padding: 1.15rem 1.2rem 1.25rem;
+  border: 1px dashed var(--nz-line);
+  border-radius: 0.35rem;
+  text-decoration: none;
+  color: inherit;
+  background: color-mix(in oklab, #0a0c14 78%, transparent);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.nz-docs-path:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, #c9d2f0 48%, transparent);
+  background: color-mix(in oklab, #121624 88%, #5b4dff 12%);
+}
+
+.nz-docs-path__index {
+  font-family: var(--font-nz-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  color: var(--nz-muted);
+}
+
+.nz-docs-path__title {
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.nz-docs-path__blurb {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--nz-muted);
+}
+
+@keyframes nz-docs-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nz-docs-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
+@keyframes nz-docs-glow {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: translate3d(8%, -6%, 0) scale(1.08);
+    opacity: 0.95;
+  }
+}
+
+@media (max-width: 860px) {
+  .nz-docs-paths__list {
+    grid-template-columns: 1fr;
+  }
+
+  .nz-docs-hero__frame {
+    inset: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nz-docs-hero__grid,
+  .nz-docs-hero__frame,
+  .nz-docs-kicker,
+  .nz-docs-eyebrow,
+  .nz-docs-brand,
+  .nz-docs-tagline,
+  .nz-docs-lede,
+  .nz-docs-actions,
+  .nz-docs-hero__glow {
+    animation: none !important;
+  }
+
+  .nz-docs-btn:hover,
+  .nz-docs-path:hover {
+    transform: none;
+  }
 }
