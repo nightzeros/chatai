@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "brand:assets": "node ./scripts/generate-brand-assets.mjs",
     "pretest": "pnpm run prebuild",
     "test": "vitest run"
   },

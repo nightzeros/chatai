@@ -54,12 +54,17 @@ export const metadata: Metadata = {
     siteName: "ChatAI",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "ChatAI — Open-source AI Assistants by NightZeros",
     description: "Open-source AI assistants on your knowledge. A NightZeros project.",
   },
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon-16.svg", type: "image/svg+xml", sizes: "16x16" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
 };
 

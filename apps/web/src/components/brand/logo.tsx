@@ -3,6 +3,7 @@ import Link from "next/link";
 import { BrandAttribution } from "@/components/brand/attribution";
 import { cn } from "@/lib/utils";
 
+/** A1 Reply Vector — theme-aware (frame = currentColor; ink contrasts via background). */
 export function BrandMark({ className, size = 28 }: { className?: string; size?: number }) {
   return (
     <svg
@@ -11,17 +12,23 @@ export function BrandMark({ className, size = 28 }: { className?: string; size?:
       viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={cn("shrink-0", className)}
+      className={cn("shrink-0 text-foreground", className)}
       aria-hidden
     >
-      <rect width="32" height="32" rx="8" className="fill-brand" />
+      <rect width="32" height="32" rx="7" fill="currentColor" />
+      <circle cx="12.25" cy="16" r="3.15" className="fill-background" />
       <path
-        d="M8 11.5c0-1.1.9-2 2-2h8.5c2.5 0 4.5 2 4.5 4.5S21 18.5 18.5 18.5H14l-3.2 3.2c-.5.5-1.3.1-1.3-.6V11.5z"
-        className="fill-brand-foreground"
+        d="M17.1 12.85 L23.4 10.55"
+        className="stroke-background"
+        strokeWidth="2.35"
+        strokeLinecap="round"
       />
-      <circle cx="12.2" cy="14.2" r="1.1" className="fill-brand" />
-      <circle cx="16" cy="14.2" r="1.1" className="fill-brand" />
-      <circle cx="19.8" cy="14.2" r="1.1" className="fill-brand" />
+      <path
+        d="M17.1 19.15 L23.4 21.45"
+        className="stroke-background"
+        strokeWidth="2.35"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -42,6 +49,7 @@ export function BrandLockup({
       <Link
         href={href}
         className="inline-flex items-center gap-2.5 text-foreground transition-opacity hover:opacity-90"
+        aria-label="ChatAI home"
       >
         <BrandMark size={markSize} />
         <span className="font-display text-xl font-semibold tracking-tight">ChatAI</span>
