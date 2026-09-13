@@ -23,8 +23,13 @@
     color: var(--color-fd-foreground);
   }
 
-  /* NightZeros-branded docs home: match marketing site chrome */
+  /* NightZeros-branded docs home: theme-aware surface (follows html.dark) */
   #nd-home-layout:has(.nz-docs-home) {
+    background-color: #f4f6fb;
+    color: #0b0d16;
+  }
+
+  html.dark #nd-home-layout:has(.nz-docs-home) {
     background-color: #05060c;
     color: #f4f6fb;
   }
@@ -126,22 +131,62 @@
 }
 
 /* -------------------------------------------------------------------------- */
-/* Docs home — NightZeros-branded landing                                     */
+/* Docs home — NightZeros-branded landing (theme-aware)                         */
 /* -------------------------------------------------------------------------- */
 
 .nz-docs-home {
-  --nz-ink: #f4f6fb;
-  --nz-muted: color-mix(in oklab, #f4f6fb 62%, transparent);
-  --nz-line: color-mix(in oklab, #8b9cc8 28%, transparent);
-  --nz-glow: color-mix(in oklab, #5b4dff 42%, transparent);
-  --nz-surface: #05060c;
-  --nz-accent: #e8ecff;
+  /* Light defaults */
+  --nz-ink: #0b0d16;
+  --nz-muted: color-mix(in oklab, #0b0d16 58%, transparent);
+  --nz-line: color-mix(in oklab, #5b6b94 32%, transparent);
+  --nz-grid: color-mix(in oklab, #5b6b94 18%, transparent);
+  --nz-glow: color-mix(in oklab, #5b4dff 22%, transparent);
+  --nz-surface: #f4f6fb;
+  --nz-accent: #1a2240;
+  --nz-mark-bg: color-mix(in oklab, #e8ecff 78%, #5b4dff 22%);
+  --nz-btn-primary-bg: #0b0d16;
+  --nz-btn-primary-fg: #f4f6fb;
+  --nz-btn-primary-bg-hover: #1a1d2a;
+  --nz-btn-ghost-bg: color-mix(in oklab, #ffffff 70%, transparent);
+  --nz-btn-ghost-border: var(--nz-line);
+  --nz-btn-ghost-bg-hover: color-mix(in oklab, #ffffff 92%, #5b4dff 8%);
+  --nz-btn-ghost-border-hover: color-mix(in oklab, #5b6b94 55%, transparent);
+  --nz-paths-bg: linear-gradient(
+    180deg,
+    color-mix(in oklab, #f4f6fb 94%, #5b4dff 6%),
+    #eef1f8 55%
+  );
+  --nz-path-bg: color-mix(in oklab, #ffffff 82%, transparent);
+  --nz-path-bg-hover: color-mix(in oklab, #ffffff 90%, #5b4dff 10%);
+  --nz-path-border-hover: color-mix(in oklab, #5b6b94 48%, transparent);
   flex: 1;
   display: flex;
   flex-direction: column;
   font-family: var(--font-nz-display), ui-sans-serif, system-ui, sans-serif;
   color: var(--nz-ink);
   background: var(--nz-surface);
+}
+
+html.dark .nz-docs-home {
+  --nz-ink: #f4f6fb;
+  --nz-muted: color-mix(in oklab, #f4f6fb 62%, transparent);
+  --nz-line: color-mix(in oklab, #8b9cc8 28%, transparent);
+  --nz-grid: color-mix(in oklab, #8b9cc8 14%, transparent);
+  --nz-glow: color-mix(in oklab, #5b4dff 42%, transparent);
+  --nz-surface: #05060c;
+  --nz-accent: #e8ecff;
+  --nz-mark-bg: color-mix(in oklab, #0b0d16 80%, #5b4dff 20%);
+  --nz-btn-primary-bg: #f7f8ff;
+  --nz-btn-primary-fg: #07080f;
+  --nz-btn-primary-bg-hover: #ffffff;
+  --nz-btn-ghost-bg: color-mix(in oklab, #0b0d16 70%, transparent);
+  --nz-btn-ghost-border: var(--nz-line);
+  --nz-btn-ghost-bg-hover: color-mix(in oklab, #15192a 80%, transparent);
+  --nz-btn-ghost-border-hover: color-mix(in oklab, #c9d2f0 55%, transparent);
+  --nz-paths-bg: linear-gradient(180deg, color-mix(in oklab, #090b14 92%, #5b4dff 8%), #05060c 55%);
+  --nz-path-bg: color-mix(in oklab, #0a0c14 78%, transparent);
+  --nz-path-bg-hover: color-mix(in oklab, #121624 88%, #5b4dff 12%);
+  --nz-path-border-hover: color-mix(in oklab, #c9d2f0 48%, transparent);
 }
 
 .nz-docs-hero {
@@ -159,8 +204,8 @@
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(to right, color-mix(in oklab, #8b9cc8 14%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklab, #8b9cc8 14%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, var(--nz-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--nz-grid) 1px, transparent 1px);
   background-size: 72px 72px;
   mask-image: radial-gradient(ellipse 80% 70% at 40% 35%, #000 20%, transparent 75%);
   opacity: 0.45;
@@ -217,7 +262,7 @@
   height: 1.75rem;
   border: 1px solid var(--nz-line);
   border-radius: 0.3rem;
-  background: color-mix(in oklab, #0b0d16 80%, #5b4dff 20%);
+  background: var(--nz-mark-bg);
   font-size: 0.65rem;
   letter-spacing: 0.08em;
   color: var(--nz-ink);
@@ -295,30 +340,29 @@
 }
 
 .nz-docs-btn--primary {
-  background: #f7f8ff;
-  color: #07080f;
+  background: var(--nz-btn-primary-bg);
+  color: var(--nz-btn-primary-fg);
 }
 
 .nz-docs-btn--primary:hover {
-  background: #ffffff;
+  background: var(--nz-btn-primary-bg-hover);
 }
 
 .nz-docs-btn--ghost {
-  border: 1px solid var(--nz-line);
-  background: color-mix(in oklab, #0b0d16 70%, transparent);
+  border: 1px solid var(--nz-btn-ghost-border);
+  background: var(--nz-btn-ghost-bg);
   color: var(--nz-ink);
 }
 
 .nz-docs-btn--ghost:hover {
-  border-color: color-mix(in oklab, #c9d2f0 55%, transparent);
-  background: color-mix(in oklab, #15192a 80%, transparent);
+  border-color: var(--nz-btn-ghost-border-hover);
+  background: var(--nz-btn-ghost-bg-hover);
 }
 
 .nz-docs-paths {
   position: relative;
   padding: clamp(2.5rem, 6vh, 4rem) clamp(1.25rem, 4vw, 2.5rem) clamp(3rem, 8vh, 5rem);
-  background:
-    linear-gradient(180deg, color-mix(in oklab, #090b14 92%, #5b4dff 8%), #05060c 55%);
+  background: var(--nz-paths-bg);
 }
 
 .nz-docs-paths__label {
@@ -350,7 +394,7 @@
   border-radius: 0.35rem;
   text-decoration: none;
   color: inherit;
-  background: color-mix(in oklab, #0a0c14 78%, transparent);
+  background: var(--nz-path-bg);
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -359,8 +403,8 @@
 
 .nz-docs-path:hover {
   transform: translateY(-2px);
-  border-color: color-mix(in oklab, #c9d2f0 48%, transparent);
-  background: color-mix(in oklab, #121624 88%, #5b4dff 12%);
+  border-color: var(--nz-path-border-hover);
+  background: var(--nz-path-bg-hover);
 }
 
 .nz-docs-path__index {
