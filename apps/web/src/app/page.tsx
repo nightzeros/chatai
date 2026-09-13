@@ -1,8 +1,5 @@
-import Link from "next/link";
-
-import { BrandMark } from "@/components/brand/logo";
 import { SiteFooter, SiteHeader } from "@/components/layout/site-chrome";
-import { ProductShowcase } from "@/components/marketing/product-showcase";
+import { LandingHero } from "@/components/marketing/landing-hero";
 import { Button } from "@/components/ui/button";
 import { getDocsUrl } from "@/lib/docs-url";
 import { getSession } from "@/lib/session";
@@ -18,51 +15,7 @@ export default async function HomePage() {
       <SiteHeader signedIn={Boolean(session)} docsUrl={docsUrl} />
 
       <main className="relative z-10 flex-1">
-        <section className="mx-auto flex max-w-[var(--content-max)] flex-col gap-12 px-4 pb-16 pt-12 md:gap-16 md:px-6 md:pb-24 md:pt-16">
-          <div className="reveal max-w-2xl">
-            <div className="mb-6 flex items-center gap-3">
-              <BrandMark size={40} />
-              <span className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">ChatAI</span>
-            </div>
-            <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl md:text-[2.75rem] md:leading-[1.1]">
-              Build AI assistants on your knowledge
-            </h1>
-            <p className="reveal reveal-delay-1 mt-4 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
-              Create an assistant, add documents and sites, test answers with citations, then embed a chat
-              widget. Open source and self-hostable.
-            </p>
-            <div className="reveal reveal-delay-2 mt-8 flex flex-wrap items-center gap-3">
-              {session ? (
-                <Button asChild size="lg">
-                  <Link href="/dashboard">Go to dashboard</Link>
-                </Button>
-              ) : (
-                <>
-                  <Button asChild size="lg">
-                    <Link href="/signup">Get started</Link>
-                  </Button>
-                  <Button asChild size="lg" variant="outline">
-                    <Link href="/login">Sign in</Link>
-                  </Button>
-                </>
-              )}
-              <Button asChild size="lg" variant="ghost">
-                <a href={docsUrl} target="_blank" rel="noreferrer">
-                  Documentation
-                </a>
-              </Button>
-              <Button asChild size="lg" variant="ghost">
-                <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">
-                  GitHub
-                </a>
-              </Button>
-            </div>
-          </div>
-
-          <div className="reveal reveal-delay-3">
-            <ProductShowcase />
-          </div>
-        </section>
+        <LandingHero signedIn={Boolean(session)} docsUrl={docsUrl} />
 
         <section className="border-t border-border/70 bg-background/60">
           <div className="mx-auto grid max-w-[var(--content-max)] gap-10 px-4 py-14 md:grid-cols-[1.2fr_1fr] md:px-6 md:py-16">

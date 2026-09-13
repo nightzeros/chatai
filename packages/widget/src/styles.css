@@ -237,7 +237,8 @@
   line-height: 1.45;
 }
 
-.chatai-message p {
+.chatai-message p,
+.chatai-user-text {
   margin: 0;
   white-space: pre-wrap;
 }
@@ -254,6 +255,101 @@
   border-radius: 15px 5px 15px 15px;
   background: var(--chatai-accent);
   color: #fff;
+}
+
+.chatai-md {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.chatai-md-p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chatai-md-p + .chatai-md-p,
+.chatai-md-p + .chatai-md-ul,
+.chatai-md-p + .chatai-md-ol,
+.chatai-md-p + .chatai-md-pre,
+.chatai-md-ul + .chatai-md-p,
+.chatai-md-ol + .chatai-md-p,
+.chatai-md-pre + .chatai-md-p {
+  margin-top: 0.55em;
+}
+
+.chatai-md-ul,
+.chatai-md-ol {
+  margin: 0.45em 0;
+  padding-left: 1.25em;
+}
+
+.chatai-md-ul {
+  list-style: disc;
+}
+
+.chatai-md-ol {
+  list-style: decimal;
+}
+
+.chatai-md-link {
+  color: var(--chatai-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chatai-md-link:focus-visible {
+  outline: 2px solid var(--chatai-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.chatai-md-code {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--chatai-border), transparent 55%);
+  padding: 0.1em 0.35em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.chatai-md-pre {
+  margin: 0.55em 0;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chatai-border), transparent 55%);
+  padding: 0.65em 0.75em;
+  font-size: 0.85em;
+}
+
+.chatai-md-pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre;
+}
+
+.chatai-md-caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.9em;
+  margin-left: 2px;
+  vertical-align: middle;
+  background: var(--chatai-ink);
+  animation: chatai-caret-pulse 1s ease-in-out infinite;
+}
+
+@keyframes chatai-caret-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatai-md-caret {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 
 .chatai-prompts {
@@ -275,18 +371,6 @@
   text-align: left;
 }
 
-.chatai-sources {
-  display: flex;
-  margin: 10px 0 0;
-  padding: 9px 0 0;
-  flex-direction: column;
-  gap: 4px;
-  border-top: 1px solid var(--chatai-border);
-  color: var(--chatai-muted);
-  font-size: 11px;
-  list-style: none;
-}
-
 .chatai-feedback {
   display: flex;
   align-items: center;
@@ -303,6 +387,8 @@
 }
 
 .chatai-feedback button {
+  display: inline-grid;
+  place-items: center;
   width: 25px;
   height: 25px;
   border: 1px solid var(--chatai-border);
@@ -312,6 +398,12 @@
   cursor: pointer;
   font: inherit;
   line-height: 1;
+  padding: 0;
+}
+
+.chatai-feedback button svg {
+  width: 13px;
+  height: 13px;
 }
 
 .chatai-feedback button[aria-pressed="true"] {

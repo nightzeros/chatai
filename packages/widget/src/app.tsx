@@ -4,6 +4,8 @@ import type { WidgetControllerOptions, WidgetState } from "@nightzeros/chatai-wi
 
 import { createWidgetController } from "@nightzeros/chatai-widget-core";
 
+import { MarkdownMessage } from "./markdown-message";
+
 export type WidgetSettings = {
   primaryColor?: string;
   position?: "bottom-left" | "bottom-right";
@@ -51,6 +53,32 @@ function ChatGlyph() {
     <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M20 11.5a7.5 7.5 0 0 1-9.4 7.3L5 21l1.4-4.2A7.5 7.5 0 1 1 20 11.5Z" />
       <path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke-linecap="round" />
+    </svg>
+  );
+}
+
+function ThumbUpGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M7 10v12" stroke-linecap="round" stroke-linejoin="round" />
+      <path
+        d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ThumbDownGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M17 14V2" stroke-linecap="round" stroke-linejoin="round" />
+      <path
+        d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
     </svg>
   );
 }
@@ -223,7 +251,7 @@ export function WidgetApp(props: Props) {
           <div ref={transcriptRef} className="chatai-transcript" aria-live="polite">
             {state.config?.welcomeMessage ? (
               <article className="chatai-message assistant">
-                <p>{state.config.welcomeMessage}</p>
+                <MarkdownMessage content={state.config.welcomeMessage} />
               </article>
             ) : null}
             {questions.length > 0 && state.messages.length === 0 ? (
@@ -236,25 +264,24 @@ export function WidgetApp(props: Props) {
               </div>
             ) : null}
             {state.messages.map((message, index) => {
+              const isLast = index === state.messages.length - 1;
               const isStreamingPlaceholder =
-                showTyping && index === state.messages.length - 1 && message.role === "assistant";
+                showTyping && isLast && message.role === "assistant";
+              const isStreamingContent =
+                busy && isLast && message.role === "assistant" && Boolean(message.content);
               return (
                 <article key={`${message.role}-${index}`} className={`chatai-message ${message.role}`}>
                   {isStreamingPlaceholder ? (
                     <TypingIndicator />
+                  ) : message.role === "assistant" ? (
+                    message.content ? (
+                      <MarkdownMessage content={message.content} streaming={isStreamingContent} />
+                    ) : (
+                      <p>{busy ? "Thinking…" : ""}</p>
+                    )
                   ) : (
-                    <p>{message.content || (busy && message.role === "assistant" ? "Thinking…" : "")}</p>
+                    <p className="chatai-user-text">{message.content}</p>
                   )}
-                  {settings.showSources !== false && message.sources?.length ? (
-                    <ul className="chatai-sources" aria-label="Sources">
-                      {message.sources.map((source) => (
-                        <li key={`${source.documentId}-${source.chunkId ?? source.page ?? source.documentName}`}>
-                          <strong>{source.documentName}</strong>
-                          {source.page != null ? ` · p. ${source.page}` : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
                   {message.role === "assistant" && message.id ? (
                     <div className="chatai-feedback">
                       <span>Was this helpful?</span>
@@ -264,7 +291,7 @@ export function WidgetApp(props: Props) {
                         aria-pressed={message.feedback === "positive"}
                         onClick={() => rate(message.id!, "positive")}
                       >
-                        ↑
+                        <ThumbUpGlyph />
                       </button>
                       <button
                         type="button"
@@ -272,7 +299,7 @@ export function WidgetApp(props: Props) {
                         aria-pressed={message.feedback === "negative"}
                         onClick={() => rate(message.id!, "negative")}
                       >
-                        ↓
+                        <ThumbDownGlyph />
                       </button>
                     </div>
                   ) : null}
