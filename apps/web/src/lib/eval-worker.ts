@@ -1,4 +1,14 @@
-import { createDb, assistants, conversations, eq, evalJobs, evalRuns, messages, sql } from "@chatai/database";
+import {
+  assistants,
+  checkDatabaseUrlPair,
+  conversations,
+  createDb,
+  eq,
+  evalJobs,
+  evalRuns,
+  messages,
+  sql,
+} from "@chatai/database";
 import {
   evalWorkerVersionLabel,
   EVAL_WORKER_VERSION,
@@ -48,6 +58,10 @@ function workerDb() {
   const url = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
   if (!url) {
     throw new Error("DATABASE_URL is required for the eval worker.");
+  }
+  const mismatch = checkDatabaseUrlPair(env.DATABASE_URL, env.DATABASE_URL_UNPOOLED);
+  if (mismatch) {
+    console.error(`[eval-worker] ${mismatch.reason}`);
   }
   workerClient = createDb(url, { max: 1 });
   return workerClient;

@@ -57,17 +57,17 @@ export function streamChat(opts: {
   };
 }
 
-export async function generateChat(opts: {
-  config: ChatConfig;
-  system: string;
-  prompt: string;
-}): Promise<GenerateChatResult> {
+export async function generateChat(
+  opts: {
+    config: ChatConfig;
+    system: string;
+  } & ({ prompt: string; messages?: undefined } | { messages: ChatMessage[]; prompt?: undefined }),
+): Promise<GenerateChatResult> {
   requireKey(opts.config);
-  const result = await generateText({
-    model: createChatLanguageModel(opts.config),
-    system: opts.system,
-    prompt: opts.prompt,
-  });
+  const model = createChatLanguageModel(opts.config);
+  const result = opts.messages
+    ? await generateText({ model, system: opts.system, messages: opts.messages })
+    : await generateText({ model, system: opts.system, prompt: opts.prompt });
   return {
     text: result.text.trim(),
     usage: normalizeLanguageModelUsage(result.usage),

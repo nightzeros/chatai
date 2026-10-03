@@ -22,6 +22,7 @@ const groups: NavGroup[] = [
     label: "Build",
     items: [
       { href: "/knowledge", label: "Knowledge" },
+      { href: "/profile", label: "Profile" },
       { href: "/playground", label: "Playground" },
     ],
   },

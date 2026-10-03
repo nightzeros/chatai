@@ -2,7 +2,7 @@ import { modelPricing } from "@chatai/database";
 
 import { db } from "@/lib/db";
 
-import type { ModelPricingRow } from "@chatai/billing";
+import { loadSeedPricingCatalog, mergeSeedPricing, type ModelPricingRow } from "@chatai/billing";
 
 /**
  * Load active + historical pricing rows from Postgres for cost calculation.
@@ -20,4 +20,16 @@ export async function loadModelPricingCatalog(): Promise<ModelPricingRow[]> {
     effectiveFrom: row.effectiveFrom,
     effectiveTo: row.effectiveTo,
   }));
+}
+
+/** DB catalog plus seed-merged operations; the full seed when the table is empty or unreachable. */
+export async function resolvePricingCatalog(catalog?: ModelPricingRow[]): Promise<ModelPricingRow[]> {
+  if (catalog) return catalog;
+  try {
+    const rows = await loadModelPricingCatalog();
+    if (rows.length > 0) return mergeSeedPricing(rows);
+  } catch {
+    // fall through
+  }
+  return loadSeedPricingCatalog();
 }

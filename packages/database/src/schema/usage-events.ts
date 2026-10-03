@@ -14,7 +14,7 @@ import {
 import { assistants } from "./assistants";
 import { hostingAccounts } from "./hosting-accounts";
 
-export const USAGE_OPERATIONS = ["chat_completion", "embedding", "rerank"] as const;
+export const USAGE_OPERATIONS = ["chat_completion", "embedding", "rerank", "voice_realtime"] as const;
 export type UsageOperation = (typeof USAGE_OPERATIONS)[number];
 
 export const usageOperationEnum = pgEnum("usage_operation", [...USAGE_OPERATIONS]);
@@ -38,9 +38,15 @@ export const usageEventStatusEnum = pgEnum("usage_event_status", [...USAGE_EVENT
 
 /** One rate component applied when computing final_cost_micros. */
 export type UsagePricingRateSnapshot = {
-  pricingOperation: "chat_input" | "chat_output" | "chat_cached_input" | "embedding" | "rerank";
+  pricingOperation:
+    | "chat_input"
+    | "chat_output"
+    | "chat_cached_input"
+    | "embedding"
+    | "rerank"
+    | "voice_realtime";
   priceMicrosPerUnit: number;
-  unit: "per_million_tokens" | "per_request" | "per_1k_tokens";
+  unit: "per_million_tokens" | "per_request" | "per_1k_tokens" | "per_minute";
   effectiveFrom?: string;
 };
 

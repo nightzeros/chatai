@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
+import { onKnowledgeChanged } from "@/lib/profile/jobs";
 import { requireSession } from "@/lib/session";
 import { getOwnedSource, listDocumentsForSource, isSourceBusy } from "@/lib/sources";
 
@@ -41,6 +42,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
     resourceId: source.id,
     metadata: { assistantId: id, name: source.name, type: source.type },
   });
+  await onKnowledgeChanged(db(), source.assistantId);
 
   return NextResponse.json({ ok: true });
 }

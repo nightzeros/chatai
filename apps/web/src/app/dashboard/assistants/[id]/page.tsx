@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { resolveVoiceSettings } from "@chatai/database";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { getAssistantOverview } from "@/lib/assistant-overview";
+import { resolveBillableAccountForAssistant } from "@/lib/hosting/accounts";
 import { requireSession } from "@/lib/session";
+import { formatVoiceDuration } from "@/lib/voice/duration-format";
+import { getAssistantVoiceSeconds } from "@/lib/voice/usage-report";
 
 export default async function AssistantOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
@@ -31,6 +35,13 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
     requireWidgetSigning,
     hasSigningSecret,
   } = overview;
+
+  const voiceEnabled = resolveVoiceSettings(assistant.voiceSettings).enabled;
+  const voiceUsage = await getAssistantVoiceSeconds(
+    await resolveBillableAccountForAssistant(assistant),
+    assistant.id,
+  );
+  const showVoice = voiceEnabled || voiceUsage.sessions > 0;
 
   const settings = assistant.settings ?? {};
   const customized =
@@ -94,7 +105,7 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-3 sm:grid-cols-2 ${showVoice ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         <StatCard
           label="Knowledge items"
           value={knowledgeTotal}
@@ -108,6 +119,17 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
           tone={unanswered > 0 ? "warning" : "default"}
           hint="Fallback or low-confidence replies"
         />
+        {showVoice ? (
+          <StatCard
+            label="Voice this period"
+            value={formatVoiceDuration(voiceUsage.seconds)}
+            hint={
+              voiceUsage.playgroundSeconds > 0
+                ? `${voiceUsage.sessions} sessions · ${formatVoiceDuration(voiceUsage.playgroundSeconds)} in Playground`
+                : `${voiceUsage.sessions} ${voiceUsage.sessions === 1 ? "session" : "sessions"}`
+            }
+          />
+        ) : null}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

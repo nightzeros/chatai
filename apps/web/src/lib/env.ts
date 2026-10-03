@@ -129,6 +129,86 @@ const envSchema = z.object({
   POLAR_PRODUCT_ID_TEAM: z.string().optional(),
 
   UPLOAD_DIR: z.string().default("./uploads"),
+
+  /**
+   * Voice realtime provider for Topology B mint/sideband.
+   * `mock` is for CI / local tests without OpenAI credentials.
+   */
+  VOICE_PROVIDER: z.enum(["gpt-live", "mock"]).default("gpt-live"),
+  /**
+   * Instance-managed OpenAI project key for GPT-Live. Independent of AI_PROVIDER /
+   * the assistant's text provider; never sent to browsers.
+   */
+  VOICE_OPENAI_API_KEY: z.string().optional(),
+  VOICE_OPENAI_BASE_URL: z.string().url().default("https://api.openai.com"),
+  /**
+   * Owner playground Voice is always metered and reported separately; when true it
+   * is not reserved against or counted toward the Voice-minute quota.
+   * Independent of HOSTED_USAGE_EXEMPT_PLAYGROUND (text chat).
+   */
+  VOICE_QUOTA_EXEMPT_PLAYGROUND: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  /**
+   * Instance-wide cap on concurrent Voice sessions (protects the provider organization's
+   * concurrent-session limit). Unset = only per-account plan limits apply.
+   */
+  VOICE_MAX_CONCURRENT_SESSIONS: z.coerce.number().int().positive().optional(),
+
+  /**
+   * S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, …) for Voice recordings.
+   * Recording is unavailable unless bucket + credentials are configured.
+   */
+  OBJECT_STORAGE_BUCKET: z.string().min(1).optional(),
+  OBJECT_STORAGE_REGION: z.string().min(1).default("auto"),
+  /** Custom endpoint for R2 / MinIO; omit for AWS S3. */
+  OBJECT_STORAGE_ENDPOINT: z.string().url().optional(),
+  OBJECT_STORAGE_ACCESS_KEY_ID: z.string().min(1).optional(),
+  OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  /** MinIO and most self-hosted gateways need path-style URLs. */
+  OBJECT_STORAGE_FORCE_PATH_STYLE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /** Local directory for the compressed crash-recovery spool (never raw PCM). */
+  VOICE_RECORDING_SPOOL_DIR: z.string().default("./.voice-recording-spool"),
+  /** Numbers-only recording/provider clock diagnostics in server logs (no audio or transcript content). */
+  VOICE_ALIGNMENT_DIAGNOSTICS: z
+    .enum(["1", "0", "true", "false"])
+    .optional()
+    .transform((v) => v === "1" || v === "true"),
+  /**
+   * Seconds without visitor speech before a Voice call checks in (it ends 30 s later).
+   * Default 180; 0 disables idle ending only.
+   */
+  VOICE_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().min(0).max(3600).optional(),
+  /**
+   * Graceful Voice drain bound on SIGTERM/SIGINT (default 8000). Keep the platform
+   * stop grace at least ~7 s above it (≥ 15 s for the default).
+   */
+  VOICE_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).max(60_000).optional(),
+  /**
+   * Defense-in-depth output scope check on risk-gated turns (Text and Voice). The
+   * Scope Router remains the enforcement point; this only re-checks risky answers.
+   */
+  OUTPUT_SCOPE_CHECK: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  /** Owner Profile page (Purpose and reviewed Key facts). */
+  ASSISTANT_PROFILE: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  /**
+   * Answer basic identity/contact/hours questions from published key facts without
+   * retrieval. An optimization only; keep off until its evaluation gate passes.
+   */
+  PROFILE_ANSWER_ROUTE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -185,6 +265,24 @@ function loadEnv(): Env {
     POLAR_PRODUCT_ID_BUSINESS: process.env.POLAR_PRODUCT_ID_BUSINESS,
     POLAR_PRODUCT_ID_TEAM: process.env.POLAR_PRODUCT_ID_TEAM,
     UPLOAD_DIR: process.env.UPLOAD_DIR,
+    VOICE_PROVIDER: process.env.VOICE_PROVIDER,
+    VOICE_OPENAI_API_KEY: process.env.VOICE_OPENAI_API_KEY,
+    VOICE_OPENAI_BASE_URL: process.env.VOICE_OPENAI_BASE_URL,
+    VOICE_QUOTA_EXEMPT_PLAYGROUND: process.env.VOICE_QUOTA_EXEMPT_PLAYGROUND,
+    VOICE_MAX_CONCURRENT_SESSIONS: process.env.VOICE_MAX_CONCURRENT_SESSIONS || undefined,
+    OBJECT_STORAGE_BUCKET: process.env.OBJECT_STORAGE_BUCKET,
+    OBJECT_STORAGE_REGION: process.env.OBJECT_STORAGE_REGION,
+    OBJECT_STORAGE_ENDPOINT: process.env.OBJECT_STORAGE_ENDPOINT,
+    OBJECT_STORAGE_ACCESS_KEY_ID: process.env.OBJECT_STORAGE_ACCESS_KEY_ID,
+    OBJECT_STORAGE_SECRET_ACCESS_KEY: process.env.OBJECT_STORAGE_SECRET_ACCESS_KEY,
+    OBJECT_STORAGE_FORCE_PATH_STYLE: process.env.OBJECT_STORAGE_FORCE_PATH_STYLE,
+    VOICE_RECORDING_SPOOL_DIR: process.env.VOICE_RECORDING_SPOOL_DIR,
+    VOICE_ALIGNMENT_DIAGNOSTICS: process.env.VOICE_ALIGNMENT_DIAGNOSTICS,
+    VOICE_IDLE_TIMEOUT_SECONDS: process.env.VOICE_IDLE_TIMEOUT_SECONDS || undefined,
+    VOICE_SHUTDOWN_GRACE_MS: process.env.VOICE_SHUTDOWN_GRACE_MS || undefined,
+    OUTPUT_SCOPE_CHECK: process.env.OUTPUT_SCOPE_CHECK || undefined,
+    ASSISTANT_PROFILE: process.env.ASSISTANT_PROFILE || undefined,
+    PROFILE_ANSWER_ROUTE: process.env.PROFILE_ANSWER_ROUTE || undefined,
   });
 
   if (!parsed.success) {

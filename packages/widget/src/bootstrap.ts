@@ -3,6 +3,8 @@ import { resolveApiUrl, type WidgetControllerOptions } from "@nightzeros/chatai-
 type ScriptOptions = Pick<WidgetControllerOptions, "assistantId" | "apiUrl" | "signEndpoint"> & {
   theme?: "light" | "dark" | "system";
   position?: "bottom-left" | "bottom-right";
+  /** `data-voice="off"` hides Voice even when the assistant offers it. */
+  voice?: boolean;
 };
 
 function option<T extends string>(value: string | undefined, allowed: readonly T[]): T | undefined {
@@ -24,5 +26,6 @@ export function optionsFromScript(script: HTMLScriptElement): ScriptOptions {
     ...(signEndpoint ? { signEndpoint } : {}),
     theme: option(script.dataset.theme, ["light", "dark", "system"] as const),
     position: option(script.dataset.position, ["bottom-left", "bottom-right"] as const),
+    ...(script.dataset.voice === "off" ? { voice: false } : {}),
   };
 }

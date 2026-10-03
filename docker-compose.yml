@@ -33,6 +33,8 @@ services:
       UPLOAD_DIR: /app/uploads
     volumes:
       - chatai_uploads:/app/uploads
+    # Voice drains live calls for up to 8 s on SIGTERM; Docker's default 10 s is too tight.
+    stop_grace_period: 20s
     depends_on:
       db:
         condition: service_healthy

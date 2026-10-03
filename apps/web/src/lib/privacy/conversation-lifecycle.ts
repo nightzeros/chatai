@@ -3,6 +3,7 @@ import { and, conversations, eq } from "@chatai/database";
 import { getOwnedAssistant } from "@/lib/assistants";
 import { getOwnedConversationTranscript } from "@/lib/conversations";
 import { db } from "@/lib/db";
+import { releaseConversationRecordings } from "@/lib/voice/recording/cleanup";
 import { buildConversationExport } from "./conversation-export";
 
 export async function exportOwnedConversation(
@@ -37,6 +38,17 @@ export async function deleteOwnedConversation(
   if (!assistant) {
     return { ok: false, reason: "not_found" };
   }
+
+  const [owned] = await db()
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.id, conversationId), eq(conversations.assistantId, assistant.id)))
+    .limit(1);
+  if (!owned) {
+    return { ok: false, reason: "not_found" };
+  }
+  // Recording objects go first; the FK would only null their conversation link.
+  await releaseConversationRecordings([owned.id]);
 
   const deleted = await db()
     .delete(conversations)

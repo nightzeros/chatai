@@ -21,6 +21,8 @@ export type StreamChatInput = {
   conversationId?: string;
   visitorId?: string;
   source?: "playground" | "widget" | "api";
+  /** Recent turns the server may not have stored (no-store, ephemeral Voice). */
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
   signal?: AbortSignal;
 };
 
@@ -45,6 +47,7 @@ export async function* streamChat(input: StreamChatInput): AsyncGenerator<ChatSt
       conversationId: input.conversationId,
       visitorId: input.visitorId,
       source: input.source ?? "playground",
+      ...(input.history?.length ? { history: input.history } : {}),
     }),
   });
 

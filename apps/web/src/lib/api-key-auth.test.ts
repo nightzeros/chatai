@@ -37,6 +37,15 @@ describe("authorizeApiKeyRecord", () => {
       error: "Missing required scope: analytics:read",
     });
   });
+
+  it("does not treat chat as implying voice", () => {
+    expect(authorizeApiKeyRecord(row, ["voice"])).toEqual({
+      ok: false,
+      status: 403,
+      error: "Missing required scope: voice",
+    });
+    expect(authorizeApiKeyRecord({ ...row, scopes: ["voice"] }, ["voice"]).ok).toBe(true);
+  });
 });
 
 describe("hasApiKeyScope", () => {

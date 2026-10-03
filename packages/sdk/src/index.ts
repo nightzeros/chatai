@@ -5,11 +5,20 @@ export {
   assistantCreateSchema,
   assistantPatchSchema,
   chatRequestSchema,
+  voiceSessionCreateRequestSchema,
+  voiceSessionCreateResponseSchema,
+  voiceSessionEndRequestSchema,
+  voiceSessionEndResponseSchema,
+  voiceSessionHeartbeatRequestSchema,
+  voiceSessionHeartbeatResponseSchema,
+  voiceSessionRefusalSchema,
   type Assistant,
   type AssistantCreateInput,
   type AssistantPatchInput,
   type ChatRequestInput,
   type Document,
+  type VoiceSessionCreateInput,
+  type VoiceSessionEndInput,
 } from "./schemas";
 export type { ChatStreamEvent } from "./sse";
 export { API_VERSION } from "./version";

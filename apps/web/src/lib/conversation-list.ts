@@ -20,6 +20,8 @@ export type ConversationMessageRecord = {
   debug?: unknown;
   feedback?: "positive" | "negative" | null;
   confidence?: number | null;
+  modality?: "text" | "voice";
+  wasInterrupted?: boolean;
   createdAt: Date;
 };
 
@@ -35,10 +37,10 @@ export type ConversationListItem = {
   updatedAt: Date;
 };
 
-export type ConversationDayGroup = {
+export type ConversationDayGroup<T extends ConversationListItem = ConversationListItem> = {
   key: string;
   label: string;
-  items: ConversationListItem[];
+  items: T[];
 };
 
 export type TranscriptMessage = {
@@ -49,6 +51,8 @@ export type TranscriptMessage = {
   outcome: MessageOutcome | null;
   feedback: "positive" | "negative" | null;
   confidence: number | null;
+  modality: "text" | "voice";
+  wasInterrupted: boolean;
   createdAt: Date;
 };
 
@@ -73,6 +77,45 @@ export function conversationVisitorLabel(source: ConversationSource, visitorId: 
   if (!visitorId) return "Anonymous";
   const suffix = visitorId.slice(-6);
   return `…${suffix}`;
+}
+
+/** Owner-facing classification: Text only, Voice only, or both. */
+export type ConversationKind = "text" | "voice" | "mixed";
+
+/** Conversation list filter; `voice` includes Mixed conversations. */
+export type ConversationTypeFilter = "all" | "text" | "voice";
+
+export type ConversationVoiceSummary = {
+  kind: ConversationKind;
+  voiceCallCount: number;
+  voiceDurationMs: number;
+  recordingCount: number;
+};
+
+export type ConversationReviewListItem = ConversationListItem & { voice: ConversationVoiceSummary };
+
+/**
+ * A conversation has Voice when it has stored Voice turns or a stored Voice call
+ * (calls with transcripts off have no turns); Text when it has text messages.
+ */
+export function classifyConversation(counts: {
+  textMessageCount: number;
+  voiceMessageCount: number;
+  voiceCallCount: number;
+}): ConversationKind {
+  const hasVoice = counts.voiceMessageCount > 0 || counts.voiceCallCount > 0;
+  if (hasVoice && counts.textMessageCount > 0) return "mixed";
+  return hasVoice ? "voice" : "text";
+}
+
+export function parseConversationTypeFilter(value: unknown): ConversationTypeFilter {
+  return value === "text" || value === "voice" ? value : "all";
+}
+
+export function matchesConversationFilter(kind: ConversationKind, filter: ConversationTypeFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "voice") return kind === "voice" || kind === "mixed";
+  return kind === "text";
 }
 
 export type ConversationListSummary = {
@@ -128,12 +171,12 @@ export function buildConversationListItems(
   });
 }
 
-export function groupConversationsByDay(
-  items: ConversationListItem[],
+export function groupConversationsByDay<T extends ConversationListItem>(
+  items: T[],
   now = new Date(),
   timeZone = "UTC",
-): ConversationDayGroup[] {
-  const groups = new Map<string, ConversationListItem[]>();
+): ConversationDayGroup<T>[] {
+  const groups = new Map<string, T[]>();
 
   for (const item of items) {
     const key = dayKey(item.updatedAt, timeZone);
@@ -160,6 +203,8 @@ export function toTranscriptMessages(messages: ConversationMessageRecord[]): Tra
       outcome: row.outcome ?? null,
       feedback: row.feedback ?? null,
       confidence: row.confidence ?? null,
+      modality: row.modality ?? "text",
+      wasInterrupted: row.wasInterrupted ?? false,
       createdAt: row.createdAt,
     }));
 }

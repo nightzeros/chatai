@@ -14,6 +14,8 @@ services:
     volumes:
       - chatai_uploads:/app/uploads
     restart: unless-stopped
+    # Voice drains live calls for up to 8 s on SIGTERM; Docker's default 10 s is too tight.
+    stop_grace_period: 20s
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s

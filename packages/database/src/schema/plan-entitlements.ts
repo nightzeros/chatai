@@ -18,6 +18,10 @@ export type PlanFeatures = {
   evalsEnabled: boolean;
   /** UI/entitlement flag only; seat billing is not implemented. */
   teamMembers?: boolean;
+  /** Monthly customer Voice minutes (provisional). null = unlimited, 0 = not included. */
+  voiceMinutesMonthly?: number | null;
+  /** Concurrent Voice sessions per account (provisional). null = unlimited. */
+  maxConcurrentVoiceSessions?: number | null;
 };
 
 /**

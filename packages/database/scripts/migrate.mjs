@@ -1,4 +1,4 @@
-/* global console, process */
+/* global console, process, URL */
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -19,6 +19,34 @@ const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
 if (!url) {
   console.error("DATABASE_URL (or DATABASE_URL_UNPOOLED) is required to run migrations.");
   console.error("Copy .env.example to the repo root .env, or export the variable in your shell.");
+  process.exit(1);
+}
+
+// Mirrors src/connection-check.ts (this script runs as plain Node without TS).
+function neonEndpoint(value) {
+  try {
+    const host = new URL(value).hostname;
+    return host.endsWith(".neon.tech") ? host.split(".")[0].replace(/-pooler$/, "") : null;
+  } catch {
+    return null;
+  }
+}
+const pooledEndpoint = process.env.DATABASE_URL ? neonEndpoint(process.env.DATABASE_URL) : null;
+const directEndpoint = process.env.DATABASE_URL_UNPOOLED
+  ? neonEndpoint(process.env.DATABASE_URL_UNPOOLED)
+  : null;
+if (
+  pooledEndpoint &&
+  directEndpoint &&
+  pooledEndpoint !== directEndpoint &&
+  process.env.ALLOW_DATABASE_URL_MISMATCH !== "1"
+) {
+  console.error(
+    `DATABASE_URL targets Neon endpoint ${pooledEndpoint} but DATABASE_URL_UNPOOLED targets ${directEndpoint}.`,
+  );
+  console.error(
+    'Migrations would run against a different branch than the app. Use the direct URL of the same endpoint (host without "-pooler"), or set ALLOW_DATABASE_URL_MISMATCH=1.',
+  );
   process.exit(1);
 }
 

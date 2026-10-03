@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowUp, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { DebugPanel } from "@/components/playground/debug-panel";
 import { MarkdownMessage } from "@/components/playground/markdown-message";
 import { SourcesBlock } from "@/components/playground/sources-block";
+import {
+  VoicePanel,
+  type ClientHistoryMessage,
+  type CompletedVoiceTurn,
+  type PlaygroundVoiceConfig,
+} from "@/components/playground/voice-panel";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ChatRequestError, streamChat, type ChatMetaEvent } from "@/lib/chat-client";
@@ -19,9 +25,31 @@ type ChatTurn = {
   error?: string;
   meta?: Omit<ChatMetaEvent, "type">;
   feedback?: "positive" | "negative";
+  voice?: {
+    interrupted: boolean;
+    kind: CompletedVoiceTurn["kind"];
+    /** False when the server keeps no copy (no-store or transcripts off). */
+    stored: boolean;
+  };
 };
 
-function visitorId() {
+const CLIENT_HISTORY_LIMIT = 12;
+const CLIENT_HISTORY_MAX_CHARS = 1_500;
+
+/** The conversation as shown, oldest first, for turns the server may not have stored. */
+function clientHistory(turns: ChatTurn[]): ClientHistoryMessage[] {
+  return turns
+    .filter((turn) => !turn.streaming)
+    .flatMap((turn): ClientHistoryMessage[] => [
+      { role: "user", content: turn.question },
+      ...(turn.answer && !turn.error ? [{ role: "assistant" as const, content: turn.answer }] : []),
+    ])
+    .filter((message) => message.content.trim() && message.content !== "(voice)")
+    .slice(-CLIENT_HISTORY_LIMIT)
+    .map((message) => ({ ...message, content: message.content.slice(0, CLIENT_HISTORY_MAX_CHARS) }));
+}
+
+export function visitorId() {
   const key = "chatai.playground.visitor";
   const existing = sessionStorage.getItem(key);
   if (existing) return existing;
@@ -34,15 +62,41 @@ export function PlaygroundChat({
   publicId,
   name,
   welcomeMessage,
+  voice,
 }: {
   publicId: string;
   name: string;
   welcomeMessage: string;
+  voice?: PlaygroundVoiceConfig;
 }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [conversationId, setConversationId] = useState<string>();
-  const [busy, setBusy] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const busy = chatBusy || voiceActive;
+
+  const voiceStored = Boolean(voice && !voice.ephemeral && voice.saveTranscripts);
+  const addVoiceTurns = useCallback(
+    (completed: CompletedVoiceTurn[]) => {
+      setTurns((current) => [
+        ...current,
+        ...completed.map((turn) => ({
+          id: turn.id,
+          question: turn.question || "(voice)",
+          answer: turn.answer,
+          streaming: false,
+          voice: { interrupted: turn.interrupted, kind: turn.kind, stored: voiceStored },
+        })),
+      ]);
+    },
+    [voiceStored],
+  );
+  const turnsRef = useRef(turns);
+  useEffect(() => {
+    turnsRef.current = turns;
+  }, [turns]);
+  const voiceHistory = useCallback(() => clientHistory(turnsRef.current), []);
   const [ratingMessageId, setRatingMessageId] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -68,11 +122,16 @@ export function PlaygroundChat({
     const turnId = crypto.randomUUID();
     setDraft("");
     setError(null);
-    setBusy(true);
+    setChatBusy(true);
     setTurns((current) => [
       ...current,
       { id: turnId, question: message, answer: "", streaming: true },
     ]);
+
+    // No-store: the visible turns are the only history. With storage on the server
+    // uses stored turns, so unsaved Voice turns are never sent back.
+    const history =
+      voice?.ephemeral && turns.some((turn) => turn.voice) ? clientHistory(turns) : undefined;
 
     try {
       for await (const event of streamChat({
@@ -81,6 +140,7 @@ export function PlaygroundChat({
         conversationId,
         visitorId: visitorId(),
         source: "playground",
+        history,
       })) {
         if (event.type === "token") {
           setTurns((current) =>
@@ -128,7 +188,7 @@ export function PlaygroundChat({
         ),
       );
     } finally {
-      setBusy(false);
+      setChatBusy(false);
       input.current?.focus();
     }
   }
@@ -183,6 +243,19 @@ export function PlaygroundChat({
         </Button>
       </div>
 
+      {voice ? (
+        <VoicePanel
+          publicId={publicId}
+          config={voice}
+          conversationId={conversationId}
+          visitorId={visitorId}
+          onConversation={setConversationId}
+          onActiveChange={setVoiceActive}
+          onTurnsCompleted={addVoiceTurns}
+          history={voiceHistory}
+        />
+      ) : null}
+
       <div ref={scroller} className="flex-1 overflow-y-auto px-4 py-5" aria-live="polite">
         <div className="mx-auto flex max-w-2xl flex-col gap-5">
           <div className="rounded-2xl rounded-tl-md bg-muted/60 px-4 py-3">
@@ -193,6 +266,11 @@ export function PlaygroundChat({
           {turns.map((turn) => (
             <div key={turn.id} className="flex flex-col gap-3">
               <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-md bg-primary px-4 py-3 text-primary-foreground">
+                {turn.voice ? (
+                  <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">
+                    {turn.voice.stored ? "Voice" : "Voice · transcript not saved"}
+                  </p>
+                ) : null}
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{turn.question}</p>
               </div>
               <div
@@ -203,9 +281,23 @@ export function PlaygroundChat({
               >
                 {turn.streaming && !turn.answer ? (
                   <p className="text-sm text-muted-foreground">Thinking…</p>
+                ) : turn.voice && !turn.answer ? (
+                  <p className="text-sm text-muted-foreground">
+                    {turn.voice.kind === "superseded"
+                      ? "No answer: you moved on before it was ready."
+                      : "No spoken reply."}
+                  </p>
                 ) : (
                   <MarkdownMessage content={turn.answer} streaming={turn.streaming} />
                 )}
+                {turn.voice?.interrupted ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Interrupted; shows what was spoken.</p>
+                ) : null}
+                {turn.voice?.kind === "live" && turn.answer ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Answered by the voice model without a knowledge lookup.
+                  </p>
+                ) : null}
                 {turn.meta ? (
                   <>
                     <SourcesBlock sources={turn.meta.sources} />
@@ -267,7 +359,7 @@ export function PlaygroundChat({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Ask a question…"
+            placeholder={voiceActive ? "End voice to continue by text…" : "Ask a question…"}
             maxLength={4000}
             disabled={busy}
             className="min-h-[44px] max-h-36 resize-none py-2.5"

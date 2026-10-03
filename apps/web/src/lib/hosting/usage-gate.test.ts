@@ -37,12 +37,14 @@ vi.mock("@/lib/ids", () => ({
 }));
 
 const insertValues = vi.fn(async () => undefined);
+/** Conditional `status = 'reserved'` claim; `[]` means another path already finished it. */
+const claimReturning = vi.fn(async () => [{ id: "evt-1" }] as Array<{ id: string }>);
 vi.mock("@/lib/db", () => ({
   db: () => ({
     insert: () => ({ values: insertValues }),
     update: () => ({
       set: () => ({
-        where: async () => undefined,
+        where: () => Object.assign(Promise.resolve(undefined), { returning: claimReturning }),
       }),
     }),
   }),
@@ -99,6 +101,9 @@ describe("beginChatUsageReservation (enforce)", () => {
       consumedMicros: 0,
       reservedMicros: 0,
       requestCount: 0,
+      voiceSecondsLimit: null,
+      voiceSecondsReserved: 0,
+      voiceSecondsConsumed: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -156,6 +161,9 @@ describe("beginChatUsageReservation (enforce)", () => {
       consumedMicros: 0,
       reservedMicros: 0,
       requestCount: 10,
+      voiceSecondsLimit: null,
+      voiceSecondsReserved: 0,
+      voiceSecondsConsumed: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -241,6 +249,9 @@ describe("beginIngestUsageReservation", () => {
       consumedMicros: 0,
       reservedMicros: 0,
       requestCount: 0,
+      voiceSecondsLimit: null,
+      voiceSecondsReserved: 0,
+      voiceSecondsConsumed: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -291,6 +302,9 @@ describe("beginEvalUsageReservation", () => {
       consumedMicros: 0,
       reservedMicros: 0,
       requestCount: 0,
+      voiceSecondsLimit: null,
+      voiceSecondsReserved: 0,
+      voiceSecondsConsumed: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -420,5 +434,54 @@ describe("finishChatUsageReservation", () => {
         reservedMicros: 1_000,
       }),
     );
+  });
+
+  const reservation = {
+    accountId: "acct-1",
+    periodStart: new Date("2026-03-01T00:00:00.000Z"),
+    reservedMicros: 1_000,
+    reservationEventId: "evt-res-1",
+    requestId: "req-1",
+    estimateMicros: 1_000,
+  };
+
+  it("a finish that loses the reservation claim does not release the reservation again", async () => {
+    const { reconcileUsage } = await import("./reservation");
+    claimReturning.mockResolvedValueOnce([]);
+    const { finishChatUsageReservation } = await import("./usage-gate");
+    await finishChatUsageReservation({
+      reservation,
+      accountId: "acct-1",
+      assistantId: "asst-1",
+      requestId: "req-1",
+      records: [],
+      billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+      catalog: [],
+    });
+    expect(reconcileUsage).toHaveBeenCalledWith(expect.objectContaining({ reservedMicros: 0 }));
+  });
+});
+
+describe("abortChatUsageReservation", () => {
+  it("releases only when it wins the reservation claim", async () => {
+    const { releaseUsage } = await import("./reservation");
+    vi.mocked(releaseUsage).mockClear();
+    const { abortChatUsageReservation } = await import("./usage-gate");
+    const reservation = {
+      accountId: "acct-1",
+      periodStart: new Date("2026-03-01T00:00:00.000Z"),
+      reservedMicros: 1_000,
+      reservationEventId: "evt-res-1",
+      requestId: "req-1",
+      estimateMicros: 1_000,
+    };
+
+    claimReturning.mockResolvedValueOnce([{ id: "evt-res-1" }]);
+    await abortChatUsageReservation(reservation);
+    expect(releaseUsage).toHaveBeenCalledTimes(1);
+
+    claimReturning.mockResolvedValueOnce([]);
+    await abortChatUsageReservation(reservation);
+    expect(releaseUsage).toHaveBeenCalledTimes(1);
   });
 });

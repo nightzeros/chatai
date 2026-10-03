@@ -66,6 +66,8 @@ export default async function BillingPage() {
     maxAssistants: entitlements.maxAssistants,
     usagePercent: summary.usagePercent,
     configuredPaidPlans,
+    voiceSecondsUsed: summary.voice?.voiceSecondsUsed ?? 0,
+    voiceSecondsLimit: summary.voice?.voiceSecondsLimit ?? null,
   };
 
   return <BillingDashboard data={data} />;

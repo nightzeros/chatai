@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { getOwnedDocument } from "@/lib/documents";
+import { onKnowledgeChanged } from "@/lib/profile/jobs";
 import { requireSession } from "@/lib/session";
 
 export async function POST(
@@ -25,6 +26,7 @@ export async function POST(
     .update(documents)
     .set({ excluded, updatedAt: new Date() })
     .where(eq(documents.id, document.id));
+  await onKnowledgeChanged(db(), document.assistantId);
 
   return NextResponse.json({ ok: true, excluded });
 }

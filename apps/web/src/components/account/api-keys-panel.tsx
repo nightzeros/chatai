@@ -30,6 +30,7 @@ const SCOPE_LABELS: Record<ApiKeyScope, string> = {
   "documents:write": "Documents (write)",
   "conversations:read": "Conversations (read)",
   "analytics:read": "Analytics (read)",
+  voice: "Voice (preview)",
 };
 
 function formatDate(value: Date | null) {

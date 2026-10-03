@@ -1,0 +1,77 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/db", () => ({ db: vi.fn() }));
+
+import {
+  clientHistorySchema,
+  fromClientHistory,
+  toHistoryMessages,
+  withServerGrounding,
+} from "./conversation-history";
+
+describe("shared conversation history", () => {
+  it("keeps every user/assistant turn regardless of retrieval, and marks grounded answers", () => {
+    expect(
+      toHistoryMessages([
+        { role: "user", content: "Hi", outcome: null },
+        { role: "assistant", content: "Hello!", outcome: "conversational" },
+        { role: "user", content: "How many members does Zenith have?", outcome: null },
+        { role: "assistant", content: "Zenith has 17 members.", outcome: "answered_with_context" },
+        { role: "user", content: "How many did you say?", outcome: null },
+        { role: "assistant", content: "17 members.", outcome: "answered_from_history" },
+        // Voice turn GPT-Live answered itself.
+        { role: "assistant", content: "Sure thing.", outcome: null },
+        { role: "assistant", content: "I don't know.", outcome: "fallback_no_context" },
+      ]),
+    ).toEqual([
+      { role: "user", content: "Hi" },
+      { role: "assistant", content: "Hello!" },
+      { role: "user", content: "How many members does Zenith have?" },
+      { role: "assistant", content: "Zenith has 17 members.", grounded: true },
+      { role: "user", content: "How many did you say?" },
+      { role: "assistant", content: "17 members.", grounded: true },
+      { role: "assistant", content: "Sure thing." },
+      { role: "assistant", content: "I don't know." },
+    ]);
+  });
+
+  it("drops error placeholders and non-conversation roles", () => {
+    expect(
+      toHistoryMessages([
+        { role: "system", content: "internal", outcome: null },
+        { role: "user", content: "Hi", outcome: null },
+        {
+          role: "assistant",
+          content: "I ran into a problem generating a response. Please try again.",
+          outcome: "model_failure",
+        },
+      ]),
+    ).toEqual([{ role: "user", content: "Hi" }]);
+  });
+
+  it("never trusts client history as grounded unless the server stored the same answer", () => {
+    const client = fromClientHistory([
+      { role: "user", content: "How many members?" },
+      { role: "assistant", content: "Zenith has 17 members." },
+      { role: "assistant", content: "Zenith has 900 members." },
+    ]);
+    expect(client.some((item) => item.grounded)).toBe(false);
+    expect(
+      withServerGrounding(client, [
+        { role: "assistant", content: "Zenith has 17 members.", grounded: true },
+      ]),
+    ).toEqual([
+      { role: "user", content: "How many members?" },
+      { role: "assistant", content: "Zenith has 17 members.", grounded: true },
+      { role: "assistant", content: "Zenith has 900 members." },
+    ]);
+  });
+
+  it("bounds client history size", () => {
+    const item = { role: "user" as const, content: "x" };
+    expect(clientHistorySchema.safeParse(Array(40).fill(item)).success).toBe(true);
+    expect(clientHistorySchema.safeParse(Array(41).fill(item)).success).toBe(false);
+    expect(clientHistorySchema.safeParse([{ role: "user", content: "x".repeat(4001) }]).success).toBe(false);
+    expect(clientHistorySchema.safeParse([{ role: "system", content: "x" }]).success).toBe(false);
+  });
+});

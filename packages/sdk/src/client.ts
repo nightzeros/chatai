@@ -14,6 +14,8 @@ export type ChatInput = {
   conversationId?: string;
   visitorId?: string;
   source?: "playground" | "widget" | "api";
+  /** Recent turns for context when the server stores no history (max 40). */
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
   signal?: AbortSignal;
   onToken?: (text: string) => void;
 };
@@ -135,6 +137,7 @@ export class ChatAI {
         conversationId: input.conversationId,
         visitorId: input.visitorId,
         source: input.source ?? "api",
+        ...(input.history?.length ? { history: input.history } : {}),
       }),
     });
 

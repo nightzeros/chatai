@@ -16,6 +16,8 @@ export type ChatCostEstimateInput = {
   verifyCitationsEnabled: boolean;
   hasCohereKey: boolean;
   maxOutputTokens: number;
+  /** Output scope check may run (one small call on risk-gated turns). */
+  outputScopeCheck?: boolean;
   at?: Date;
 };
 
@@ -118,6 +120,10 @@ export function estimateChatRequestCostMicros(input: ChatCostEstimateInput): Cha
     chatCost(input.catalog, input.chat, answerInput, maxOut, at) * answerCalls,
     input.billing.chat,
   );
+
+  if (input.outputScopeCheck) {
+    add("output_scope_check", chatCost(input.catalog, input.chat, 1000, 20, at), input.billing.chat);
+  }
 
   const estimateMicros = components.reduce((sum, item) => sum + item.micros, 0);
   return { estimateMicros, components };

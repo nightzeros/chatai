@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getOwnedDocument } from "@/lib/documents";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
+import { onKnowledgeChanged } from "@/lib/profile/jobs";
 import { requireSession } from "@/lib/session";
 
 export async function DELETE(
@@ -32,6 +33,7 @@ export async function DELETE(
     resourceId: document.id,
     metadata: { assistantId: id, name: document.name, type: document.type },
   });
+  await onKnowledgeChanged(db(), document.assistantId);
 
   return NextResponse.json({ ok: true });
 }

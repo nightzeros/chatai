@@ -28,6 +28,8 @@ function prepared(overrides: Partial<PreparedAnswer> = {}): PreparedAnswer {
     system: "You are a helpful assistant.",
     shouldGenerate: true,
     fallbackText: FALLBACK_MESSAGE,
+    messages: [{ role: "user", content: "What is your refund policy?" }],
+    turn: { kind: "knowledge", retrieval: "performed" },
     debug: {},
     providerUsages: [],
     ...overrides,

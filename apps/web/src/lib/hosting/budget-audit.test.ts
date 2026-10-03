@@ -108,7 +108,15 @@ const insertValues = vi.fn(async () => undefined);
 vi.mock("@/lib/db", () => ({
   db: () => ({
     insert: () => ({ values: insertValues }),
-    update: () => ({ set: () => ({ where: async () => undefined }) }),
+    // Conditional status claim (`… WHERE status = 'reserved' RETURNING id`) wins once.
+    update: () => ({
+      set: () => ({
+        where: () =>
+          Object.assign(Promise.resolve(undefined), {
+            returning: async () => [{ id: "evt-claimed" }],
+          }),
+      }),
+    }),
   }),
 }));
 

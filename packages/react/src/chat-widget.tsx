@@ -31,6 +31,7 @@ export function ChatWidget({
   suggestedQuestions,
   showSources,
   layout,
+  voice,
 }: ChatWidgetProps): ReactElement | null {
   const targetRef = useRef<HTMLDivElement>(null);
   const callbacksRef = useRef({ onReady, onError });
@@ -61,6 +62,7 @@ export function ChatWidget({
         suggestedQuestions,
         showSources,
         layout,
+        voice,
       });
       callbacksRef.current.onReady?.();
       return () => instance.destroy();
@@ -81,6 +83,7 @@ export function ChatWidget({
     suggestedQuestionsKey,
     showSources,
     layout,
+    voice,
     mounted,
   ]);
 

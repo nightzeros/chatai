@@ -55,6 +55,29 @@ describe("estimateChatRequestCostMicros", () => {
     expect(result.components.some((c) => c.step === "stream_answer")).toBe(true);
   });
 
+  it("adds one small output scope check component when the check is enabled", () => {
+    const base = {
+      catalog,
+      chat,
+      embedding,
+      billing: hostedBilling,
+      message: "Hello world",
+      hasHistory: false,
+      queryExpansionEnabled: false,
+      rerankEnabled: false,
+      verifyCitationsEnabled: false,
+      hasCohereKey: false,
+      maxOutputTokens: 4096,
+      at: new Date("2026-06-01T00:00:00.000Z"),
+    };
+    const without = estimateChatRequestCostMicros(base);
+    const withCheck = estimateChatRequestCostMicros({ ...base, outputScopeCheck: true });
+    const check = withCheck.components.find((c) => c.step === "output_scope_check");
+    expect(without.components.some((c) => c.step === "output_scope_check")).toBe(false);
+    expect(check?.micros).toBeGreaterThan(0);
+    expect(withCheck.estimateMicros).toBe(without.estimateMicros + check!.micros);
+  });
+
   it("charges 0 for BYOK chat/embedding while still estimating hosted rerank", () => {
     const result = estimateChatRequestCostMicros({
       catalog,

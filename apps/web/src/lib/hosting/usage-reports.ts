@@ -13,6 +13,7 @@ import {
 } from "@chatai/database";
 
 import { db } from "@/lib/db";
+import { getVoiceUsageReport } from "@/lib/voice/usage-report";
 
 import type { HostingAccount } from "./accounts";
 import {
@@ -42,6 +43,19 @@ export type UsageSummary = {
   usagePercent: number;
   requestCount: number;
   monthlyRequestCap: number | null;
+  /** Customer Voice seconds this period (minutes in the UI). Never provider cost. */
+  voice?: UsageSummaryVoice;
+};
+
+export type UsageSummaryVoice = {
+  /** Seconds counted toward the Voice entitlement. */
+  voiceSecondsUsed: number;
+  /** null = unlimited. */
+  voiceSecondsLimit: number | null;
+  /** Held by sessions in progress (enforce mode). */
+  voiceSecondsReserved: number;
+  /** Measured Playground seconds (not counted when Playground is quota-exempt). */
+  playgroundVoiceSeconds: number;
 };
 
 export type UsageByAssistantRow = {
@@ -97,6 +111,7 @@ export async function getUsageSummary(
 ): Promise<UsageSummary> {
   const balance = await getOrCreateUsagePeriodBalance(account, now);
   const monthlyRequestCap = await resolvePlanRequestCap(account);
+  const voice = await getVoiceUsageReport(account, now);
 
   return {
     accountId: account.id,
@@ -111,6 +126,12 @@ export async function getUsageSummary(
     usagePercent: Math.round(usagePercent(balance) * 10) / 10,
     requestCount: balance.requestCount,
     monthlyRequestCap,
+    voice: {
+      voiceSecondsUsed: voice.countedSeconds,
+      voiceSecondsLimit: voice.limitSeconds,
+      voiceSecondsReserved: voice.reservedSeconds,
+      playgroundVoiceSeconds: voice.playgroundSeconds,
+    },
   };
 }
 
@@ -170,6 +191,8 @@ export async function getUsageByAssistant(
       AND e.created_at < ${balance.periodEnd.toISOString()}
       AND e.reserved_cost_micros = 0
       AND e.status IN ('shadow', 'completed')
+      -- Voice is a minutes entitlement; its provider cost is operator-only.
+      AND e.operation <> 'voice_realtime'
     GROUP BY e.assistant_id, a.name, a.public_id
     ORDER BY cost_micros DESC, event_count DESC
   `);
@@ -211,6 +234,7 @@ export async function getUsageByModel(
       AND e.created_at < ${balance.periodEnd.toISOString()}
       AND e.reserved_cost_micros = 0
       AND e.status IN ('shadow', 'completed')
+      AND e.operation <> 'voice_realtime'
     GROUP BY e.provider, e.model, e.operation, e.billing_mode
     ORDER BY cost_micros DESC, event_count DESC
   `);
@@ -280,7 +304,8 @@ export async function getRecentUsageEvents(
       inputTokens: row.inputTokens,
       outputTokens: row.outputTokens,
       totalTokens: row.totalTokens,
-      finalCostMicros: row.finalCostMicros,
+      // Customers see Voice minutes (metadata.voiceSeconds), not provider cost.
+      finalCostMicros: row.operation === "voice_realtime" ? 0 : row.finalCostMicros,
       createdAt: row.createdAt.toISOString(),
       completedAt: row.completedAt?.toISOString() ?? null,
       metadata: row.metadata ?? {},

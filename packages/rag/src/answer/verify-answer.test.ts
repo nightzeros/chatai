@@ -33,6 +33,8 @@ function prepared(overrides: Partial<PreparedAnswer> = {}): PreparedAnswer {
     system: "You are a helpful assistant.",
     shouldGenerate: true,
     fallbackText: FALLBACK_MESSAGE,
+    messages: [{ role: "user", content: "What is the refund policy?" }],
+    turn: { kind: "knowledge", retrieval: "performed" },
     debug: {},
     providerUsages: [],
     ...overrides,
@@ -88,6 +90,28 @@ describe("generateVerifiedAnswer", () => {
     expect(result.verifier).toMatchObject({ passed: true, regenerated: false });
     expect(result.text).toContain("30 days");
     expect(generateChat).toHaveBeenCalledTimes(2);
+  });
+
+  it("generates with the prepared conversation history", async () => {
+    const generateChat = vi
+      .fn()
+      .mockResolvedValueOnce("Refunds are available within 30 days [1].")
+      .mockResolvedValueOnce('{"pass":true,"reason":"Supported."}');
+    const messages = [
+      { role: "user" as const, content: "Do you sell gift cards?" },
+      { role: "assistant" as const, content: "Yes." },
+      { role: "user" as const, content: "Can I return them?" },
+    ];
+
+    await generateVerifiedAnswer({
+      prepared: prepared({ messages }),
+      question: "Can I return them?",
+      chat: { apiKey: "test", baseURL: "https://example.com/v1", model: "test" },
+      deps: { generateChat },
+    });
+
+    expect(generateChat.mock.calls[0]?.[0]).toMatchObject({ messages });
+    expect(generateChat.mock.calls[0]?.[0]?.prompt).toBeUndefined();
   });
 
   it("regenerates once after a failed first verdict", async () => {

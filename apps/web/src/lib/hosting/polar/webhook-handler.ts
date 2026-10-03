@@ -14,6 +14,7 @@ import { getHostingAccountById } from "../accounts";
 import { resolveEffectiveLimitMicros } from "../entitlements";
 import { currentBillingPeriod } from "../period-anchor";
 import { getOrCreateUsagePeriodBalance } from "../period-balance";
+import { resolveVoiceSecondsLimit } from "../plan-entitlements";
 import { currentPolarProductAllowlist } from "./allowlist";
 import { CANCELED_PLAN_CODE, planCodeForProductId } from "./plans";
 import { shouldGrantPaidPlan, shouldRevertToFree } from "./status";
@@ -126,9 +127,10 @@ async function syncSubscription(subscription: Subscription): Promise<void> {
   const balance = await getOrCreateUsagePeriodBalance(account);
 
   if (balance.periodStart.getTime() === periodStart.getTime()) {
+    const voiceSecondsLimit = await resolveVoiceSecondsLimit(account);
     await db()
       .update(usagePeriodBalances)
-      .set({ limitMicros: effectiveLimit, updatedAt: new Date() })
+      .set({ limitMicros: effectiveLimit, voiceSecondsLimit, updatedAt: new Date() })
       .where(eq(usagePeriodBalances.id, balance.id));
   }
 

@@ -13,6 +13,7 @@ export const MODEL_PRICING_OPERATIONS = [
   "chat_cached_input",
   "embedding",
   "rerank",
+  "voice_realtime",
 ] as const;
 export type ModelPricingOperation = (typeof MODEL_PRICING_OPERATIONS)[number];
 
@@ -20,10 +21,12 @@ export const modelPricingOperationEnum = pgEnum("model_pricing_operation", [
   ...MODEL_PRICING_OPERATIONS,
 ]);
 
+/** `per_minute`: a per-minute price applied to a quantity in seconds (per-second billing). */
 export const MODEL_PRICING_UNITS = [
   "per_million_tokens",
   "per_request",
   "per_1k_tokens",
+  "per_minute",
 ] as const;
 export type ModelPricingUnit = (typeof MODEL_PRICING_UNITS)[number];
 

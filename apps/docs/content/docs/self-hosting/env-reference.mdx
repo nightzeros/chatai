@@ -10,7 +10,7 @@ Copy [`.env.example`](https://github.com/master-tecs/chatai/blob/main/.env.examp
 | Variable | Required | Default / example | Purpose |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | Yes (runtime) | `postgresql://chatai:chatai@localhost:5432/chatai` | Pooled or direct Postgres URL for the app |
-| `DATABASE_URL_UNPOOLED` | Neon migrations | — | Direct (non-pooler) Neon URL for migrations |
+| `DATABASE_URL_UNPOOLED` | Neon migrations | — | Direct (non-pooler) URL of the **same** Neon endpoint as `DATABASE_URL`; used by migrations and the ingest/eval workers. Migrations refuse a different endpoint unless `ALLOW_DATABASE_URL_MISMATCH=1`. |
 | `BETTER_AUTH_SECRET` | Yes | — | Auth signing secret (min 16 chars) |
 | `BETTER_AUTH_URL` | Yes | `http://localhost:3000` | Public origin browsers use for this instance |
 | `UPLOAD_DIR` | No | `./uploads` (Docker: `/app/uploads`) | File upload storage |
@@ -60,6 +60,76 @@ Changing embedding width on an existing database requires a full reprocess strat
 | --- | --- | --- |
 | `API_RATE_LIMIT_PER_MINUTE` | `60` | Per-API-key REST limit (widget `publicId` chat is not limited here) |
 | `COHERE_API_KEY` | — | Prefer Cohere rerank when set |
+| `OUTPUT_SCOPE_CHECK` | `true` | Selective output scope check: risky turns (partial, classifier fallback, injection signal, weak grounding, flexible mode, recent redirect) are buffered and checked against the assistant's Purpose before delivery. `false` disables it |
+| `ASSISTANT_PROFILE` | `true` | Assistant Profile page (Purpose and owner-reviewed Key facts) and the background Key facts refresh worker. Requires migration `0020` |
+| `PROFILE_ANSWER_ROUTE` | `false` | Answer basic identity, contact and hours questions from published Key facts without retrieval. Keep off until its evaluation gate passes for your model |
+
+## Voice (preview)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VOICE_PROVIDER` | `mock` | `gpt-live` for real Voice; `mock` runs without credentials (CI) |
+| `VOICE_OPENAI_API_KEY` | — | GPT-Live key, server-side only. Independent of the text chat provider |
+| `VOICE_OPENAI_BASE_URL` | `https://api.openai.com` | GPT-Live API origin |
+| `VOICE_QUOTA_EXEMPT_PLAYGROUND` | `true` | Owner playground Voice is always measured and reported; when `true` it is not counted toward the account's Voice-minute quota. Independent of `HOSTED_USAGE_EXEMPT_PLAYGROUND` (text chat) |
+| `VOICE_MAX_CONCURRENT_SESSIONS` | — | Instance-wide cap on concurrent Voice sessions, to stay under the provider organization's concurrency limit. Unset: only per-plan limits apply |
+| `VOICE_IDLE_TIMEOUT_SECONDS` | `180` | Seconds without visitor speech before the assistant checks in; the call ends 30 s later if the visitor stays silent. `0` disables idle ending (the 60-minute cap still applies) |
+| `VOICE_SHUTDOWN_GRACE_MS` | `8000` | Graceful-drain budget on `SIGTERM`/`SIGINT` (1000–60000). Live calls are hung up, settled and their recordings finalized within it; then the process exits. Keep the platform stop grace at least 7 s longer |
+| `NEXT_MANUAL_SIG_HANDLE` | — (Docker image: `1`) | Required for the Voice drain. Without it Next.js exits within ~50 ms of `SIGTERM` and live calls fall back to crash recovery |
+
+Voice runtime state is process-local: run one web instance (or sticky sessions by Voice session id). ChatAI supervises every call server-side: if its provider control link drops it reconnects for up to 15 s before ending the call, stalled lookups get a neutral apology after 15 s, and calls end at 60 minutes (the assistant warns about 30 s before). Voice needs a long-lived Node.js server; see [Voice in production](/docs/self-hosting/docker#voice-in-production).
+
+### Voice minutes
+
+Voice usage is measured in seconds per session and follows `HOSTED_USAGE_ENFORCEMENT`:
+
+- `off`: seconds are recorded on each session; no quota and no provider-cost ledger.
+- `shadow`: seconds and provider cost are recorded; nothing is refused (except `VOICE_MAX_CONCURRENT_SESSIONS`).
+- `enforce`: each session reserves up to 5 minutes at a time from the account's Voice-minute allowance for the current period and extends while talking. A session that reaches the end of its allowance is told once, about 30 seconds before, and then closed. New sessions are refused with `402` when fewer than 30 seconds remain, and with `429` when the plan's concurrent-session limit is reached.
+
+A session is billed from the provider's final usage when available, otherwise from ChatAI's last durable checkpoint (marked **estimated**). Sessions left open by a crashed or restarted process are recovered and settled by the maintenance sweep. Recording and Voice minutes are metered independently.
+
+### Voice audio recording (optional)
+
+Recording needs S3-compatible object storage. Without a bucket and credentials, the **Record Voice audio** setting is disabled and Voice works normally. Recordings stay private: the bucket is never exposed to browsers, and owners play recordings back through an authenticated ChatAI proxy with short-lived links.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OBJECT_STORAGE_BUCKET` | — | Bucket for recordings (keys: `voice/<assistantId>/<recordingId>.webm`) |
+| `OBJECT_STORAGE_REGION` | `auto` | Region (`auto` for R2; e.g. `us-east-1` for S3/MinIO) |
+| `OBJECT_STORAGE_ENDPOINT` | — | Custom endpoint for R2 (`https://<account-id>.r2.cloudflarestorage.com`) or MinIO (`http://minio:9000`). Omit for AWS S3 |
+| `OBJECT_STORAGE_ACCESS_KEY_ID` | — | Access key with put/get/head/delete on the bucket |
+| `OBJECT_STORAGE_SECRET_ACCESS_KEY` | — | Secret key |
+| `OBJECT_STORAGE_FORCE_PATH_STYLE` | `false` | `true` for MinIO and most self-hosted S3 servers |
+| `VOICE_RECORDING_SPOOL_DIR` | `./.voice-recording-spool` (Docker: `/app/uploads/voice-spool`) | Local compressed spool for recordings in progress. Put it on persistent disk so a partial recording can be recovered after a crash or restart |
+| `VOICE_ALIGNMENT_DIAGNOSTICS` | off | `1`: log one numbers-only `[voice.alignment]` line per recorded call (clock offsets, transcript-vs-audio onset bias). Never logs audio or transcript content |
+
+Each recorded Voice session produces one stereo WebM/Opus file (visitor on the left channel, assistant on the right), about 0.36 MB per minute. Only compressed audio touches the spool; raw audio is never written to disk.
+
+Self-hosted MinIO example (add to your Compose file, then create the bucket once):
+
+```yaml
+minio:
+  image: minio/minio
+  command: server /data
+  environment:
+    MINIO_ROOT_USER: chatai
+    MINIO_ROOT_PASSWORD: change-me-long-secret
+  volumes:
+    - minio-data:/data
+```
+
+```bash
+OBJECT_STORAGE_BUCKET=chatai-recordings
+OBJECT_STORAGE_REGION=us-east-1
+OBJECT_STORAGE_ENDPOINT=http://minio:9000
+OBJECT_STORAGE_ACCESS_KEY_ID=chatai
+OBJECT_STORAGE_SECRET_ACCESS_KEY=change-me-long-secret
+OBJECT_STORAGE_FORCE_PATH_STYLE=true
+VOICE_RECORDING_SPOOL_DIR=/app/uploads/voice-spool
+```
+
+Keep the bucket private (no public-read policy). Recording deletion follows the assistant's privacy settings: recordings are deleted with their conversation, by the optional recording retention, and when the assistant is deleted.
 
 ## Ollama Compose profile
 

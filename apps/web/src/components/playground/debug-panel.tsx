@@ -50,6 +50,49 @@ export function DebugPanel({
     debug.verifier && typeof debug.verifier === "object"
       ? (debug.verifier as { passed?: boolean; reason?: string; regenerated?: boolean; enabled?: boolean })
       : null;
+  const scope =
+    debug.scope && typeof debug.scope === "object"
+      ? (debug.scope as {
+          decision?: string;
+          socialProtocol?: boolean;
+          vagueHelp?: boolean;
+          classifierFallback?: boolean;
+          injectionSuspected?: boolean;
+          redirectSource?: string;
+          purposeSource?: string;
+          profileVersion?: number;
+          profileRoute?: string;
+          plannerMs?: number;
+          plannerWaitMs?: number;
+          outputGuard?: {
+            reasons?: string[];
+            method?: string;
+            passed?: boolean;
+            replaced?: boolean;
+            unavailable?: boolean;
+            checkMs?: number;
+          };
+        })
+      : null;
+  const outputGuard =
+    debug.outputGuard && typeof debug.outputGuard === "object"
+      ? (debug.outputGuard as {
+          reasons?: string[];
+          method?: string;
+          passed?: boolean;
+          replaced?: boolean;
+          unavailable?: boolean;
+          checkMs?: number;
+        })
+      : (scope?.outputGuard ?? null);
+  const scopeFlags = scope
+    ? [
+        scope.socialProtocol ? "social" : null,
+        scope.vagueHelp ? "vague help" : null,
+        scope.classifierFallback ? "classifier fallback" : null,
+        scope.injectionSuspected ? "injection signal" : null,
+      ].filter(Boolean)
+    : [];
 
   return (
     <details className="group mt-3 border-t border-border pt-3">
@@ -111,6 +154,66 @@ export function DebugPanel({
             </dd>
           </dl>
         </section>
+
+        {scope ? (
+          <section>
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Scope
+            </p>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Decision</dt>
+              <dd>{scope.decision ?? "—"}</dd>
+              <dt className="text-muted-foreground">Purpose source</dt>
+              <dd>{scope.purposeSource ?? "—"}</dd>
+              {scopeFlags.length > 0 ? (
+                <>
+                  <dt className="text-muted-foreground">Flags</dt>
+                  <dd>{scopeFlags.join(" · ")}</dd>
+                </>
+              ) : null}
+              {scope.redirectSource ? (
+                <>
+                  <dt className="text-muted-foreground">Redirect</dt>
+                  <dd>{scope.redirectSource}</dd>
+                </>
+              ) : null}
+              {scope.profileRoute ? (
+                <>
+                  <dt className="text-muted-foreground">Profile route</dt>
+                  <dd>{scope.profileRoute}</dd>
+                </>
+              ) : null}
+              <dt className="text-muted-foreground">Classifier</dt>
+              <dd>
+                {formatMs(scope.plannerMs)}
+                {typeof scope.plannerWaitMs === "number" ? ` · wait ${scope.plannerWaitMs}ms` : ""}
+              </dd>
+              {typeof scope.profileVersion === "number" ? (
+                <>
+                  <dt className="text-muted-foreground">Profile version</dt>
+                  <dd>{scope.profileVersion}</dd>
+                </>
+              ) : null}
+            </dl>
+          </section>
+        ) : null}
+
+        {outputGuard ? (
+          <section>
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Output check
+            </p>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Reasons</dt>
+              <dd>{outputGuard.reasons?.join(" · ") || "—"}</dd>
+              <dt className="text-muted-foreground">Result</dt>
+              <dd>
+                {outputGuard.replaced ? "replaced" : outputGuard.passed ? "pass" : "fail"}
+                {outputGuard.unavailable ? " · check unavailable" : ""}
+              </dd>
+            </dl>
+          </section>
+        ) : null}
 
         <section>
           <p className="font-sans text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

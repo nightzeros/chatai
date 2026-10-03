@@ -22,6 +22,8 @@ export type RetrievedChunk = {
   heading?: string;
   parentContent?: string;
   url?: string;
+  /** Owner-approved key fact supplied as background data (not a retrieval result). */
+  keyFact?: boolean;
   /** Present when hybrid search fused vector + keyword ranks. */
   hybrid?: {
     vectorRank?: number;

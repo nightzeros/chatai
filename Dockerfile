@@ -57,6 +57,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV UPLOAD_DIR=/app/uploads
+# Voice recording spool lives on the persistent uploads volume (crash recovery).
+ENV VOICE_RECORDING_SPOOL_DIR=/app/uploads/voice-spool
+# Voice drains live calls on SIGTERM (~8 s); Next's own handler would exit at once.
+# Give the container a stop grace of at least 15 s (docker compose: stop_grace_period).
+ENV NEXT_MANUAL_SIG_HANDLE=1
 
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 --ingroup nodejs nextjs \

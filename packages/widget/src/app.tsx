@@ -2,9 +2,10 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { WidgetControllerOptions, WidgetState } from "@nightzeros/chatai-widget-core";
 
-import { createWidgetController } from "@nightzeros/chatai-widget-core";
+import { createWidgetController, isVoiceActive } from "@nightzeros/chatai-widget-core";
 
 import { MarkdownMessage } from "./markdown-message";
+import { MicGlyph, VoiceBar, VoiceConsent, VoiceGlyph } from "./voice-ui";
 
 export type WidgetSettings = {
   primaryColor?: string;
@@ -18,6 +19,8 @@ export type WidgetSettings = {
 export type WidgetAppProps = WidgetControllerOptions &
   WidgetSettings & {
     layout?: "fixed" | "contained";
+    /** Set false to hide Voice even when the assistant offers it. */
+    voice?: boolean;
   };
 
 type Props = WidgetAppProps;
@@ -36,7 +39,11 @@ function settingOverrides(props: Props): WidgetSettings {
   };
 }
 
-const EMPTY_STATE: WidgetState = { status: "loading", messages: [] };
+const EMPTY_STATE: WidgetState = {
+  status: "loading",
+  messages: [],
+  voice: { connection: "idle", phase: "idle" },
+};
 
 function settingsFrom(state: WidgetState, props: Props): WidgetSettings {
   const settings = (state.config?.settings ?? {}) as WidgetSettings;
@@ -103,8 +110,17 @@ export function WidgetApp(props: Props) {
         storage: props.storage,
         createId: props.createId,
         signEndpoint: props.signEndpoint,
+        voiceMedia: props.voiceMedia,
       }),
-    [props.assistantId, props.apiUrl, props.fetch, props.storage, props.createId, props.signEndpoint],
+    [
+      props.assistantId,
+      props.apiUrl,
+      props.fetch,
+      props.storage,
+      props.createId,
+      props.signEndpoint,
+      props.voiceMedia,
+    ],
   );
   const [state, setState] = useState<WidgetState>(EMPTY_STATE);
   const [open, setOpen] = useState(false);
@@ -126,7 +142,10 @@ export function WidgetApp(props: Props) {
 
   const settings = settingsFrom(state, props);
   const questions = settings.suggestedQuestions?.filter(Boolean) ?? [];
-  const busy = state.status === "streaming";
+  const voiceOn = isVoiceActive(state.voice.connection);
+  const voiceOffered = props.voice !== false && Boolean(state.config?.voice?.enabled);
+  const streaming = state.status === "streaming";
+  const busy = streaming || voiceOn;
   const panelShown = open || closing;
   const isDark =
     settings.theme === "dark" ||
@@ -135,7 +154,7 @@ export function WidgetApp(props: Props) {
       window.matchMedia?.("(prefers-color-scheme: dark)").matches);
 
   const lastMessage = state.messages[state.messages.length - 1];
-  const showTyping = busy && lastMessage?.role === "assistant" && !lastMessage.content;
+  const showTyping = streaming && lastMessage?.role === "assistant" && !lastMessage.content;
 
   function reduceMotion() {
     return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -148,6 +167,8 @@ export function WidgetApp(props: Props) {
 
   function closePanel() {
     if (!open) return;
+    // Closing the widget always releases the microphone.
+    void controller.endVoice();
     if (reduceMotion()) {
       setOpen(false);
       setClosing(false);
@@ -174,6 +195,11 @@ export function WidgetApp(props: Props) {
 
   function retry() {
     void controller.load();
+  }
+
+  function toggleVoice() {
+    if (voiceOn) void controller.endVoice();
+    else void controller.startVoice();
   }
 
   useEffect(() => {
@@ -248,7 +274,8 @@ export function WidgetApp(props: Props) {
             </button>
           </header>
 
-          <div ref={transcriptRef} className="chatai-transcript" aria-live="polite">
+          {/* Live Voice captions update per word; the Voice status region announces instead. */}
+          <div ref={transcriptRef} className="chatai-transcript" aria-live={voiceOn ? "off" : "polite"}>
             {state.config?.welcomeMessage ? (
               <article className="chatai-message assistant">
                 <MarkdownMessage content={state.config.welcomeMessage} />
@@ -268,20 +295,33 @@ export function WidgetApp(props: Props) {
               const isStreamingPlaceholder =
                 showTyping && isLast && message.role === "assistant";
               const isStreamingContent =
-                busy && isLast && message.role === "assistant" && Boolean(message.content);
+                streaming && isLast && message.role === "assistant" && Boolean(message.content);
+              const isVoice = message.modality === "voice";
               return (
-                <article key={`${message.role}-${index}`} className={`chatai-message ${message.role}`}>
+                <article
+                  key={`${message.role}-${index}`}
+                  className={`chatai-message ${message.role}${isVoice ? " is-voice" : ""}${message.live ? " is-live" : ""}`}
+                >
+                  {isVoice ? (
+                    <span className="chatai-voice-tag">
+                      <VoiceGlyph />
+                      <span className="chatai-visually-hidden">
+                        {message.role === "user" ? "You said:" : "Assistant said:"}
+                      </span>
+                    </span>
+                  ) : null}
                   {isStreamingPlaceholder ? (
                     <TypingIndicator />
-                  ) : message.role === "assistant" ? (
+                  ) : message.role === "assistant" && !isVoice ? (
                     message.content ? (
                       <MarkdownMessage content={message.content} streaming={isStreamingContent} />
                     ) : (
-                      <p>{busy ? "Thinking…" : ""}</p>
+                      <p>{streaming ? "Thinking…" : ""}</p>
                     )
                   ) : (
                     <p className="chatai-user-text">{message.content}</p>
                   )}
+                  {message.interrupted ? <p className="chatai-voice-note">Interrupted</p> : null}
                   {message.role === "assistant" && message.id ? (
                     <div className="chatai-feedback">
                       <span>Was this helpful?</span>
@@ -316,6 +356,24 @@ export function WidgetApp(props: Props) {
             ) : null}
           </div>
 
+          {voiceOffered && state.voice.consentPending ? (
+            <VoiceConsent
+              onAccept={() => void controller.acceptRecordingConsent()}
+              onCancel={() => {
+                controller.declineRecordingConsent();
+                panelRef.current?.querySelector<HTMLElement>("#chatai-message-input")?.focus();
+              }}
+            />
+          ) : null}
+          {voiceOffered ? (
+            <VoiceBar
+              voice={state.voice}
+              levels={() => controller.voiceLevels()}
+              onRetry={() => void controller.startVoice()}
+              onDismiss={() => controller.dismissVoiceError()}
+            />
+          ) : null}
+
           <form
             className="chatai-composer"
             onSubmit={(event) => {
@@ -330,10 +388,23 @@ export function WidgetApp(props: Props) {
               id="chatai-message-input"
               value={draft}
               onInput={(event) => setDraft((event.currentTarget as HTMLInputElement).value)}
-              placeholder="Ask a question…"
+              placeholder={voiceOn ? "Voice is on — end it to type" : "Ask a question…"}
               maxLength={4000}
               disabled={busy}
             />
+            {voiceOffered ? (
+              <button
+                type="button"
+                className={`chatai-mic${voiceOn ? " is-active" : ""}`}
+                onClick={toggleVoice}
+                disabled={streaming}
+                aria-pressed={voiceOn}
+                aria-label={voiceOn ? "End voice conversation" : "Start voice conversation"}
+                title={voiceOn ? "End voice" : "Talk instead"}
+              >
+                <MicGlyph off={voiceOn} />
+              </button>
+            ) : null}
             <button type="submit" disabled={busy || !draft.trim()} aria-label="Send message">
               ↑
             </button>

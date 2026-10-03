@@ -1,9 +1,11 @@
 import {
   calculateCostMicros,
   loadSeedPricingCatalog,
+  mergeSeedPricing,
   type ModelPricingRow,
 } from "@chatai/billing";
 import {
+  and,
   eq,
   usageEvents,
   type UsageBillingMode,
@@ -53,7 +55,7 @@ async function resolveCatalog(catalog?: ModelPricingRow[]): Promise<ModelPricing
   if (catalog) return catalog;
   try {
     const rows = await loadModelPricingCatalog();
-    if (rows.length > 0) return rows;
+    if (rows.length > 0) return mergeSeedPricing(rows);
   } catch {
     // fall through
   }
@@ -123,6 +125,8 @@ export type BeginChatReservationInput = {
   rerankEnabled: boolean;
   verifyCitationsEnabled: boolean;
   hasCohereKey: boolean;
+  /** The output scope check may add one small call. */
+  outputScopeCheck?: boolean;
   source?: "playground" | "widget" | "api";
   catalog?: ModelPricingRow[];
 };
@@ -151,6 +155,7 @@ export async function beginChatUsageReservation(
     verifyCitationsEnabled: input.verifyCitationsEnabled,
     hasCohereKey: input.hasCohereKey,
     maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS,
+    ...(input.outputScopeCheck ? { outputScopeCheck: true } : {}),
   });
 
   const balance = await getOrCreateUsagePeriodBalance(input.account);
@@ -202,6 +207,8 @@ function billingModeFor(
 ): UsageBillingMode {
   if (kind === "embedding") return billing.embedding;
   if (kind === "rerank") return billing.rerank;
+  // Voice always runs on the instance GPT-Live key (never BYOK).
+  if (kind === "voice_realtime") return "hosted";
   return billing.chat;
 }
 
@@ -214,7 +221,7 @@ export async function finishChatUsageReservation(input: {
   accountId: string;
   assistantId: string;
   requestId: string;
-  source?: "playground" | "widget" | "api" | "eval";
+  source?: "playground" | "widget" | "api" | "eval" | "ingest";
   visitorId?: string | null;
   records: ProviderUsageRecord[];
   billing: AssistantBillingModes;
@@ -264,26 +271,43 @@ export async function finishChatUsageReservation(input: {
     return;
   }
 
+  const claimed = await claimReservationEvent(input.reservation.reservationEventId, {
+    status: input.failed ? "failed" : "completed",
+    finalCostMicros: input.failed ? 0 : actualMicros,
+    completedAt: now,
+    ...(input.failed ? { errorCode: "provider_or_request_failed" } : {}),
+  });
+
+  // Unclaimed: the stale reconciler already abandoned the row and released its
+  // reservation, so only the real consumption is still owed.
   await reconcileUsage({
     accountId: input.reservation.accountId,
     periodStart: input.reservation.periodStart,
-    reservedMicros: input.reservation.reservedMicros,
+    reservedMicros: claimed ? input.reservation.reservedMicros : 0,
     actualMicros: input.failed ? 0 : actualMicros,
     incrementRequestCount: !input.failed,
   });
+}
 
+/**
+ * Move a reservation row out of `reserved` exactly once. Only the caller that wins
+ * the claim may release its reserved micros, so finish, abort and the stale
+ * reconciler can never release the same reservation twice.
+ */
+async function claimReservationEvent(
+  eventId: string,
+  values: Partial<typeof usageEvents.$inferInsert>,
+): Promise<boolean> {
   try {
-    await db()
+    const rows = await db()
       .update(usageEvents)
-      .set({
-        status: input.failed ? "failed" : "completed",
-        finalCostMicros: input.failed ? 0 : actualMicros,
-        completedAt: now,
-        ...(input.failed ? { errorCode: "provider_or_request_failed" } : {}),
-      })
-      .where(eq(usageEvents.id, input.reservation.reservationEventId));
+      .set(values)
+      .where(and(eq(usageEvents.id, eventId), eq(usageEvents.status, "reserved")))
+      .returning({ id: usageEvents.id });
+    return rows.length > 0;
   } catch (error) {
-    console.error("[usage] reservation event finalize failed:", error);
+    console.error("[usage] reservation event claim failed:", error);
+    return false;
   }
 }
 
@@ -293,25 +317,19 @@ export async function abortChatUsageReservation(
 ): Promise<void> {
   if (!reservation) return;
 
+  const claimed = await claimReservationEvent(reservation.reservationEventId, {
+    status: "failed",
+    completedAt: new Date(),
+    errorCode: "aborted",
+    finalCostMicros: 0,
+  });
+  if (!claimed) return;
+
   await releaseUsage({
     accountId: reservation.accountId,
     periodStart: reservation.periodStart,
     reservedMicros: reservation.reservedMicros,
   });
-
-  try {
-    await db()
-      .update(usageEvents)
-      .set({
-        status: "failed",
-        completedAt: new Date(),
-        errorCode: "aborted",
-        finalCostMicros: 0,
-      })
-      .where(eq(usageEvents.id, reservation.reservationEventId));
-  } catch (error) {
-    console.error("[usage] reservation abort event update failed:", error);
-  }
 }
 
 /**
@@ -596,6 +614,87 @@ export async function finishEvalUsageReservation(input: {
     ...input,
     source: "eval",
   });
+}
+
+/**
+ * Reserve a Key-facts/Purpose suggestion job (owner-triggered or a capped Knowledge
+ * refresh): a few query embeddings plus one JSON generation call. Throws
+ * UsageLimitExceededError when the account cannot afford it.
+ */
+export async function beginProfileUsageReservation(input: {
+  account: HostingAccount;
+  assistantId: string;
+  requestId: string;
+  chat: import("@chatai/ai").ChatConfig;
+  embedding: EmbeddingConfig;
+  billing: AssistantBillingModes;
+  catalog?: ModelPricingRow[];
+}): Promise<UsageGateReservation | null> {
+  if (!isUsageEnforcementEnabled()) return null;
+  const catalog = await resolveCatalog(input.catalog);
+  const at = new Date();
+  const chatMicros = calculateCostMicros({
+    catalog,
+    provider: input.chat.provider ?? "openai",
+    model: input.chat.model,
+    usageOperation: "chat_completion",
+    at,
+    inputTokens: 4_000,
+    outputTokens: 1_500,
+  }).costMicros;
+  const embeddingMicros = calculateCostMicros({
+    catalog,
+    provider: input.embedding.provider ?? "openai",
+    model: input.embedding.model,
+    usageOperation: "embedding",
+    at,
+    totalTokens: 200,
+  }).costMicros;
+  let estimateMicros =
+    (input.billing.chat === "hosted" ? chatMicros : 0) +
+    (input.billing.embedding === "hosted" ? embeddingMicros : 0);
+  if (estimateMicros <= 0 && (input.billing.chat === "hosted" || input.billing.embedding === "hosted")) {
+    estimateMicros = 100;
+  }
+
+  const balance = await getOrCreateUsagePeriodBalance(input.account);
+  if (!(await assertRequestCapAllows(input.account, balance.requestCount))) {
+    throw new UsageLimitExceededError();
+  }
+  const reserved = await reserveUsage({ accountId: input.account.id, periodStart: balance.periodStart, estimateMicros });
+  if (!reserved.ok) throw new UsageLimitExceededError();
+
+  const reservationEventId = await createReservationEvent({
+    accountId: input.account.id,
+    assistantId: input.assistantId,
+    requestId: input.requestId,
+    operation: "chat_completion",
+    provider: input.chat.provider ?? "unknown",
+    model: input.chat.model,
+    reservedMicros: reserved.estimateMicros,
+    periodStart: balance.periodStart,
+    metadata: { source: "ingest", worker: "profile" },
+  });
+  return {
+    accountId: input.account.id,
+    periodStart: balance.periodStart,
+    reservedMicros: reserved.estimateMicros,
+    reservationEventId,
+    requestId: input.requestId,
+    estimateMicros: reserved.estimateMicros,
+  };
+}
+
+export async function finishProfileUsageReservation(input: {
+  reservation: UsageGateReservation | null;
+  accountId: string;
+  assistantId: string;
+  requestId: string;
+  records: ProviderUsageRecord[];
+  billing: AssistantBillingModes;
+  failed?: boolean;
+}): Promise<void> {
+  await finishChatUsageReservation({ ...input, source: "ingest" });
 }
 
 export async function abortEvalUsageReservation(

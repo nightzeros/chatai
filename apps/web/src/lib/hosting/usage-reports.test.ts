@@ -31,6 +31,11 @@ vi.mock("./entitlements", () => ({
   resolveEffectiveLimitMicros: (...args: unknown[]) => resolveEffectiveLimitMicros(...args),
 }));
 
+const getVoiceUsageReport = vi.fn();
+vi.mock("@/lib/voice/usage-report", () => ({
+  getVoiceUsageReport: (...args: unknown[]) => getVoiceUsageReport(...args),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: () => ({
     execute: vi.fn(async () => []),
@@ -98,6 +103,13 @@ describe("getUsageSummary / getUsageLimits", () => {
       updatedAt: new Date(),
     });
     resolvePlanRequestCap.mockResolvedValueOnce(null);
+    getVoiceUsageReport.mockResolvedValueOnce({
+      countedSeconds: 312,
+      limitSeconds: 600,
+      reservedSeconds: 300,
+      playgroundSeconds: 95,
+      totalSeconds: 407,
+    });
 
     const { getUsageSummary } = await import("./usage-reports");
     const summary = await getUsageSummary(account);
@@ -115,7 +127,15 @@ describe("getUsageSummary / getUsageLimits", () => {
       usagePercent: 30,
       requestCount: 12,
       monthlyRequestCap: null,
+      voice: {
+        voiceSecondsUsed: 312,
+        voiceSecondsLimit: 600,
+        voiceSecondsReserved: 300,
+        playgroundVoiceSeconds: 95,
+      },
     });
+    // Customers see minutes, never provider cost.
+    expect(JSON.stringify(summary.voice)).not.toMatch(/micros|cost/i);
   });
 
   it("builds limits with plan + override precedence fields", async () => {

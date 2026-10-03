@@ -18,7 +18,7 @@ export type CalculateCostInput = {
   cachedInputTokens?: number;
   /** Token total for embeddings when input/output split is unavailable. */
   totalTokens?: number;
-  /** Non-token units (e.g. Cohere rerank request count). */
+  /** Non-token units (e.g. Cohere rerank request count, realtime voice seconds). */
   units?: number;
 };
 
@@ -35,6 +35,8 @@ function pricingOperationsFor(usageOperation: UsageOperation): ModelPricingOpera
       return ["embedding"];
     case "rerank":
       return ["rerank"];
+    case "voice_realtime":
+      return ["voice_realtime"];
     default: {
       const _exhaustive: never = usageOperation;
       return _exhaustive;
@@ -57,6 +59,8 @@ function quantityFor(
       return input.totalTokens ?? input.inputTokens ?? 0;
     case "rerank":
       return input.units ?? 1;
+    case "voice_realtime":
+      return input.units ?? 0;
     default: {
       const _exhaustive: never = pricingOperation;
       return _exhaustive;

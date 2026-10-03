@@ -21,6 +21,12 @@ describe("applyRateMicros", () => {
     expect(applyRateMicros(500, 10_000, "per_1k_tokens")).toBe(5_000);
   });
 
+  it("computes per-minute costs from seconds, rounding down", () => {
+    // 90 s at $0.05 / min = 75_000 micros; 1 s = 833.33 → 833
+    expect(applyRateMicros(90, 50_000, "per_minute")).toBe(75_000);
+    expect(applyRateMicros(1, 50_000, "per_minute")).toBe(833);
+  });
+
   it("returns 0 for non-positive quantities", () => {
     expect(applyRateMicros(0, 150_000, "per_million_tokens")).toBe(0);
     expect(applyRateMicros(-1, 150_000, "per_million_tokens")).toBe(0);
@@ -211,5 +217,59 @@ describe("calculateCostMicros", () => {
       at,
     });
     expect(later.costMicros).not.toBe(first.costMicros);
+  });
+});
+
+describe("voice_realtime pricing", () => {
+  it("prices GPT-Live provider seconds per minute from the seed", () => {
+    const result = calculateCostMicros({
+      catalog,
+      provider: "openai",
+      model: "gpt-live-1",
+      usageOperation: "voice_realtime",
+      at: new Date("2026-09-27T00:00:00Z"),
+      units: 120,
+    });
+    expect(result.costMicros).toBe(100_000);
+    expect(result.pricingSnapshot.rates[0]).toMatchObject({
+      pricingOperation: "voice_realtime",
+      unit: "per_minute",
+      priceMicrosPerUnit: 50_000,
+    });
+  });
+
+  it("uses effective-dated rates: a later price change never rewrites earlier sessions", () => {
+    const rows: ModelPricingRow[] = [
+      {
+        id: "old",
+        provider: "openai",
+        model: "gpt-live-1",
+        operation: "voice_realtime",
+        priceMicrosPerUnit: 50_000,
+        unit: "per_minute",
+        effectiveFrom: "2026-01-01T00:00:00Z",
+        effectiveTo: "2026-10-01T00:00:00Z",
+      },
+      {
+        id: "new",
+        provider: "openai",
+        model: "gpt-live-1",
+        operation: "voice_realtime",
+        priceMicrosPerUnit: 80_000,
+        unit: "per_minute",
+        effectiveFrom: "2026-10-01T00:00:00Z",
+      },
+    ];
+    const price = (at: string) =>
+      calculateCostMicros({
+        catalog: rows,
+        provider: "openai",
+        model: "gpt-live-1",
+        usageOperation: "voice_realtime",
+        at: new Date(at),
+        units: 60,
+      }).costMicros;
+    expect(price("2026-09-27T00:00:00Z")).toBe(50_000);
+    expect(price("2026-10-02T00:00:00Z")).toBe(80_000);
   });
 });

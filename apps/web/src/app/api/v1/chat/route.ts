@@ -1,7 +1,6 @@
-import { streamChat } from "@chatai/ai";
+import { generateChat, streamChat } from "@chatai/ai";
 import {
   assistants,
-  asc,
   conversations,
   eq,
   messages,
@@ -9,10 +8,10 @@ import {
 } from "@chatai/database";
 import {
   finalizeAnswer,
-  generateVerifiedAnswer,
+  generateGuardedAnswer,
   prepareAnswer,
   resolveRagSettings,
-  withVerifierResult,
+  type ChatHistoryMessage,
 } from "@chatai/rag/answer";
 import { enqueueOnlineEvalJob, shouldSampleEval } from "@chatai/evals";
 import { z } from "zod";
@@ -23,6 +22,11 @@ import { getOwnedAssistantByRef } from "@/lib/assistants";
 import { authorizeV1 } from "@/lib/authorize-v1";
 
 import { startEvalWorker } from "@/lib/eval-worker";
+import {
+  clientHistorySchema,
+  fromClientHistory,
+  loadRecentConversationHistory,
+} from "@/lib/conversation-history";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -49,6 +53,10 @@ const bodySchema = z.object({
   message: z.string().trim().min(1, "message is required").max(4000),
   visitorId: z.string().min(1).max(80).optional(),
   source: z.enum(["playground", "widget", "api"]).optional(),
+  /** Recent turns held by the client; used when the server stores no transcript. */
+  history: clientHistorySchema.optional(),
+  /** Voice became unavailable earlier in this conversation (neutral; no reason is sent). */
+  voiceUnavailable: z.boolean().optional(),
 });
 
 export async function OPTIONS() {
@@ -132,7 +140,7 @@ export async function POST(request: Request) {
   });
 
   let conversationId = input.conversationId ?? createId();
-  let history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  let history: ChatHistoryMessage[] = [];
 
   if (persist) {
     if (input.conversationId) {
@@ -155,24 +163,13 @@ export async function POST(request: Request) {
       });
     }
 
-    const prior = await db()
-      .select({
-        role: messages.role,
-        content: messages.content,
-      })
-      .from(messages)
-      .where(eq(messages.conversationId, conversationId))
-      .orderBy(asc(messages.createdAt));
-
-    history = prior
-      .filter((row) => row.role === "user" || row.role === "assistant")
-      .map((row) => ({
-        role: row.role as "user" | "assistant",
-        content: row.content,
-      }));
+    // Stored turns only: client-held turns (e.g. unsaved Voice) never become history
+    // for a stored conversation.
+    history = await loadRecentConversationHistory(conversationId);
   } else {
     // Ephemeral id for the SSE response only — nothing is written.
     conversationId = createId();
+    history = fromClientHistory(input.history);
   }
 
   const userMessageId = createId();
@@ -202,6 +199,7 @@ export async function POST(request: Request) {
     rerankEnabled: rag.rerank,
     verifyCitationsEnabled: rag.guardrails.verifyCitations,
     hasCohereKey: Boolean(env.COHERE_API_KEY),
+    outputScopeCheck: env.OUTPUT_SCOPE_CHECK,
     source,
   });
 
@@ -221,9 +219,11 @@ export async function POST(request: Request) {
       const send = (payload: unknown) => controller.enqueue(encoder.encode(sseLine(payload)));
 
       try {
-        let prepared = await prepareAnswer({
+        const initial = await prepareAnswer({
           db: db(),
           assistantId: assistant.id,
+          assistantName: assistant.name,
+          assistantDescription: assistant.description,
           instructions: assistant.instructions,
           mode: assistant.hallucinationMode,
           message: input.message,
@@ -233,49 +233,36 @@ export async function POST(request: Request) {
 
           ragSettings: assistant.ragSettings,
           cohereApiKey: env.COHERE_API_KEY ?? null,
+          voiceUnavailable: input.voiceUnavailable === true,
+          outputGuard: env.OUTPUT_SCOPE_CHECK,
+          profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
         });
 
-        let fullText = prepared.fallbackText;
-        let answerUsages = [...prepared.providerUsages];
-
-        if (!prepared.shouldGenerate) {
-          send({ type: "token", text: prepared.fallbackText });
-        } else if (rag.guardrails.verifyCitations) {
-          const verified = await generateVerifiedAnswer({
-            prepared,
-            question: input.message,
-            chat: models.chat,
-
-          });
-          prepared = withVerifierResult(prepared, verified);
-          fullText = verified.text;
-          answerUsages = prepared.providerUsages;
-          send({ type: "token", text: fullText });
-        } else {
-          fullText = "";
-          const result = streamChat({
-            config: models.chat,
-            system: prepared.system,
-            messages: [{ role: "user", content: input.message }],
-          });
-
-          for await (const delta of result.textStream) {
-            fullText += delta;
-            send({ type: "token", text: delta });
-          }
-
-          const streamUsage = await result.usage;
-          answerUsages = [
-            ...prepared.providerUsages,
-            {
-              kind: "chat_completion",
-              provider: models.chat.provider,
-              model: models.chat.model,
-              usage: streamUsage,
-              step: "stream_answer",
-            },
-          ];
-        }
+        const generated = await generateGuardedAnswer({
+          prepared: initial,
+          question: input.message,
+          chat: models.chat,
+          verifyCitations: rag.guardrails.verifyCitations,
+          outputGuard: env.OUTPUT_SCOPE_CHECK,
+          generate: async ({ system, messages: chatMessages }) => {
+            const result = await generateChat({ config: models.chat, system, messages: chatMessages });
+            return { text: result.text, usage: result.usage };
+          },
+          stream: async ({ system, messages: chatMessages }, onDelta) => {
+            let text = "";
+            const result = streamChat({ config: models.chat, system, messages: chatMessages });
+            for await (const delta of result.textStream) {
+              text += delta;
+              onDelta(delta);
+            }
+            return { text, usage: await result.usage };
+          },
+          onDelta: (text) => send({ type: "token", text }),
+        });
+        const prepared = generated.prepared;
+        const fullText = generated.text;
+        const answerUsages = generated.usages;
+        if (!generated.streamed) send({ type: "token", text: fullText });
 
         await finishChatUsageReservation({
           reservation,
