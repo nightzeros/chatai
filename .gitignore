@@ -59,3 +59,7 @@ chatai
 chatai*
 hubuntuChatai
 hubuntuChatai*
+
+# agents
+.agents
+.agents/*
