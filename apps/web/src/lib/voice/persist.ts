@@ -141,6 +141,9 @@ export async function insertVoiceLiveExchange(
     .where(eq(conversations.id, session.conversationId!));
 }
 
+/** Debug written with each delegated answer, so the spoken update merges instead of replacing it. */
+const insertedDebug = new WeakMap<VoiceTurn, MessageDebug>();
+
 export async function insertVoiceAssistantMessage(
   session: VoiceRuntimeSession,
   turn: VoiceTurn,
@@ -148,6 +151,7 @@ export async function insertVoiceAssistantMessage(
 ): Promise<void> {
   if (!canPersistVoiceContent(session) || !turn.answerText) return;
   const id = createId();
+  insertedDebug.set(turn, debug);
   await db().insert(messages).values({
     id,
     conversationId: session.conversationId!,
@@ -170,8 +174,10 @@ export async function insertVoiceAssistantMessage(
 }
 
 /**
- * Replace the grounded answer with what was actually spoken, mark barge-in, and
- * record where the spoken answer starts on the call timeline.
+ * Record what GPT-Live actually spoke, mark barge-in, and record where the spoken
+ * answer starts on the call timeline. `content` stays the backend answer: grounded
+ * history must never carry text the backend did not produce, so the spoken
+ * rendering lives beside it in debug for Conversation Review.
  */
 export async function updateVoiceAssistantMessageSpoken(
   session: VoiceRuntimeSession,
@@ -182,14 +188,20 @@ export async function updateVoiceAssistantMessageSpoken(
   const spoken = turn.spokenText.trim();
   if (!spoken && !turn.interrupted) return;
   const audioOffsetMs = voiceTurnOffsetMs(session, "assistant", spokenStartMs);
+  const debug = insertedDebug.get(turn);
   await db()
     .update(messages)
     .set({
-      ...(spoken ? { content: spoken } : {}),
+      ...(spoken && debug ? { debug: withSpokenText(debug, spoken) } : {}),
       wasInterrupted: turn.interrupted,
       ...(audioOffsetMs !== null ? { audioOffsetMs } : {}),
     })
     .where(eq(messages.id, turn.assistantMessageId));
+}
+
+function withSpokenText(debug: MessageDebug, spokenText: string): MessageDebug {
+  const voice = debug.voice && typeof debug.voice === "object" ? debug.voice : {};
+  return { ...debug, voice: { ...voice, spokenText } };
 }
 
 export async function insertDurableVoiceSessionRow(

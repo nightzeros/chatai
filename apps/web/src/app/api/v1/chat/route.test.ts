@@ -34,23 +34,36 @@ vi.mock("@/lib/db", () => ({
 }));
 const envMock: Record<string, unknown> = {};
 vi.mock("@/lib/env", () => ({ env: envMock }));
-vi.mock("@/lib/api-keys", () => ({ usesApiKeyAuth: () => false }));
-vi.mock("@/lib/authorize-v1", () => ({ authorizeV1: vi.fn() }));
-vi.mock("@/lib/assistants", () => ({ getOwnedAssistantByRef: vi.fn() }));
+let apiKeyRequest = false;
+vi.mock("@/lib/api-keys", () => ({ usesApiKeyAuth: () => apiKeyRequest }));
+vi.mock("@/lib/authorize-v1", () => ({
+  authorizeV1: async () => ({ ok: true, userId: "user_1", apiKeyId: "key_1" }),
+}));
+vi.mock("@/lib/assistants", () => ({ getOwnedAssistantByRef: async () => assistantRow }));
 vi.mock("@/lib/eval-worker", () => ({ startEvalWorker: vi.fn() }));
-vi.mock("@/lib/rate-limit", () => ({ consumeApiKeyRateLimit: vi.fn() }));
-vi.mock("@/lib/session", () => ({ getSession: async () => ({ user: { id: "user_1" } }) }));
+vi.mock("@/lib/rate-limit", () => ({ consumeApiKeyRateLimit: async () => ({ ok: true }) }));
+/** Dashboard session user (null: anonymous). The assistant owner is user_1. */
+let sessionUserId: string | null = "user_1";
+vi.mock("@/lib/session", () => ({
+  getSession: async () => (sessionUserId ? { user: { id: sessionUserId } } : null),
+}));
+const resolveBillableAccountForAssistant = vi.fn();
+const checkHostingAccountAccess = vi.fn();
 vi.mock("@/lib/hosting/accounts", () => ({
-  resolveBillableAccountForAssistant: async () => ({ id: "acct_1", status: "active" }),
-  checkHostingAccountAccess: () => ({ ok: true }),
+  resolveBillableAccountForAssistant: (...args: unknown[]) => resolveBillableAccountForAssistant(...args),
+  checkHostingAccountAccess: (...args: unknown[]) => checkHostingAccountAccess(...args),
 }));
+const beginChatUsageReservation = vi.fn();
+const finishChatUsageReservation = vi.fn();
+const abortChatUsageReservation = vi.fn();
 vi.mock("@/lib/hosting/usage-gate", () => ({
-  beginChatUsageReservation: async () => ({ ok: true, reservation: null }),
-  finishChatUsageReservation: async () => undefined,
-  abortChatUsageReservation: async () => undefined,
+  beginChatUsageReservation: (...args: unknown[]) => beginChatUsageReservation(...args),
+  finishChatUsageReservation: (...args: unknown[]) => finishChatUsageReservation(...args),
+  abortChatUsageReservation: (...args: unknown[]) => abortChatUsageReservation(...args),
 }));
+const enforceWidgetRequest = vi.fn();
 vi.mock("@/lib/policies/security-policy", () => ({
-  SecurityPolicy: { fromAssistant: () => ({ enforceWidgetRequest: async () => null }) },
+  SecurityPolicy: { fromAssistant: () => ({ enforceWidgetRequest }) },
 }));
 vi.mock("@/lib/ai-config", () => ({
   resolveAssistantModels: async () => ({
@@ -107,12 +120,16 @@ async function post(body: Row) {
       body: JSON.stringify({ assistantId: "asst_public", ...body }),
     }),
   );
+  if (!response.headers.get("content-type")?.includes("text/event-stream")) {
+    return { status: response.status, json: (await response.json()) as Row, text: "", meta: undefined };
+  }
   const events = (await response.text())
     .split("\n\n")
     .filter((frame) => frame.startsWith("data:"))
     .map((frame) => JSON.parse(frame.slice(5)) as Row);
   return {
     status: response.status,
+    json: undefined as Row | undefined,
     text: events.filter((event) => event.type === "token").map((event) => event.text).join(""),
     meta: events.find((event) => event.type === "meta"),
   };
@@ -128,6 +145,14 @@ describe("POST /api/v1/chat conversation history", () => {
     inserted.length = 0;
     historyRows = [];
     idSeq = 0;
+    apiKeyRequest = false;
+    sessionUserId = "user_1";
+    resolveBillableAccountForAssistant.mockImplementation(async () => ({ id: "acct_1", status: "active" }));
+    checkHostingAccountAccess.mockImplementation(() => ({ ok: true }));
+    beginChatUsageReservation.mockImplementation(async () => ({ ok: true, reservation: null }));
+    finishChatUsageReservation.mockImplementation(async () => undefined);
+    abortChatUsageReservation.mockImplementation(async () => undefined);
+    enforceWidgetRequest.mockImplementation(async () => null);
     delete envMock.OUTPUT_SCOPE_CHECK;
     assistantRow = {
       id: "asst_internal",
@@ -399,6 +424,264 @@ describe("POST /api/v1/chat conversation history", () => {
       const result = await post({ message: "How many members, and who won the match?", source: "playground" });
       expect(result.text).toBe(
         "Zenith has 17 members [1]. The other part of your question isn't something I can help with here.",
+      );
+    });
+  });
+
+  describe("playground source is verified, never trusted", () => {
+    const scope = { decision: "out" as const, redirectSource: "template" as const };
+    const outOfScope = () =>
+      prepared({
+        outcome: "out_of_scope",
+        shouldGenerate: false,
+        fallbackText: "I can help with Zenith.",
+        debug: { scope },
+        scope,
+      });
+    const conversationRows = () => inserted.filter((entry) => entry.table === conversations).map((entry) => entry.row);
+
+    for (const [label, user] of [
+      ["anonymous", null],
+      ["an authenticated non-owner", "user_2"],
+    ] as const) {
+      it(`${label} claiming playground is treated as a widget visitor`, async () => {
+        sessionUserId = user;
+        assistantRow.privacySettings = { storeConversations: false };
+        prepareAnswer.mockResolvedValueOnce(outOfScope());
+
+        const result = await post({ message: "Best laptop?", source: "playground", visitorId: "visitor01" });
+
+        // Widget SecurityPolicy (domain, rate limits, bot checks, HMAC) runs as for any visitor.
+        expect(enforceWidgetRequest).toHaveBeenCalledWith(expect.any(Request), expect.objectContaining({ source: "widget" }));
+        // No usage exemption: the gate sees a widget request.
+        expect(beginChatUsageReservation.mock.calls[0]?.[0]).toMatchObject({ source: "widget" });
+        // No-store is respected.
+        expect(inserted).toEqual([]);
+        // No owner outcome or debug metadata.
+        expect(result.meta).toMatchObject({ outcome: "conversational" });
+        expect(JSON.stringify(result.meta)).not.toMatch(/out_of_scope|debug|scope/);
+      });
+    }
+
+    it("a spoofed playground source is blocked by the widget SecurityPolicy", async () => {
+      sessionUserId = null;
+      enforceWidgetRequest.mockResolvedValueOnce({ status: 403, message: "Origin not allowed.", reason: "origin_denied:evil.example" });
+      const result = await post({ message: "Hi", source: "playground", visitorId: "visitor01" });
+      expect(result.status).toBe(403);
+      expect(prepareAnswer).not.toHaveBeenCalled();
+      expect(beginChatUsageReservation).not.toHaveBeenCalled();
+    });
+
+    it("a stored spoofed conversation is recorded as widget, not playground", async () => {
+      sessionUserId = null;
+      prepareAnswer.mockResolvedValueOnce(outOfScope());
+      await post({ message: "Best laptop?", source: "playground", visitorId: "visitor01" });
+      expect(conversationRows()).toEqual([expect.objectContaining({ source: "widget" })]);
+    });
+
+    it("the verified owner keeps Playground behavior", async () => {
+      assistantRow.privacySettings = { storeConversations: false };
+      prepareAnswer.mockResolvedValueOnce(outOfScope());
+
+      const result = await post({ message: "Best laptop?", source: "playground" });
+
+      expect(enforceWidgetRequest).toHaveBeenCalledWith(expect.any(Request), expect.objectContaining({ source: "playground" }));
+      expect(beginChatUsageReservation.mock.calls[0]?.[0]).toMatchObject({ source: "playground" });
+      // The owner Playground always persists, even with conversation storage off.
+      expect(conversationRows()).toEqual([expect.objectContaining({ source: "playground" })]);
+      expect(result.meta).toMatchObject({ outcome: "out_of_scope", debug: { scope } });
+    });
+
+    it("an API key claiming playground is an API request", async () => {
+      apiKeyRequest = true;
+      prepareAnswer.mockResolvedValueOnce(outOfScope());
+      const result = await post({ message: "Best laptop?", source: "playground" });
+      expect(enforceWidgetRequest).not.toHaveBeenCalled();
+      expect(beginChatUsageReservation.mock.calls[0]?.[0]).toMatchObject({ source: "api" });
+      expect(result.meta).toMatchObject({ outcome: "conversational" });
+      expect(result.meta).not.toHaveProperty("debug");
+    });
+  });
+
+  describe("visitors never see account or plan details", () => {
+    const planDetails = /plan|allowance|upgrade|quota|billing|usage|suspended|disabled|account|reason/i;
+    const limit = {
+      ok: false,
+      status: 402,
+      error: "You've reached your monthly hosted AI allowance. Upgrade your plan or wait until your usage period resets.",
+      reason: "usage_limit_exceeded",
+    };
+    const suspended = {
+      ok: false,
+      status: 403,
+      error: "Hosted AI is temporarily unavailable for this account.",
+      reason: "account_suspended",
+    };
+
+    it("usage limit: a widget visitor gets a generic refusal", async () => {
+      beginChatUsageReservation.mockResolvedValueOnce(limit);
+      const result = await post({ message: "Hi", source: "widget", visitorId: "visitor01" });
+      expect(result.status).toBe(403);
+      expect(result.json).toEqual({ error: "This assistant isn't available right now. Please try again later." });
+      expect(JSON.stringify(result.json)).not.toMatch(planDetails);
+    });
+
+    it("usage limit: a spoofed playground visitor gets the same generic refusal", async () => {
+      sessionUserId = null;
+      beginChatUsageReservation.mockResolvedValueOnce(limit);
+      const result = await post({ message: "Hi", source: "playground", visitorId: "visitor01" });
+      expect(JSON.stringify(result.json)).not.toMatch(planDetails);
+    });
+
+    it("usage limit: the verified owner and API keys keep the detail", async () => {
+      beginChatUsageReservation.mockResolvedValueOnce(limit);
+      const owner = await post({ message: "Hi", source: "playground" });
+      expect(owner).toMatchObject({ status: 402, json: { error: limit.error, reason: "usage_limit_exceeded" } });
+
+      apiKeyRequest = true;
+      beginChatUsageReservation.mockResolvedValueOnce(limit);
+      const integration = await post({ message: "Hi" });
+      expect(integration).toMatchObject({ status: 402, json: { reason: "usage_limit_exceeded" } });
+    });
+
+    it("account state: a visitor gets a generic refusal, the owner the detail", async () => {
+      checkHostingAccountAccess.mockReturnValue(suspended);
+      const visitor = await post({ message: "Hi", source: "widget", visitorId: "visitor01" });
+      expect(visitor.status).toBe(403);
+      expect(JSON.stringify(visitor.json)).not.toMatch(planDetails);
+
+      const owner = await post({ message: "Hi", source: "playground" });
+      expect(owner.json).toEqual({ error: suspended.error });
+    });
+
+    it("the SecurityPolicy runs before any account state is consulted", async () => {
+      checkHostingAccountAccess.mockReturnValue(suspended);
+      enforceWidgetRequest.mockResolvedValueOnce({ status: 403, message: "Origin not allowed.", reason: "origin_denied:evil.example" });
+      const result = await post({ message: "Hi", source: "widget", visitorId: "visitor01" });
+      expect(result.status).toBe(403);
+      expect(JSON.stringify(result.json)).not.toMatch(/Hosted AI|account/i);
+      expect(resolveBillableAccountForAssistant).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("usage already incurred survives failures", () => {
+    const usage = { inputTokens: 10, outputTokens: 2, cachedInputTokens: 0, totalTokens: 12 };
+    const routerRecord = { kind: "chat_completion" as const, provider: "openai", model: "gpt", usage, step: "rewrite_query" };
+    const reservation = { reservationEventId: "evt_1", accountId: "acct_1" };
+    /** prepareAnswer that reports its router usage as it completes, like the real one. */
+    const preparedWithUsage = (overrides: Partial<PreparedAnswer> = {}) =>
+      async (args: { onUsage?: (record: typeof routerRecord) => void }) => {
+        args.onUsage?.(routerRecord);
+        return prepared({ providerUsages: [routerRecord], ...overrides });
+      };
+
+    beforeEach(() => {
+      beginChatUsageReservation.mockImplementation(async () => ({ ok: true, reservation }));
+    });
+
+    it("preparation throws after the router ran: the router usage is charged as a failed request", async () => {
+      prepareAnswer.mockImplementationOnce(async (args: { onUsage?: (record: typeof routerRecord) => void }) => {
+        args.onUsage?.(routerRecord);
+        throw new Error("planner exploded");
+      });
+      const result = await post({ message: "Tell me about Zenith", source: "widget", visitorId: "visitor01" });
+
+      expect(result.meta).toMatchObject({ outcome: "model_failure" });
+      expect(abortChatUsageReservation).not.toHaveBeenCalled();
+      expect(finishChatUsageReservation).toHaveBeenCalledTimes(1);
+      expect(finishChatUsageReservation.mock.calls[0]?.[0]).toMatchObject({
+        reservation,
+        records: [routerRecord],
+        failed: true,
+      });
+    });
+
+    it("answer generation throws: prepare-time usage is still charged", async () => {
+      prepareAnswer.mockImplementationOnce(preparedWithUsage());
+      streamChat.mockImplementationOnce(() => {
+        throw new Error("provider 500");
+      });
+      await post({ message: "Tell me about Zenith", source: "widget", visitorId: "visitor01" });
+
+      expect(finishChatUsageReservation).toHaveBeenCalledTimes(1);
+      expect(finishChatUsageReservation.mock.calls[0]?.[0]).toMatchObject({ records: [routerRecord], failed: true });
+    });
+
+    it("the output check throwing does not lose the answer's usage", async () => {
+      envMock.OUTPUT_SCOPE_CHECK = true;
+      prepareAnswer.mockImplementationOnce(
+        preparedWithUsage({
+          guard: {
+            reasons: ["flexible"],
+            purposeBlock: "# Purpose\nZenith.",
+            request: "Tell me about Zenith",
+            decision: "in",
+            injectionSuspected: false,
+            redirect: "I can help with Zenith.",
+          } as PreparedAnswer["guard"],
+        }),
+      );
+      generateChat
+        .mockResolvedValueOnce({ text: "Zenith has 17 members.", usage })
+        .mockRejectedValueOnce(new Error("checker down"));
+
+      const result = await post({ message: "Tell me about Zenith", source: "widget", visitorId: "visitor01" });
+
+      expect(result.text).toBe("Zenith has 17 members.");
+      expect(finishChatUsageReservation).toHaveBeenCalledTimes(1);
+      const settled = finishChatUsageReservation.mock.calls[0]?.[0] as { records: Array<{ step: string }>; failed: boolean };
+      expect(settled.failed).toBe(false);
+      expect(settled.records.map((record) => record.step)).toEqual(["rewrite_query", "stream_answer", "output_scope_check"]);
+    });
+
+    it("nothing incurred yet: the reservation is released", async () => {
+      prepareAnswer.mockRejectedValueOnce(new Error("db down"));
+      await post({ message: "Tell me about Zenith", source: "widget", visitorId: "visitor01" });
+      expect(finishChatUsageReservation).not.toHaveBeenCalled();
+      expect(abortChatUsageReservation).toHaveBeenCalledWith(reservation);
+    });
+
+    it("settlement runs exactly once even when settling itself throws", async () => {
+      prepareAnswer.mockImplementationOnce(preparedWithUsage({ shouldGenerate: false, fallbackText: "Hello!" }));
+      finishChatUsageReservation.mockRejectedValueOnce(new Error("ledger write failed"));
+      await post({ message: "Hi", source: "widget", visitorId: "visitor01" });
+      expect(finishChatUsageReservation).toHaveBeenCalledTimes(1);
+      expect(abortChatUsageReservation).not.toHaveBeenCalled();
+    });
+
+    it("a client disconnect mid-stream still settles usage once and persists the answer", async () => {
+      prepareAnswer.mockImplementationOnce(preparedWithUsage());
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      streamChat.mockReturnValueOnce({
+        textStream: (async function* () {
+          yield "Zenith has ";
+          await gate;
+          yield "17 members.";
+        })(),
+        usage: Promise.resolve(usage),
+      });
+
+      const { POST } = await import("./route");
+      const response = await POST(
+        new Request("http://localhost:3000/api/v1/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ assistantId: "asst_public", message: "Members?", source: "widget", visitorId: "visitor01" }),
+        }),
+      );
+      const reader = response.body!.getReader();
+      await reader.read();
+      await reader.cancel();
+      release();
+
+      await vi.waitFor(() => expect(finishChatUsageReservation).toHaveBeenCalledTimes(1));
+      const settled = finishChatUsageReservation.mock.calls[0]?.[0] as { records: Array<{ step: string }>; failed: boolean };
+      expect(settled.failed).toBe(false);
+      expect(settled.records.map((record) => record.step)).toEqual(["rewrite_query", "stream_answer"]);
+      expect(abortChatUsageReservation).not.toHaveBeenCalled();
+      await vi.waitFor(() =>
+        expect(messageRows()[1]).toMatchObject({ role: "assistant", content: "Zenith has 17 members." }),
       );
     });
   });

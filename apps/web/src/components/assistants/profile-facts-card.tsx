@@ -49,6 +49,8 @@ type Props = {
 };
 
 const REFRESH_POLL_MS = 2500;
+/** Stop polling after this long and let the owner check again or retry. */
+const REFRESH_POLL_MAX_MS = 180_000;
 
 function Feedback({ state }: { state: ProfileActionState }) {
   if (!state) return null;
@@ -90,16 +92,29 @@ export function ProfileFactsCard(props: Props) {
   }, null);
   const [saveState, saveAction, savingFact] = useActionState<ProfileActionState, FormData>(saveFact, null);
   const [editing, setEditing] = useState<string | null>(null);
-  const busy = refreshStatus === "pending" || refreshStatus === "running";
+  const working = refreshStatus === "pending" || refreshStatus === "running";
+  const [pollExpired, setPollExpired] = useState(false);
+  const stalled = working && pollExpired;
+  const busy = working && !pollExpired;
   const router = useRouter();
   useEffect(() => {
     if (!busy) return;
     // Generation runs in the background worker; re-read the profile until it settles.
+    const started = Date.now();
     const timer = setInterval(() => {
+      if (Date.now() - started >= REFRESH_POLL_MAX_MS) {
+        clearInterval(timer);
+        setPollExpired(true);
+        return;
+      }
       if (document.visibilityState === "visible") router.refresh();
     }, REFRESH_POLL_MS);
     return () => clearInterval(timer);
   }, [busy, router]);
+  const checkAgain = () => {
+    setPollExpired(false);
+    router.refresh();
+  };
   const hidden = <Hidden assistantId={assistantId} version={version} />;
 
   return (
@@ -114,7 +129,7 @@ export function ProfileFactsCard(props: Props) {
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center gap-3">
-          <form action={generateAction}>
+          <form action={generateAction} onSubmit={() => setPollExpired(false)}>
             {hidden}
             <Button type="submit" variant="outline" size="sm" disabled={generating || busy}>
               {busy ? "Generating…" : published ? "Refresh suggestions" : "Generate suggestions from Knowledge"}
@@ -122,6 +137,15 @@ export function ProfileFactsCard(props: Props) {
           </form>
           {refreshStatus === "failed" ? (
             <Badge variant="danger">Last generation failed{lastError ? ` (${lastError.replace(/_/g, " ")})` : ""}</Badge>
+          ) : null}
+          {stalled ? (
+            <p className="text-sm text-muted-foreground">
+              This is taking longer than usual.{" "}
+              <button type="button" className="underline underline-offset-2" onClick={checkAgain}>
+                Check again
+              </button>{" "}
+              or generate again.
+            </p>
           ) : null}
           {busy || (generateState && "error" in generateState) ? <Feedback state={generateState} /> : null}
         </div>

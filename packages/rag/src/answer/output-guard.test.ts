@@ -275,6 +275,23 @@ describe("generateGuardedAnswer", () => {
     expect(result.text).toBe(REDIRECT);
   });
 
+  it("reports only its own sub-calls through onUsage, as each completes", async () => {
+    const reported: Array<{ step?: string }> = [];
+    const routerUsage = { kind: "chat_completion" as const, usage, step: "rewrite_query" };
+    const result = await generateGuardedAnswer({
+      prepared: prepared({ guard: plan({ reasons: ["flexible"] }), providerUsages: [routerUsage] }),
+      question: "When are you open?",
+      chat,
+      verifyCitations: false,
+      outputGuard: true,
+      generate: generate("Open 8 to 6 [1]."),
+      onUsage: (record) => reported.push(record),
+      deps: { generateChat: checker('{"onPurpose":true}') } as never,
+    });
+    expect(reported.map((record) => record.step)).toEqual(["stream_answer", "output_scope_check"]);
+    expect(result.usages.map((record) => record.step)).toEqual(["rewrite_query", "stream_answer", "output_scope_check"]);
+  });
+
   it("disabled guard never checks", async () => {
     const deps = { generateChat: checker('{"onPurpose":false}') };
     const result = await generateGuardedAnswer({

@@ -1,4 +1,4 @@
-export type { ProviderUsageRecord } from "./provider-usage";
+export type { ProviderUsageListener, ProviderUsageRecord } from "./provider-usage";
 export { prepareAnswer, finalizeAnswer, FALLBACK_MESSAGE } from "./answer";
 export type { PreparedAnswer, FinalAnswer, ChatHistoryMessage, TurnKind, ScopeResult } from "./answer";
 export {

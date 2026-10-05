@@ -180,6 +180,24 @@ const FAILURE_COMMENTARY =
   "The knowledge lookup failed. Apologize briefly and ask the user to try again.";
 export const TIMEOUT_COMMENTARY =
   "The lookup is taking too long. Apologize briefly, say you can't find that right now, and offer to try again or continue in the chat.";
+export const SUPERSEDED_COMMENTARY =
+  "The user moved on before this lookup finished. Do not answer or guess at the earlier question; respond to what the user just said.";
+
+const BACKCHANNEL_PHRASES = [
+  "uh huh", "mm hmm", "got it", "i see", "sounds good", "all right", "thank you", "makes sense",
+  "okay", "ok", "cool", "yeah", "yes", "yep", "yup", "mhm", "mmm", "mm", "hmm", "uh", "um",
+  "right", "sure", "alright", "great", "thanks", "nice", "perfect", "awesome", "fine", "good",
+];
+const BACKCHANNEL = new RegExp(
+  `\\b(?:${[...BACKCHANNEL_PHRASES].sort((a, b) => b.length - a.length).map((p) => p.replace(/ /g, "\\s+")).join("|")})\\b`,
+  "g",
+);
+
+/** Acknowledgement-only speech ("okay cool", "yeah", "got it") while the user waits for an answer. */
+export function isBackchannel(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/[’']/g, "").replace(/[^a-z\s]/g, " ");
+  return normalized.replace(BACKCHANNEL, " ").trim() === "";
+}
 
 /** Strip citation markers and markdown so commentary reads naturally aloud. */
 export function toSpeakableCommentary(answer: string, maxChars: number): string {
@@ -205,6 +223,11 @@ export function toSpeakableCommentary(answer: string, maxChars: number): string 
 
 function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/** Speech during a lookup supersedes it only when it is a new request, not an acknowledgement. */
+function supersedesLookup(text: string): boolean {
+  return wordCount(text) >= deps.settings.bargeInMinWords && !isBackchannel(text);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -246,7 +269,6 @@ function newTurn(delegationId: string, offsetMs: number): VoiceTurn {
     commentaryAckStartMs: null,
     outputIndexAtCommentary: null,
     outputIndexEnd: null,
-    historyAssistantIndex: null,
     finalized: false,
     userMessageId: null,
     assistantMessageId: null,
@@ -651,7 +673,7 @@ async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Pro
   const history = session.history.slice(-deps.settings.historyLimit);
   turn.historySupplied = history.length;
   await insertVoiceUserMessage(session, turn).catch(() => undefined);
-  if (!turn.abort.signal.aborted && wordCount(turn.bargeInText) >= deps.settings.bargeInMinWords) {
+  if (!turn.abort.signal.aborted && supersedesLookup(turn.bargeInText)) {
     registerRagBargeIn(session, turn);
   }
   if (turn.abort.signal.aborted) return;
@@ -826,7 +848,6 @@ async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Pro
     session.counters.answered += 1;
 
     session.history.push({ role: "user", content: turn.userText });
-    turn.historyAssistantIndex = session.history.length;
     session.history.push({
       role: "assistant",
       content: turn.answerText,
@@ -926,10 +947,6 @@ export async function finalizeAnsweredTurns(
     turn.spokenText = spokenAnswerText(session, turn, end);
     turn.finalized = true;
     turn.outputIndexEnd = end;
-    if (turn.spokenText && turn.historyAssistantIndex !== null) {
-      const entry = session.history[turn.historyAssistantIndex];
-      if (entry) entry.content = turn.spokenText;
-    }
     await updateVoiceAssistantMessageSpoken(
       session,
       turn,
@@ -999,9 +1016,23 @@ async function expireDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): 
   if (result?.ok) session.delegations.complete(turn.delegationId);
 }
 
-/** User speech superseded an outstanding lookup; its answer must never be spoken. */
+/**
+ * User speech superseded an outstanding lookup; its answer must never be spoken.
+ * GPT-Live still holds the delegation open, so it gets a neutral result first
+ * (the append gate is checked synchronously, before the local supersede closes it).
+ */
 function registerRagBargeIn(session: VoiceRuntimeSession, turn: VoiceTurn): void {
+  if (!isTurnInFlight(turn)) return;
+  const closing = session.channel?.appendCommentary(turn.delegationId, SUPERSEDED_COMMENTARY);
   supersedeTurn(session, turn, "barge_in");
+  if (closing) {
+    track(
+      session,
+      closing
+        .then((result) => deps.log("delegation.closed", { ...metricFields(session, turn), reason: "barge_in", ok: result.ok }))
+        .catch(() => undefined),
+    );
+  }
   session.interruptCount += 1;
   session.counters.bargeIns += 1;
   deps.log("barge_in", { sessionId: session.sessionId, delegationId: turn.delegationId, stage: "rag" });
@@ -1029,7 +1060,7 @@ function handleInputDelta(
   if (lookupOutstanding && fragment.startMs >= current.offsetMs + bargeInGraceMs) {
     current.bargeInText += fragment.text;
     current.bargeInAt = Date.now();
-    if (wordCount(current.bargeInText) >= bargeInMinWords) {
+    if (supersedesLookup(current.bargeInText)) {
       registerRagBargeIn(session, current);
     }
     return;

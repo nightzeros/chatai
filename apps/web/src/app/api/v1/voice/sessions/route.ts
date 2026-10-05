@@ -26,6 +26,7 @@ import {
   resolveBillableAccountForAssistant,
 } from "@/lib/hosting/accounts";
 import { createId } from "@/lib/ids";
+import { isPublicVisitor } from "@/lib/policies/chat-source";
 import { policyViolationResponse } from "@/lib/policies/policy-response";
 import { SecurityPolicy } from "@/lib/policies/security-policy";
 import { consumeApiKeyRateLimit } from "@/lib/rate-limit";
@@ -187,11 +188,7 @@ async function mintVoiceSession(request: Request) {
     }
   }
 
-  const hostingAccount = await resolveBillableAccountForAssistant(assistant);
-  const hostingAccess = checkHostingAccountAccess(hostingAccount);
-  if (!hostingAccess.ok) {
-    return jsonWithCors({ error: hostingAccess.error }, { status: hostingAccess.status });
-  }
+  const visitor = isPublicVisitor({ apiKey: usesApiKeyAuth(request), source });
 
   // Widget security — same SecurityPolicy as chat (no parallel gates).
   // domain → rate limits → bot heuristics → optional HMAC.
@@ -205,6 +202,14 @@ async function mintVoiceSession(request: Request) {
     if (violation) {
       return policyViolationResponse(violation);
     }
+  }
+
+  const hostingAccount = await resolveBillableAccountForAssistant(assistant);
+  const hostingAccess = checkHostingAccountAccess(hostingAccount);
+  if (!hostingAccess.ok) {
+    return visitor
+      ? jsonWithCors(VOICE_UNAVAILABLE, { status: 403 })
+      : jsonWithCors({ error: hostingAccess.error }, { status: hostingAccess.status });
   }
 
   // Checked after security so disallowed origins cannot probe Voice config.
@@ -321,11 +326,8 @@ async function mintVoiceSession(request: Request) {
   });
   if (!admitted.ok) {
     // Widget visitors get one neutral refusal: no quota/minutes reason, no 402.
-    if (source === "widget") {
-      return jsonWithCors(
-        { error: "Voice isn't available right now.", reason: "voice_unavailable" },
-        { status: 403 },
-      );
+    if (visitor) {
+      return jsonWithCors(VOICE_UNAVAILABLE, { status: 403 });
     }
     return jsonWithCors(
       { error: voiceRefusalMessage(admitted.reason), reason: admitted.reason },

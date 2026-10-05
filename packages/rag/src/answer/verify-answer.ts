@@ -11,7 +11,7 @@ import { extractCitationIndexes } from "./citations";
 import { FALLBACK_MESSAGE } from "./decide";
 import type { PreparedAnswer } from "./answer";
 import { buildContextBlocks, uniqueContextChunks } from "./prompt";
-import type { ProviderUsageRecord } from "./provider-usage";
+import type { ProviderUsageListener, ProviderUsageRecord } from "./provider-usage";
 
 export type VerifierVerdict = {
   enabled: boolean;
@@ -176,6 +176,7 @@ export async function generateVerifiedAnswer(opts: {
   question: string;
   chat: ChatConfig;
   purposeCheck?: PurposeCheck;
+  onUsage?: ProviderUsageListener;
   deps?: Partial<VerifyAnswerDeps>;
 }): Promise<VerifiedGeneration> {
   const generate = opts.deps?.generateChat ?? generateChat;
@@ -183,6 +184,11 @@ export async function generateVerifiedAnswer(opts: {
   const context = buildContextBlocks(contextChunks);
   const retrievedCount = contextChunks.length;
   const providerUsages: ProviderUsageRecord[] = [];
+  const record = (usage: ProviderUsage, step: string) => {
+    const item = chatUsageRecord(opts.chat, usage, step);
+    providerUsages.push(item);
+    opts.onUsage?.(item);
+  };
   const messages = opts.prepared.messages?.length
     ? opts.prepared.messages
     : [{ role: "user" as const, content: opts.question }];
@@ -192,7 +198,7 @@ export async function generateVerifiedAnswer(opts: {
     system: opts.prepared.system,
     messages,
   });
-  providerUsages.push(chatUsageRecord(opts.chat, first.usage, "verified_answer"));
+  record(first.usage, "verified_answer");
 
   const firstVerdict = await verifyAnswer({
     question: opts.question,
@@ -203,7 +209,7 @@ export async function generateVerifiedAnswer(opts: {
     purposeCheck: opts.purposeCheck,
     deps: opts.deps,
   });
-  providerUsages.push(chatUsageRecord(opts.chat, firstVerdict.usage, "verify_answer"));
+  record(firstVerdict.usage, "verify_answer");
   const purposeField = (verdict: { onPurpose?: boolean | null }) =>
     opts.purposeCheck ? { onPurpose: verdict.onPurpose ?? null } : {};
 
@@ -228,7 +234,7 @@ export async function generateVerifiedAnswer(opts: {
     system: `${opts.prepared.system}\n\n${STRICT_RETRY_SYSTEM}`,
     messages,
   });
-  providerUsages.push(chatUsageRecord(opts.chat, retry.usage, "verified_answer_retry"));
+  record(retry.usage, "verified_answer_retry");
 
   const retryVerdict = await verifyAnswer({
     question: opts.question,
@@ -239,7 +245,7 @@ export async function generateVerifiedAnswer(opts: {
     purposeCheck: opts.purposeCheck,
     deps: opts.deps,
   });
-  providerUsages.push(chatUsageRecord(opts.chat, retryVerdict.usage, "verify_answer_retry"));
+  record(retryVerdict.usage, "verify_answer_retry");
 
   if (retryVerdict.passed || retryVerdict.onPurpose === false) {
     return {

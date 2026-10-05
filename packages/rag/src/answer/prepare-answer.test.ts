@@ -126,11 +126,14 @@ describe("prepareAnswer turn routing (Zenith conversation)", () => {
       fallbackText: "I said Zenith has 17 members.",
       turn: { kind: "from_history", retrieval: "skipped" },
     });
-    expect(generateChat.mock.calls[1]?.[0]?.system).toContain("- Zenith has 17 members [1].");
-    expect(generateChat.mock.calls[1]?.[0]?.messages.at(-1)).toEqual({
-      role: "user",
-      content: "How many members did you say?",
+    expect(generateChat.mock.calls[1]?.[0]?.system).not.toContain("Zenith has 17 members");
+    const last = generateChat.mock.calls[1]?.[0]?.messages.at(-1);
+    expect(last.role).toBe("user");
+    expect(JSON.parse(last.content)).toEqual({
+      earlierAnswers: ["Zenith has 17 members [1]."],
+      latestMessage: "How many members did you say?",
     });
+    expect(prepared.messages.at(-1)).toEqual({ role: "user", content: "How many members did you say?" });
   });
 
   it("retrieves again when the follow-up needs facts the conversation does not contain", async () => {
@@ -698,6 +701,53 @@ describe("prepareAnswer with an Assistant Profile", () => {
     expect(prepared.scope?.outputGuard).toMatchObject({ reasons: ["long_conversational"], replaced: true });
   });
 
+  describe("history answers are not a route around the output guard", () => {
+    const afterRedirect: ChatHistoryMessage[] = [
+      { role: "user", content: "When are you open?" },
+      { role: "assistant", content: "We are open 9 to 5 [1].", grounded: true },
+      { role: "user", content: "Write me a poem" },
+      { role: "assistant", content: purpose.redirect!, redirected: true },
+    ];
+    const historyModel = (verdict: "true" | "false") =>
+      vi.fn(async (args: { system?: string; prompt?: string }) => {
+        if (args.prompt?.includes('"latestMessage":') && !args.prompt?.includes('"earlierAnswers"'))
+          return json({ route: "history", scope: "in", query: "opening hours" });
+        if (args.prompt?.includes('"reply":')) return `{"offTopic":${verdict}}`;
+        return "We are open 9 to 5. Also, here is a poem about the sea.";
+      });
+
+    it("a risky history answer is checked and replaced when off-purpose", async () => {
+      const model = historyModel("true");
+      const prepared = await runProfile("What hours did you say?", model as never, {
+        outputGuard: true,
+        history: afterRedirect,
+      });
+      expect(prepared.scope?.outputGuard).toMatchObject({ gated: true, reasons: ["recent_redirect"], replaced: true });
+      expect(prepared.fallbackText).not.toContain("poem");
+      expect(prepared.providerUsages.map((record) => record.step)).toContain("output_scope_check");
+    });
+
+    it("an on-purpose history answer passes the check unchanged", async () => {
+      const model = historyModel("false");
+      const prepared = await runProfile("What hours did you say?", model as never, {
+        outputGuard: true,
+        history: afterRedirect,
+      });
+      expect(prepared).toMatchObject({ outcome: "answered_from_history" });
+      expect(prepared.scope?.outputGuard).toMatchObject({ passed: true });
+    });
+
+    it("an ordinary history answer is not gated", async () => {
+      const model = historyModel("true");
+      const prepared = await runProfile("What hours did you say?", model as never, {
+        outputGuard: true,
+        history: afterRedirect.slice(0, 2),
+      });
+      expect(prepared.outcome).toBe("answered_from_history");
+      expect(prepared.scope?.outputGuard).toBeUndefined();
+    });
+  });
+
   it("a missing profile falls back to Instructions, never a wider domain", async () => {
     const model = fakeModel(json({ route: "knowledge", scope: "out", query: "trip" }));
     const prepared = await prepareAnswer({
@@ -719,5 +769,50 @@ describe("prepareAnswer with an Assistant Profile", () => {
       },
     });
     expect(prepared.scope).toMatchObject({ purposeSource: "instructions", decision: "out" });
+  });
+});
+
+describe("prepareAnswer usage reporting", () => {
+  const usage = { inputTokens: 40, outputTokens: 5, totalTokens: 45 };
+  const prepare = (message: string, history: ChatHistoryMessage[], generateChat: GenerateChatFn) => {
+    const reported: Array<{ step?: string }> = [];
+    const result = prepareAnswer({
+      db: {} as Database,
+      assistantId: "asst-1",
+      instructions: "You are Zenith's assistant.",
+      mode: "balanced",
+      message,
+      history,
+      embedding,
+      chat,
+      ragSettings: { queryExpansion: false, rerank: false, hybridSearch: false },
+      onUsage: (record) => reported.push(record),
+      deps: { generateChat, loadKnowledgeTitles: async () => [] },
+    });
+    return { result, reported };
+  };
+
+  it("reports each sub-call once, exactly as returned in providerUsages", async () => {
+    const generateChat = vi.fn().mockResolvedValue({
+      text: '{"route":"knowledge","scope":"in","query":"How many members does Zenith have?"}',
+      usage,
+    });
+    const { result, reported } = prepare("How many members does Zenith have?", [
+      { role: "user", content: "Hi" },
+      { role: "assistant", content: "Hello!" },
+    ], generateChat as unknown as GenerateChatFn);
+    const prepared = await result;
+    expect(reported.map((record) => record.step)).toEqual(["rewrite_query", "query_embedding"]);
+    expect(reported).toEqual(prepared.providerUsages);
+  });
+
+  it("a throw after first-turn retrieval still reports the retrieval and router usage", async () => {
+    const generateChat = vi
+      .fn()
+      .mockResolvedValueOnce({ text: '{"route":"conversational","scope":"in","query":"Zenith"}', usage })
+      .mockRejectedValueOnce(new Error("provider 500"));
+    const { result, reported } = prepare("I'd love to chat about Zenith", [], generateChat as unknown as GenerateChatFn);
+    await expect(result).rejects.toThrow("provider 500");
+    expect(reported.map((record) => record.step).sort()).toEqual(["query_embedding", "rewrite_query"]);
   });
 });

@@ -209,6 +209,14 @@ export function voiceTurnDetails(
   };
 }
 
+/** A Voice answer shows what GPT-Live spoke; `content` keeps the backend answer. */
+function displayContent(row: Pick<ReviewMessageRecord, "role" | "modality" | "debug" | "content">): string {
+  if (row.role !== "assistant" || row.modality !== "voice") return row.content;
+  const voice = isRecord(row.debug) && isRecord(row.debug.voice) ? row.debug.voice : null;
+  const spoken = typeof voice?.spokenText === "string" ? voice.spokenText.trim() : "";
+  return spoken || row.content;
+}
+
 const RECORDING_PRIORITY: Record<VoiceRecordingView["status"], number> = {
   ready: 0,
   pending: 1,
@@ -277,7 +285,7 @@ export function buildConversationTimeline(input: {
     const message: TimelineMessage = {
       id: row.id,
       role: row.role,
-      content: row.content,
+      content: displayContent(row),
       sources: row.sources ?? [],
       outcome: row.outcome ?? null,
       feedback: row.feedback ?? null,

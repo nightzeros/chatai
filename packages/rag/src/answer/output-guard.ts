@@ -12,7 +12,7 @@ import type { MessageOutcome } from "@chatai/database";
 import type { PreparedAnswer } from "./answer";
 import { extractCitationIndexes } from "./citations";
 import { FALLBACK_MESSAGE } from "./decide";
-import type { ProviderUsageRecord } from "./provider-usage";
+import type { ProviderUsageListener, ProviderUsageRecord } from "./provider-usage";
 import { PARTIAL_REDIRECT_SENTENCE, type ScopeDecision } from "./scope";
 import type { HallucinationMode } from "./thresholds";
 import type { ChatHistoryMessage } from "./turn-plan";
@@ -202,6 +202,8 @@ export async function generateGuardedAnswer(opts: {
   /** Streaming generation; when absent, answers are always buffered. */
   stream?: (args: GenerateArgs, onDelta: (text: string) => void) => Promise<GenerateResult>;
   onDelta?: (text: string) => void;
+  /** Usage of each sub-call made here as it completes (prepare-time usage is not repeated). */
+  onUsage?: ProviderUsageListener;
   generateVerified?: typeof generateVerifiedAnswer;
   deps?: { generateChat?: GenerateChatFn };
 }): Promise<GuardedGeneration> {
@@ -217,6 +219,11 @@ export async function generateGuardedAnswer(opts: {
   const messages = prepared.messages?.length ? prepared.messages : [{ role: "user" as const, content: opts.question }];
   const question = prepared.answerRequest ?? opts.question;
   let usages: ProviderUsageRecord[] = [...prepared.providerUsages];
+  const record = (usage: ProviderUsage, step: string) => {
+    const item = chatRecord(opts.chat, usage, step);
+    usages.push(item);
+    opts.onUsage?.(item);
+  };
   let text: string;
   let streamed = false;
   let guard: OutputGuardResult | undefined;
@@ -227,6 +234,7 @@ export async function generateGuardedAnswer(opts: {
       prepared: { ...prepared, system },
       question,
       chat: opts.chat,
+      ...(opts.onUsage ? { onUsage: opts.onUsage } : {}),
       ...(gated && plan
         ? {
             purposeCheck: {
@@ -247,14 +255,14 @@ export async function generateGuardedAnswer(opts: {
   } else if (gated || !opts.stream) {
     const result = await opts.generate({ system, messages });
     text = result.text;
-    usages.push(chatRecord(opts.chat, result.usage, "stream_answer"));
+    record(result.usage, "stream_answer");
     if (plan && !gated && extractCitationIndexes(text).length === 0 && prepared.turn.retrieval === "performed") {
       reasons.push("uncited");
     }
   } else {
     const result = await opts.stream({ system, messages }, (delta) => opts.onDelta?.(delta));
     text = result.text;
-    usages.push(chatRecord(opts.chat, result.usage, "stream_answer"));
+    record(result.usage, "stream_answer");
     streamed = true;
   }
 
@@ -267,7 +275,7 @@ export async function generateGuardedAnswer(opts: {
       requestAccepted: plan.decision !== "unknown",
       generate: opts.deps?.generateChat,
     });
-    usages.push(chatRecord(opts.chat, check.usage, "output_scope_check"));
+    record(check.usage, "output_scope_check");
     onPurpose = check.onPurpose;
     const failClosed = check.onPurpose === null && (plan.decision === "unknown" || plan.injectionSuspected);
     guard = {

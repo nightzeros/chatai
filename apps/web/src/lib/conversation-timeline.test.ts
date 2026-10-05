@@ -230,6 +230,38 @@ describe("buildConversationTimeline", () => {
     }
     expect(json).toContain("3m 1s of Voice time");
   });
+
+  it("a Voice answer shows what was spoken; text turns and legacy rows show content", () => {
+    const entries = buildConversationTimeline({
+      calls: [call("vs_1", { startedAt: at(0) })],
+      recordings: [],
+      messages: [
+        message({
+          role: "assistant",
+          content: "The Pro plan costs $20 per month.",
+          modality: "voice",
+          voiceSessionId: "vs_1",
+          audioOffsetMs: 4_000,
+          createdAt: at(4),
+          debug: { voice: { delegationId: "del_1", spokenText: "Twenty dollars a month." } },
+        }),
+        message({ role: "assistant", content: "Legacy spoken row.", modality: "voice", voiceSessionId: "vs_1", createdAt: at(8) }),
+        message({
+          role: "assistant",
+          content: "Typed answer.",
+          modality: "text",
+          createdAt: at(50),
+          debug: { voice: { spokenText: "never shown" } },
+        }),
+      ],
+    });
+    expect(shape(entries)).toEqual([
+      { call: "vs_1", turns: ["Twenty dollars a month.", "Legacy spoken row."] },
+      { message: "Typed answer." },
+    ]);
+    const turn = entries[0]?.kind === "call" ? entries[0].turns[0] : null;
+    expect(turn?.audioOffsetMs).toBe(4_000);
+  });
 });
 
 describe("voiceTurnDetails", () => {

@@ -35,7 +35,9 @@ import {
   finalizeAnsweredTurns,
   isPreScopeEngagement,
   SCOPE_REMINDER_INSTRUCTIONS,
+  isBackchannel,
   setVoiceOrchestratorDepsForTests,
+  SUPERSEDED_COMMENTARY,
   TIMEOUT_COMMENTARY,
   toSpeakableCommentary,
   waitForVoiceTurnsIdle,
@@ -329,15 +331,79 @@ describe("voice delegation → prepareAnswer → commentary", () => {
 
     first.resolve(prepared("refund policy"));
     await waitForVoiceTurnsIdle(session);
-    expect(channel.commentary).toEqual([]);
+    // Only the neutral close reaches GPT-Live; the late answer is rejected.
+    expect(channel.commentary).toEqual([{ delegationId: "del_1", content: SUPERSEDED_COMMENTARY }]);
+    expect(channel.delegations.get("del_1")?.status).not.toBe("active");
     expect(session.turns[0]!.lateResultDiscarded).toBe(true);
     // Cost of the discarded work is still metered.
     expect(finishChatUsageReservation).toHaveBeenCalledTimes(1);
 
     channel.delegate("del_2", 3_200);
     await waitForVoiceTurnsIdle(session);
-    expect(channel.commentary.map((c) => c.delegationId)).toEqual(["del_2"]);
+    expect(channel.commentary.map((c) => c.delegationId)).toEqual(["del_1", "del_2"]);
     expect(session.turns[1]!.userText).toBe("no wait, what about shipping");
+  });
+
+  it.each(["okay cool", "yeah", "got it", "mhm", "Okay, cool. Yeah."])(
+    "an acknowledgement during the lookup (%j) never supersedes it; the answer is delivered",
+    async (ack) => {
+      const gate = deferred<void>();
+      const { session, channel } = setup({
+        prepare: async (args) => {
+          await gate.promise;
+          return prepared(args.message);
+        },
+        settings: { bargeInSettleMs: 40, bargeInHoldMaxMs: 500 },
+      });
+      channel.userSays("What is the refund policy", 1_000);
+      channel.delegate("del_1", 1_500);
+      await vi.waitFor(() => expect(session.turns[0]?.status).toBe("retrieving"));
+
+      channel.userSays(ack, 2_200);
+      expect(session.turns[0]!.status).toBe("retrieving");
+      gate.resolve();
+      await waitForVoiceTurnsIdle(session);
+
+      expect(session.turns[0]).toMatchObject({ status: "answered", supersededBy: null });
+      expect(channel.commentary).toEqual([
+        { delegationId: "del_1", content: "Answer to: What is the refund policy" },
+      ]);
+      expect(session.counters.bargeIns).toBe(0);
+      expect(channel.delegations.listActive()).toEqual([]);
+    },
+  );
+
+  it("an acknowledgement followed by a real request still supersedes", async () => {
+    const gate = deferred<void>();
+    const { session, channel } = setup({
+      prepare: async (args) => {
+        await gate.promise;
+        return prepared(args.message);
+      },
+    });
+    channel.userSays("What is the refund policy", 1_000);
+    channel.delegate("del_1", 1_500);
+    await vi.waitFor(() => expect(session.turns[0]?.status).toBe("retrieving"));
+
+    channel.userSays("okay cool", 2_200);
+    expect(session.turns[0]!.status).toBe("retrieving");
+    channel.userSays(" and what about shipping", 2_700);
+    expect(session.turns[0]).toMatchObject({ status: "superseded", supersededBy: "barge_in" });
+
+    gate.resolve();
+    await waitForVoiceTurnsIdle(session);
+    expect(channel.commentary).toEqual([{ delegationId: "del_1", content: SUPERSEDED_COMMENTARY }]);
+    expect(channel.delegations.listActive()).toEqual([]);
+    expect(session.turns[0]!.lateResultDiscarded).toBe(true);
+  });
+
+  it("recognizes acknowledgements but not requests", () => {
+    for (const text of ["okay", "okay cool", "Yeah.", "got it", "mhm", "uh huh, thanks", "all right"]) {
+      expect(isBackchannel(text)).toBe(true);
+    }
+    for (const text of ["no wait", "what about shipping", "okay what about shipping", "yeah but how much", "cancel that"]) {
+      expect(isBackchannel(text)).toBe(false);
+    }
   });
 
   it("the channel gate rejects appends for a delegation superseded by the provider", async () => {
@@ -378,15 +444,45 @@ describe("voice delegation → prepareAnswer → commentary", () => {
 
     await finalizeAnsweredTurns(session);
     expect(turn.spokenText).toBe("The Pro plan costs twenty dollars");
-    expect(updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ content: "The Pro plan costs twenty dollars", wasInterrupted: true }),
-    );
-    // History now reflects what the user actually heard.
+    const patch = updateSet.mock.calls.map((call) => call[0]).find((p) => "wasInterrupted" in p);
+    expect(patch).toMatchObject({
+      wasInterrupted: true,
+      debug: { voice: expect.objectContaining({ delegationId: "del_1", spokenText: "The Pro plan costs twenty dollars" }) },
+    });
+    expect(patch).not.toHaveProperty("content");
+    // Grounded history keeps the backend answer, never the spoken rendering.
     expect(session.history.at(-1)).toEqual({
       role: "assistant",
-      content: "The Pro plan costs twenty dollars",
+      content: "Answer to: What is the Pro plan?",
       grounded: true,
     });
+  });
+
+  it("spoken text that adds to the backend answer never becomes grounded history", async () => {
+    const { session, channel, prepareAnswer } = setup({
+      ephemeral: false,
+      answer: () => "The Pro plan costs $20 per month [1].",
+    });
+    channel.userSays("What is the Pro plan?", 1_000);
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+    const backend = "The Pro plan costs $20 per month.";
+    expect(messageInserts()[1]).toMatchObject({ role: "assistant", content: backend });
+
+    // GPT-Live renders the answer and improvises an unverified claim.
+    channel.emit({ type: "append.acknowledged", kind: "commentary", clientEventId: "evt_1", startMs: 2_000, endMs: 2_050 });
+    channel.assistantSays("The Pro plan costs twenty dollars a month, and it includes free lifetime support.", 2_100, 4_000);
+    channel.userSays("And the Business plan?", 6_000);
+    channel.delegate("del_2", 6_500);
+    await waitForVoiceTurnsIdle(session);
+
+    const spokenPatch = updateSet.mock.calls.map((call) => call[0]).find((p) => "debug" in p);
+    expect(spokenPatch).not.toHaveProperty("content");
+    expect((spokenPatch?.debug as { voice: { spokenText: string } }).voice.spokenText).toContain("lifetime support");
+
+    const historySeenByNextTurn = prepareAnswer.mock.calls[1]?.[0]?.history ?? [];
+    expect(historySeenByNextTurn).toContainEqual({ role: "assistant", content: backend, grounded: true });
+    expect(JSON.stringify(historySeenByNextTurn)).not.toContain("lifetime support");
   });
 
   it("attributes only the answer speech (real GPT-Live timeline: filler, stop, non-delegated follow-up)", async () => {
@@ -485,7 +581,7 @@ describe("voice delegation → prepareAnswer → commentary", () => {
       message: "How much is it?",
       history: [
         { role: "user", content: "What is the Pro plan?" },
-        { role: "assistant", content: "Pro is our five seat plan." },
+        { role: "assistant", content: "Answer to: What is the Pro plan?" },
       ],
     });
 
@@ -593,7 +689,7 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     channel.userSays(" what about shipping", 2_600);
     await waitForVoiceTurnsIdle(session);
 
-    expect(channel.commentary).toEqual([]);
+    expect(channel.commentary).toEqual([{ delegationId: "del_1", content: SUPERSEDED_COMMENTARY }]);
     expect(session.turns[0]).toMatchObject({
       status: "superseded",
       supersededBy: "barge_in",
@@ -631,7 +727,7 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     await waitForVoiceTurnsIdle(session);
 
     expect(prepareAnswer).not.toHaveBeenCalled();
-    expect(channel.commentary).toEqual([]);
+    expect(channel.commentary).toEqual([{ delegationId: "del_1", content: SUPERSEDED_COMMENTARY }]);
     expect(session.turns[0]).toMatchObject({ status: "superseded", supersededBy: "barge_in" });
   });
 
@@ -802,7 +898,7 @@ describe("Zenith knowledge (fictional, only answerable from the knowledge base)"
         { role: "user", content: "How much is the Zenith plan" },
         {
           role: "assistant",
-          content: "The Zenith plan costs seventy-three dollars per month.",
+          content: "The Zenith plan costs $73 per month.",
           grounded: true,
         },
       ]),
@@ -917,8 +1013,14 @@ describe("Voice turn audio offsets (review navigation only)", () => {
     channel.assistantSays("The Pro plan costs twenty dollars.", 2_600);
     await finalizeAnsweredTurns(session);
     expect(offsetUpdates()).toEqual([
-      expect.objectContaining({ content: "The Pro plan costs twenty dollars.", audioOffsetMs: 2_600 }),
+      expect.objectContaining({
+        audioOffsetMs: 2_600,
+        debug: expect.objectContaining({
+          voice: expect.objectContaining({ spokenText: "The Pro plan costs twenty dollars." }),
+        }),
+      }),
     ]);
+    expect(offsetUpdates()[0]).not.toHaveProperty("content");
   });
 
   it("durable: a turn GPT-Live answered itself stores user and reply offsets", async () => {
@@ -946,8 +1048,8 @@ describe("Voice turn audio offsets (review navigation only)", () => {
     await finalizeAnsweredTurns(session);
 
     expect(messageInserts()[0]).toMatchObject({ role: "user", audioOffsetMs: null });
-    const spoken = updateSet.mock.calls.map((call) => call[0]).find((patch) => "content" in patch);
-    expect(spoken).toMatchObject({ content: "Twenty dollars." });
+    const spoken = updateSet.mock.calls.map((call) => call[0]).find((patch) => "debug" in patch);
+    expect(spoken).toMatchObject({ debug: { voice: expect.objectContaining({ spokenText: "Twenty dollars." }) } });
     expect(spoken).not.toHaveProperty("audioOffsetMs");
   });
 

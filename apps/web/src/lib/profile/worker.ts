@@ -1,13 +1,12 @@
 import {
   and,
-  assistantProfileJobs,
   assistantProfiles,
   assistants,
   checkDatabaseUrlPair,
   createDb,
   documents,
   eq,
-  sql,
+  type Database,
   type KeyFact,
 } from "@chatai/database";
 import {
@@ -32,19 +31,51 @@ import {
 import { isUsageLimitExceededError, UsageLimitExceededError } from "@/lib/hosting/usage-limit-error";
 import { createId } from "@/lib/ids";
 
-import { PROFILE_REFRESH_DAILY_CAP } from "./jobs";
+import {
+  claimProfileJob,
+  failExhaustedProfileJobs,
+  PROFILE_GENERATION_TIMEOUT_MS,
+  PROFILE_JOB_MAX_ATTEMPTS,
+  PROFILE_REFRESH_DAILY_CAP,
+  renewProfileJobClaim,
+  settleProfileJob,
+  type ProfileJobClaim,
+  type ProfileJobSettlement,
+} from "./jobs";
 
-const WORKER_VERSION = "profile-1";
+const WORKER_VERSION = "profile-2";
 const POLL_MS = 3000;
-const MAX_ATTEMPTS = 3;
 
 type GlobalWorker = typeof globalThis & {
   __chataiProfileWorker?: { version: string; stop: () => void };
 };
 
-type ClaimedJob = { id: string; assistantId: string; reason: string; attempts: number };
+export type ProfileWorkerDeps = {
+  generateKeyFactCandidates: typeof generateKeyFactCandidates;
+  generationTimeoutMs: number;
+};
 
-let workerClient: ReturnType<typeof createDb> | null = null;
+const defaultDeps: ProfileWorkerDeps = {
+  generateKeyFactCandidates,
+  generationTimeoutMs: PROFILE_GENERATION_TIMEOUT_MS,
+};
+let deps = defaultDeps;
+
+export function setProfileWorkerDepsForTests(next: Partial<ProfileWorkerDeps> | null): void {
+  deps = next ? { ...defaultDeps, ...next } : defaultDeps;
+}
+
+class ProfileGenerationTimeout extends Error {}
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ProfileGenerationTimeout("profile generation timed out")), ms);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+let workerClient: Database | null = null;
 
 function workerDb() {
   if (workerClient) return workerClient;
@@ -56,31 +87,11 @@ function workerDb() {
   return workerClient;
 }
 
-async function claimJob(db: ReturnType<typeof createDb>): Promise<ClaimedJob | null> {
-  const rows = (await db.execute(sql`
-    UPDATE assistant_profile_jobs
-    SET status = 'processing', locked_at = now(), attempts = attempts + 1, updated_at = now()
-    WHERE id = (
-      SELECT id FROM assistant_profile_jobs
-      WHERE attempts < ${MAX_ATTEMPTS}
-        AND (
-          (status = 'pending' AND run_after <= now())
-          OR (status = 'processing' AND locked_at < now() - interval '5 minutes')
-        )
-      ORDER BY run_after
-      LIMIT 1
-      FOR UPDATE SKIP LOCKED
-    )
-    RETURNING id, assistant_id AS "assistantId", reason, attempts
-  `)) as unknown as ClaimedJob[];
-  return rows[0] ?? null;
-}
-
 function utcDay(date = new Date()): string {
   return date.toISOString().slice(0, 10);
 }
 
-async function readyDocuments(db: ReturnType<typeof createDb>, assistantId: string) {
+async function readyDocuments(db: Database, assistantId: string) {
   return db
     .select({
       id: documents.id,
@@ -94,7 +105,7 @@ async function readyDocuments(db: ReturnType<typeof createDb>, assistantId: stri
 }
 
 /** Returns a short sanitized status for logs; never document text. */
-async function runFactsJob(db: ReturnType<typeof createDb>, job: ClaimedJob): Promise<string> {
+async function runFactsJob(db: Database, job: ProfileJobClaim): Promise<string> {
   const [assistant] = await db.select().from(assistants).where(eq(assistants.id, job.assistantId)).limit(1);
   if (!assistant) return "assistant_missing";
 
@@ -137,17 +148,26 @@ async function runFactsJob(db: ReturnType<typeof createDb>, job: ClaimedJob): Pr
   let usages: ProviderUsageRecord[] = [];
   let result;
   try {
-    result = await generateKeyFactCandidates({
-      db,
-      assistantId: assistant.id,
-      embedding: models.embedding,
-      chat: models.chat,
-    });
+    result = await withTimeout(
+      deps.generateKeyFactCandidates({
+        db,
+        assistantId: assistant.id,
+        embedding: models.embedding,
+        chat: models.chat,
+      }),
+      deps.generationTimeoutMs,
+    );
     usages = result.usages;
   } catch (error) {
     if (usages.length === 0) await abortEvalUsageReservation(reservation).catch(() => undefined);
     reservation = null;
     throw error;
+  }
+  // A reclaimed job is billed and published only by the worker that now owns it.
+  // Renewing the lease also keeps it ours for the few writes below.
+  if (!(await renewProfileJobClaim(db, job))) {
+    await abortEvalUsageReservation(reservation).catch(() => undefined);
+    return "claim_lost";
   }
   await finishProfileUsageReservation({
     reservation,
@@ -216,39 +236,42 @@ async function runFactsJob(db: ReturnType<typeof createDb>, job: ClaimedJob): Pr
   return "version_conflict";
 }
 
-async function processOnce(): Promise<boolean> {
-  const db = workerDb();
-  const job = await claimJob(db);
+/** Claims and runs at most one job. Returns whether a job was claimed. */
+export async function processProfileJobOnce(db: Database): Promise<boolean> {
+  await failExhaustedProfileJobs(db);
+  const job = await claimProfileJob(db);
   if (!job) return false;
-  let status: "completed" | "pending" | "failed" = "completed";
-  let error: string | null = null;
+  let settlement: ProfileJobSettlement = { status: "completed", error: null };
+  let failed = false;
   try {
     const outcome = await runFactsJob(db, job);
-    if (outcome !== "completed" && !outcome.startsWith("suggestions")) error = outcome;
+    // Another worker reclaimed the job; it owns the row and the profile status now.
+    if (outcome === "claim_lost") return true;
+    if (!outcome.startsWith("suggestions")) settlement = { status: "completed", error: outcome };
   } catch (failure) {
     const limit = isUsageLimitExceededError(failure);
-    status = limit || job.attempts >= MAX_ATTEMPTS ? "failed" : "pending";
-    error = limit ? "usage_limit" : "generation_failed";
-    console.error(`[profile] job for assistant ${job.assistantId} failed (${error})`);
+    failed = true;
+    settlement = {
+      status: limit || job.attempts >= PROFILE_JOB_MAX_ATTEMPTS ? "failed" : "pending",
+      error: limit ? "usage_limit" : failure instanceof ProfileGenerationTimeout ? "generation_timeout" : "generation_failed",
+    };
+    console.error(`[profile] job for assistant ${job.assistantId} failed (${settlement.error})`);
+  }
+  const owned = await settleProfileJob(db, job, settlement).catch((unlockError: unknown) => {
+    console.error("[profile] failed to unlock job:", unlockError);
+    return false;
+  });
+  if (owned && failed) {
     await db
       .update(assistantProfiles)
-      .set({ refreshStatus: status === "failed" ? "failed" : "pending", lastError: error, updatedAt: new Date() })
+      .set({
+        refreshStatus: settlement.status === "failed" ? "failed" : "pending",
+        lastError: settlement.error,
+        updatedAt: new Date(),
+      })
       .where(eq(assistantProfiles.assistantId, job.assistantId))
       .catch(() => undefined);
   }
-  await db
-    .update(assistantProfileJobs)
-    .set({ status, error, lockedAt: null, updatedAt: new Date() })
-    .where(eq(assistantProfileJobs.id, job.id))
-    .catch(async (unlockError: unknown) => {
-      // Only one pending job per assistant: a newer pending job supersedes this retry.
-      if (status !== "pending") throw unlockError;
-      await db
-        .update(assistantProfileJobs)
-        .set({ status: "completed", error: "superseded", lockedAt: null, updatedAt: new Date() })
-        .where(eq(assistantProfileJobs.id, job.id));
-    })
-    .catch((unlockError: unknown) => console.error("[profile] failed to unlock job:", unlockError));
   return true;
 }
 
@@ -270,7 +293,7 @@ export function startProfileWorker(): void {
   const tick = async () => {
     if (stopped) return;
     try {
-      const processed = await processOnce();
+      const processed = await processProfileJobOnce(workerDb());
       setTimeout(tick, processed ? 50 : POLL_MS);
     } catch (error) {
       // Missing table before migration 0020 lands here; keep polling slowly.

@@ -630,6 +630,43 @@ describe("POST /api/v1/voice/sessions", () => {
       expect(create).not.toHaveBeenCalled();
     });
 
+    it("a keyless caller that omits source gets the same neutral refusal", async () => {
+      admitVoiceSession.mockResolvedValueOnce({ ok: false, status: 402, reason: "voice_minutes_exhausted" });
+      const { POST } = await import("./route");
+      const response = await POST(mintRequest({ visitorId: "visitor01" }, { Origin: "https://example.com" }));
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "Voice isn't available right now.", reason: "voice_unavailable" });
+    });
+
+    it("account state: visitors get the neutral refusal, only after the SecurityPolicy", async () => {
+      const { checkHostingAccountAccess, resolveBillableAccountForAssistant } = await import("@/lib/hosting/accounts");
+      vi.mocked(checkHostingAccountAccess).mockReturnValue({
+        ok: false,
+        status: 403,
+        error: "Hosted AI is temporarily unavailable for this account.",
+        reason: "account_suspended",
+      } as never);
+      try {
+        const { POST } = await import("./route");
+        const visitor = await POST(
+          mintRequest({ visitorId: "visitor01", source: "widget" }, { Origin: "https://example.com" }),
+        );
+        expect(visitor.status).toBe(403);
+        expect(await visitor.json()).toEqual({ error: "Voice isn't available right now.", reason: "voice_unavailable" });
+
+        vi.mocked(resolveBillableAccountForAssistant).mockClear();
+        enforceWidgetRequest.mockResolvedValueOnce({ status: 403, message: "Origin not allowed.", reason: "origin_denied:evil.test" });
+        const denied = await POST(mintRequest({ visitorId: "visitor01", source: "widget" }, { Origin: "https://evil.test" }));
+        expect((await denied.json()).error).toBe("Origin not allowed.");
+        expect(resolveBillableAccountForAssistant).not.toHaveBeenCalled();
+
+        const owner = await POST(mintRequest({ source: "playground" }));
+        expect(await owner.json()).toEqual({ error: "Hosted AI is temporarily unavailable for this account." });
+      } finally {
+        vi.mocked(checkHostingAccountAccess).mockReturnValue({ ok: true } as never);
+      }
+    });
+
     it("widget concurrency refusal is the same neutral response", async () => {
       admitVoiceSession.mockResolvedValueOnce({
         ok: false,

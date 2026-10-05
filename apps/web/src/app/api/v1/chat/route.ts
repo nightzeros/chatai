@@ -12,6 +12,7 @@ import {
   prepareAnswer,
   resolveRagSettings,
   type ChatHistoryMessage,
+  type ProviderUsageRecord,
 } from "@chatai/rag/answer";
 import { enqueueOnlineEvalJob, shouldSampleEval } from "@chatai/evals";
 import { z } from "zod";
@@ -40,6 +41,11 @@ import {
   finishChatUsageReservation,
 } from "@/lib/hosting/usage-gate";
 import { createId } from "@/lib/ids";
+import {
+  isPublicVisitor,
+  resolveChatSource,
+  VISITOR_UNAVAILABLE_MESSAGE,
+} from "@/lib/policies/chat-source";
 import { policyViolationResponse } from "@/lib/policies/policy-response";
 import { SecurityPolicy } from "@/lib/policies/security-policy";
 import { shouldPersistChatTranscript } from "@/lib/privacy/should-persist-chat";
@@ -77,11 +83,11 @@ export async function POST(request: Request) {
   }
 
   const input = parsed.data;
-  const source: ConversationSource = input.source ?? "api";
   const started = Date.now();
+  const apiKey = usesApiKeyAuth(request);
 
   let assistant;
-  if (usesApiKeyAuth(request)) {
+  if (apiKey) {
     const auth = await authorizeV1(request, ["chat"]);
     if (!auth.ok) {
       return jsonWithCors({ error: auth.error }, { status: auth.status });
@@ -112,13 +118,15 @@ export async function POST(request: Request) {
     return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
   }
 
-  const hostingAccount = await resolveBillableAccountForAssistant(assistant);
-  const hostingAccess = checkHostingAccountAccess(hostingAccount);
-  if (!hostingAccess.ok) {
-    return jsonWithCors({ error: hostingAccess.error }, { status: hostingAccess.status });
-  }
+  const session = !apiKey && input.source === "playground" ? await getSession() : null;
+  const source: ConversationSource = resolveChatSource({
+    claimed: input.source,
+    apiKey,
+    ownerSession: Boolean(session?.user.id) && session?.user.id === assistant.userId,
+  });
+  const visitor = isPublicVisitor({ apiKey, source });
 
-  if (!usesApiKeyAuth(request)) {
+  if (!apiKey) {
     const security = SecurityPolicy.fromAssistant(assistant, env);
     const violation = await security.enforceWidgetRequest(request, {
       visitorId: input.visitorId,
@@ -130,8 +138,15 @@ export async function POST(request: Request) {
     }
   }
 
-  const session = await getSession();
-  const includeDebug = input.source === "playground" && session?.user.id === assistant.userId;
+  const hostingAccount = await resolveBillableAccountForAssistant(assistant);
+  const hostingAccess = checkHostingAccountAccess(hostingAccount);
+  if (!hostingAccess.ok) {
+    return visitor
+      ? jsonWithCors({ error: VISITOR_UNAVAILABLE_MESSAGE }, { status: 403 })
+      : jsonWithCors({ error: hostingAccess.error }, { status: hostingAccess.status });
+  }
+
+  const includeDebug = source === "playground";
   const persist = shouldPersistChatTranscript({
     assistant,
     source,
@@ -204,19 +219,43 @@ export async function POST(request: Request) {
   });
 
   if (!gate.ok) {
-    return jsonWithCors(
-      { error: gate.error, reason: gate.reason },
-      { status: gate.status },
-    );
+    return visitor
+      ? jsonWithCors({ error: VISITOR_UNAVAILABLE_MESSAGE }, { status: 403 })
+      : jsonWithCors({ error: gate.error, reason: gate.reason }, { status: gate.status });
   }
 
   const reservation = gate.reservation;
   const encoder = new TextEncoder();
   const assistantMessageId = createId();
+  const accrued: ProviderUsageRecord[] = [];
+  const onUsage = (record: ProviderUsageRecord) => accrued.push(record);
+  let usageSettled = false;
+  let disconnected = false;
+  const settleUsage = (records: ProviderUsageRecord[], failed: boolean) =>
+    finishChatUsageReservation({
+      reservation,
+      accountId: hostingAccount.id,
+      assistantId: assistant.id,
+      requestId: usageRequestId,
+      source,
+      visitorId: input.visitorId,
+      records,
+      billing: models.billing,
+      failed,
+    });
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (payload: unknown) => controller.enqueue(encoder.encode(sseLine(payload)));
+      // A client that goes away does not abort the turn: it still completes, is
+      // persisted and settles its usage once.
+      const send = (payload: unknown) => {
+        if (disconnected) return;
+        try {
+          controller.enqueue(encoder.encode(sseLine(payload)));
+        } catch {
+          disconnected = true;
+        }
+      };
 
       try {
         const initial = await prepareAnswer({
@@ -236,6 +275,7 @@ export async function POST(request: Request) {
           voiceUnavailable: input.voiceUnavailable === true,
           outputGuard: env.OUTPUT_SCOPE_CHECK,
           profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
+          onUsage,
         });
 
         const generated = await generateGuardedAnswer({
@@ -258,22 +298,15 @@ export async function POST(request: Request) {
             return { text, usage: await result.usage };
           },
           onDelta: (text) => send({ type: "token", text }),
+          onUsage,
         });
         const prepared = generated.prepared;
         const fullText = generated.text;
         const answerUsages = generated.usages;
         if (!generated.streamed) send({ type: "token", text: fullText });
 
-        await finishChatUsageReservation({
-          reservation,
-          accountId: hostingAccount.id,
-          assistantId: assistant.id,
-          requestId: usageRequestId,
-          source,
-          visitorId: input.visitorId,
-          records: answerUsages,
-          billing: models.billing,
-        });
+        usageSettled = true;
+        await settleUsage(answerUsages, false);
 
         const latencyMs = Date.now() - started;
         const final = finalizeAnswer(fullText, {
@@ -313,10 +346,15 @@ export async function POST(request: Request) {
           confidence: final.confidence,
           outcome: final.outcome,
           debug: final.debug,
-        }, source, includeDebug));
+        }, includeDebug));
         send({ type: "done" });
       } catch (error) {
-        await abortChatUsageReservation(reservation);
+        if (!usageSettled) {
+          usageSettled = true;
+          await (accrued.length > 0 ? settleUsage(accrued, true) : abortChatUsageReservation(reservation)).catch(
+            (settleError: unknown) => console.error("[chat] usage settlement failed:", settleError),
+          );
+        }
 
         const message = error instanceof Error ? error.message : "Model failed.";
         const latencyMs = Date.now() - started;
@@ -343,11 +381,14 @@ export async function POST(request: Request) {
           confidence: 0,
           outcome: "model_failure",
           debug: { error: message },
-        }, source, includeDebug));
+        }, includeDebug));
         send({ type: "done" });
       } finally {
-        controller.close();
+        if (!disconnected) controller.close();
       }
+    },
+    cancel() {
+      disconnected = true;
     },
   });
 

@@ -215,6 +215,8 @@ function billingModeFor(
 /**
  * After provider calls: write ledger events, reconcile reservation, mark parent complete.
  * Shadow-meter / event-row failures must not leave reserved micros stranded.
+ * `failed`: the request did not complete; the usage it already incurred is still
+ * charged, but it does not count toward the request cap.
  */
 export async function finishChatUsageReservation(input: {
   reservation: UsageGateReservation | null;
@@ -232,24 +234,22 @@ export async function finishChatUsageReservation(input: {
   const now = new Date();
   let actualMicros = 0;
 
-  if (!input.failed) {
-    for (const record of input.records) {
-      const mode = billingModeFor(input.billing, record.kind);
-      if (mode !== "hosted") continue;
-      const { costMicros } = calculateCostMicros({
-        catalog,
-        provider: record.provider ?? "unknown",
-        model: record.model,
-        usageOperation: record.kind,
-        at: now,
-        inputTokens: record.usage.inputTokens,
-        outputTokens: record.usage.outputTokens,
-        cachedInputTokens: record.usage.cachedInputTokens,
-        totalTokens: record.usage.totalTokens,
-        units: record.kind === "rerank" ? 1 : undefined,
-      });
-      actualMicros += costMicros;
-    }
+  for (const record of input.records) {
+    const mode = billingModeFor(input.billing, record.kind);
+    if (mode !== "hosted") continue;
+    const { costMicros } = calculateCostMicros({
+      catalog,
+      provider: record.provider ?? "unknown",
+      model: record.model,
+      usageOperation: record.kind,
+      at: now,
+      inputTokens: record.usage.inputTokens,
+      outputTokens: record.usage.outputTokens,
+      cachedInputTokens: record.usage.cachedInputTokens,
+      totalTokens: record.usage.totalTokens,
+      units: record.kind === "rerank" ? 1 : undefined,
+    });
+    actualMicros += costMicros;
   }
 
   try {
@@ -273,7 +273,7 @@ export async function finishChatUsageReservation(input: {
 
   const claimed = await claimReservationEvent(input.reservation.reservationEventId, {
     status: input.failed ? "failed" : "completed",
-    finalCostMicros: input.failed ? 0 : actualMicros,
+    finalCostMicros: actualMicros,
     completedAt: now,
     ...(input.failed ? { errorCode: "provider_or_request_failed" } : {}),
   });
@@ -284,7 +284,7 @@ export async function finishChatUsageReservation(input: {
     accountId: input.reservation.accountId,
     periodStart: input.reservation.periodStart,
     reservedMicros: claimed ? input.reservation.reservedMicros : 0,
-    actualMicros: input.failed ? 0 : actualMicros,
+    actualMicros,
     incrementRequestCount: !input.failed,
   });
 }

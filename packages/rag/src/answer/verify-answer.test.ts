@@ -134,6 +134,26 @@ describe("generateVerifiedAnswer", () => {
     expect(generateChat).toHaveBeenCalledTimes(4);
   });
 
+  it("a retry that throws still reports the draft and verdict usage already incurred", async () => {
+    const generateChat = vi
+      .fn()
+      .mockResolvedValueOnce("We offer lifetime refunds.")
+      .mockResolvedValueOnce('{"pass":false,"reason":"Not in sources."}')
+      .mockRejectedValueOnce(new Error("provider 500"));
+    const reported: Array<{ step?: string }> = [];
+
+    await expect(
+      generateVerifiedAnswer({
+        prepared: prepared(),
+        question: "What is the refund policy?",
+        chat: { apiKey: "test", baseURL: "https://example.com/v1", model: "test" },
+        onUsage: (record) => reported.push(record),
+        deps: { generateChat },
+      }),
+    ).rejects.toThrow("provider 500");
+    expect(reported.map((record) => record.step)).toEqual(["verified_answer", "verify_answer"]);
+  });
+
   it("falls back when the retry also fails verification", async () => {
     const generateChat = vi
       .fn()

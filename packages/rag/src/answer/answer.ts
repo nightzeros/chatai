@@ -19,7 +19,7 @@ import { buildContextBlocks, buildSystemPrompt } from "./prompt";
 import { sourcesFromAnswer } from "./citations";
 import { expandQueries } from "./expand-query";
 import { isUnsupportedContextAnswer, resolveFinalOutcome } from "./outcome";
-import type { ProviderUsageRecord } from "./provider-usage";
+import type { ProviderUsageListener, ProviderUsageRecord } from "./provider-usage";
 
 import { resolveRagSettings, type RagSettings, type ResolvedRagSettings } from "./rag-settings";
 import {
@@ -32,6 +32,7 @@ import {
 import { rerank, type RerankResult } from "./rerank";
 import {
   checkOutputScope,
+  guardReplacement,
   isLongConversationalReply,
   riskReasons,
   type OutputGuardPlan,
@@ -65,6 +66,7 @@ import {
   isSocialProtocolTurn,
   isVagueHelpRequest,
   toChatMessages,
+  withHistoryAnswerData,
   type ChatHistoryMessage,
   type TurnKind,
 } from "./turn-plan";
@@ -241,7 +243,22 @@ async function runRetrieval(
  * Scope is not grounding: an in-scope question without a Knowledge match keeps the
  * normal fallback rather than a redirect.
  */
-export async function prepareAnswer(opts: {
+export async function prepareAnswer(opts: PrepareAnswerOptions): Promise<PreparedAnswer> {
+  const speculative: SpeculativeUsage = { run: null, recorded: false };
+  try {
+    return await prepareTurn(opts, speculative);
+  } catch (error) {
+    // First-turn retrieval never throws and was paid for even though the turn failed.
+    if (speculative.run && !speculative.recorded) {
+      for (const record of (await speculative.run).usages) opts.onUsage?.(record);
+    }
+    throw error;
+  }
+}
+
+type SpeculativeUsage = { run: Promise<RetrievalRun> | null; recorded: boolean };
+
+export type PrepareAnswerOptions = {
   db: Database;
   assistantId: string;
   /** Used only to describe the assistant in redirects and to the classifier. */
@@ -264,16 +281,24 @@ export async function prepareAnswer(opts: {
   outputGuard?: boolean;
   /** Answer basic profile questions from published key facts (PROFILE_ANSWER_ROUTE; defaults off). */
   profileAnswerRoute?: boolean;
+  /** Each provider sub-call's usage as soon as it completes (also returned in `providerUsages`). */
+  onUsage?: ProviderUsageListener;
   deps?: Partial<PrepareAnswerDeps>;
-}): Promise<PreparedAnswer> {
+};
+
+async function prepareTurn(opts: PrepareAnswerOptions, speculativeUsage: SpeculativeUsage): Promise<PreparedAnswer> {
   const started = Date.now();
   const rag = resolveRagSettings(opts.ragSettings);
   const providerUsages: ProviderUsageRecord[] = [];
+  const record = (...records: ProviderUsageRecord[]) => {
+    providerUsages.push(...records);
+    for (const item of records) opts.onUsage?.(item);
+  };
   const generate = opts.deps?.generateChat ?? generateChat;
   const history = opts.history ?? [];
   const messages = toChatMessages(history, opts.message);
   const chatUsage = (usage: ProviderUsageRecord["usage"], step: string) =>
-    providerUsages.push({
+    record({
       kind: "chat_completion",
       provider: opts.chat.provider,
       model: opts.chat.model,
@@ -295,6 +320,7 @@ export async function prepareAnswer(opts: {
   // First turn: retrieval on the raw message runs while the classifier decides.
   const speculative =
     usesClassifier && messages.length === 1 ? runRetrieval(opts.message, retrievalOpts) : null;
+  speculativeUsage.run = speculative;
 
   const [context, titles] = await Promise.all([
     (opts.deps?.loadAssistantContext ?? loadAssistantContext)(opts.db, opts.assistantId).catch(
@@ -348,8 +374,9 @@ export async function prepareAnswer(opts: {
       scope.plannerWaitMs = Math.max(0, plannerDoneAt - speculativeRun.finishedAt);
     }
     if (!use) {
-      if (!scope.retrievalDiscarded) providerUsages.push(...speculativeRun.usages);
+      if (!scope.retrievalDiscarded) record(...speculativeRun.usages);
       scope.retrievalDiscarded = true;
+      speculativeUsage.recorded = true;
     }
     return use ? speculativeRun : null;
   };
@@ -414,15 +441,58 @@ export async function prepareAnswer(opts: {
   const directReply = async (
     kind: "conversational" | "from_history",
     system: string,
+    replyMessages: ChatMessage[] = messages,
   ): Promise<PreparedAnswer | null> => {
     const [reply] = await Promise.all([
-      runGenerateChat(generate, { config: opts.chat, system, messages }),
+      runGenerateChat(generate, { config: opts.chat, system, messages: replyMessages }),
       speculative ? speculative.then((run) => (speculativeRun = run)) : null,
     ]);
     chatUsage(reply.usage, kind === "conversational" ? "conversational_reply" : "history_answer");
     if (kind === "from_history" && isHistoryLookupSentinel(reply.text)) return null;
     let text = reply.text.trim();
     if (!text) return null;
+    let outcome: MessageOutcome = kind === "conversational" ? "conversational" : "answered_from_history";
+    if (opts.outputGuard && kind === "from_history") {
+      const plan: OutputGuardPlan = {
+        reasons: riskReasons({
+          decision: turn.decision,
+          injectionSuspected: verdict.injectionSuspected,
+          contextSufficient: true,
+          confidence: "high",
+          mode: turn.decision === "unknown" ? "strict" : opts.mode,
+          history,
+        }),
+        purposeBlock: renderPurposeBlock(profile),
+        request: turn.request,
+        decision: turn.decision,
+        injectionSuspected: verdict.injectionSuspected,
+        redirect: templateRedirect(profile),
+      };
+      if (plan.reasons.length > 0) {
+        const check = await checkOutputScope({
+          purposeBlock: plan.purposeBlock,
+          request: plan.request,
+          answer: text,
+          chat: opts.chat,
+          requestAccepted: plan.decision !== "unknown",
+          generate,
+        });
+        chatUsage(check.usage, "output_scope_check");
+        const failClosed = check.onPurpose === null && (plan.decision === "unknown" || plan.injectionSuspected);
+        const passed = check.onPurpose === true || (check.onPurpose === null && !failClosed);
+        scope.outputGuard = {
+          gated: true,
+          reasons: plan.reasons,
+          method: "checker",
+          passed,
+          ...(check.onPurpose === null ? { unavailable: true } : {}),
+          ...(failClosed ? { failClosed: true } : {}),
+          ...(passed ? {} : { replaced: true }),
+          checkMs: check.ms,
+        };
+        if (!passed) ({ text, outcome } = guardReplacement(plan));
+      }
+    }
     if (opts.outputGuard && kind === "conversational" && isLongConversationalReply(text)) {
       const check = await checkOutputScope({
         purposeBlock: renderPurposeBlock(profile),
@@ -446,13 +516,7 @@ export async function prepareAnswer(opts: {
       if (!passed) text = purposeInvite(profile);
     }
     await settleSpeculative(false);
-    return skipped(
-      kind,
-      kind === "conversational" ? "conversational" : "answered_from_history",
-      text,
-      directDecision(kind === "from_history"),
-      { system },
-    );
+    return skipped(kind, outcome, text, directDecision(kind === "from_history"), { system });
   };
 
   let lookupAfterHistory = false;
@@ -467,7 +531,8 @@ export async function prepareAnswer(opts: {
   } else if (verdict.route === "from_history") {
     const reply = await directReply(
       "from_history",
-      buildHistoryAnswerPrompt(turn, ownerContext, history, opts.responseStyle),
+      buildHistoryAnswerPrompt(turn, ownerContext, opts.responseStyle),
+      withHistoryAnswerData(messages, history),
     );
     if (reply) return reply;
     lookupAfterHistory = true;
@@ -488,7 +553,8 @@ export async function prepareAnswer(opts: {
   // A partial turn retrieves only its in-scope part; the raw first-turn message would mix in the rest.
   const reused = await settleSpeculative(turn.decision !== "partial");
   const retrieval = reused ?? (await runRetrieval(query, retrievalOpts));
-  providerUsages.push(...retrieval.usages);
+  record(...retrieval.usages);
+  if (reused) speculativeUsage.recorded = true;
   const { retrieved, retrievalError, expansionMeta, rerankMeta } = retrieval;
 
   const effectiveMode: HallucinationMode = turn.decision === "unknown" ? "strict" : opts.mode;

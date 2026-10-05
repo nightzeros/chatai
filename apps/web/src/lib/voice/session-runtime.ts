@@ -119,8 +119,6 @@ export type VoiceTurn = {
   outputIndexAtCommentary: number | null;
   /** outputFragments index when the next turn started (end of this turn's speech). */
   outputIndexEnd: number | null;
-  /** Index of this turn's assistant entry in session.history. */
-  historyAssistantIndex: number | null;
   finalized: boolean;
   userMessageId: string | null;
   assistantMessageId: string | null;
