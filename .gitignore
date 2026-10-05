@@ -63,3 +63,4 @@ hubuntuChatai*
 # agents
 .agents
 .agents/*
+skills-lock.json
