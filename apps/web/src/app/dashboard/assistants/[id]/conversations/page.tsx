@@ -1,13 +1,21 @@
 import { notFound } from "next/navigation";
 
 import { ConversationList } from "@/components/conversations/conversation-list";
-import { listOwnedConversations } from "@/lib/conversations";
+import { parseConversationTypeFilter } from "@/lib/conversation-list";
+import { listOwnedConversationReviewItems } from "@/lib/conversations";
 import { requireSession } from "@/lib/session";
 
-export default async function ConversationsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ConversationsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ type?: string | string[] }>;
+}) {
   const session = await requireSession();
   const { id } = await params;
-  const conversations = await listOwnedConversations(session.user.id, id);
+  const filter = parseConversationTypeFilter((await searchParams).type);
+  const conversations = await listOwnedConversationReviewItems(session.user.id, id, filter);
   if (!conversations) {
     notFound();
   }
@@ -15,6 +23,7 @@ export default async function ConversationsPage({ params }: { params: Promise<{ 
   return (
     <ConversationList
       assistantId={id}
+      filter={filter}
       items={conversations.map((item) => ({
         ...item,
         createdAt: item.createdAt.toISOString(),

@@ -39,12 +39,14 @@ export function streamChat(opts: {
   config: ChatConfig;
   system: string;
   messages: ChatMessage[];
+  maxOutputTokens?: number;
 }): StreamChatResult {
   requireKey(opts.config);
   const result = streamText({
     model: createChatLanguageModel(opts.config),
     system: opts.system,
     messages: opts.messages,
+    ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
   });
 
   const usage = Promise.resolve(result.usage)
@@ -57,17 +59,25 @@ export function streamChat(opts: {
   };
 }
 
-export async function generateChat(opts: {
-  config: ChatConfig;
-  system: string;
-  prompt: string;
-}): Promise<GenerateChatResult> {
+export async function generateChat(
+  opts: {
+    config: ChatConfig;
+    system: string;
+    maxOutputTokens?: number;
+    abortSignal?: AbortSignal;
+  } & ({ prompt: string; messages?: undefined } | { messages: ChatMessage[]; prompt?: undefined }),
+): Promise<GenerateChatResult> {
   requireKey(opts.config);
-  const result = await generateText({
-    model: createChatLanguageModel(opts.config),
+  const model = createChatLanguageModel(opts.config);
+  const common = {
+    model,
     system: opts.system,
-    prompt: opts.prompt,
-  });
+    ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
+    ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+  };
+  const result = opts.messages
+    ? await generateText({ ...common, messages: opts.messages })
+    : await generateText({ ...common, prompt: opts.prompt });
   return {
     text: result.text.trim(),
     usage: normalizeLanguageModelUsage(result.usage),

@@ -92,6 +92,62 @@
       "when": 1788700000000,
       "tag": "0012_saas_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788800000000,
+      "tag": "0013_voice_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788900000000,
+      "tag": "0014_conversation_turn_outcomes",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789000000000,
+      "tag": "0015_voice_recording_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789100000000,
+      "tag": "0016_voice_usage_minutes",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789200000000,
+      "tag": "0017_message_audio_offset",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789300000000,
+      "tag": "0018_voice_control_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789400000000,
+      "tag": "0019_scope_outcome",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789500000000,
+      "tag": "0020_assistant_profile",
+      "breakpoints": true
     }
   ]
 }

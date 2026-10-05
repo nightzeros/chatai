@@ -8,17 +8,19 @@ import {
   getUsageSummary,
 } from "@/lib/hosting/usage-reports";
 import { requireSession } from "@/lib/session";
+import { getVoiceUsageReport } from "@/lib/voice/usage-report";
 
 export default async function UsagePage() {
   const session = await requireSession();
   const account = await getOrCreateHostingAccount(session.user.id);
 
-  const [summary, limits, byAssistant, byModel, recent] = await Promise.all([
+  const [summary, limits, byAssistant, byModel, recent, voice] = await Promise.all([
     getUsageSummary(account),
     getUsageLimits(account),
     getUsageByAssistant(account),
     getUsageByModel(account),
     getRecentUsageEvents(account, { limit: 50 }),
+    getVoiceUsageReport(account),
   ]);
 
   return (
@@ -28,6 +30,7 @@ export default async function UsagePage() {
       byAssistant={byAssistant}
       byModel={byModel}
       recent={recent.events}
+      voice={voice}
     />
   );
 }

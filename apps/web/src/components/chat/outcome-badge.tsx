@@ -9,10 +9,16 @@ const OUTCOME_LABEL: Record<MessageOutcome, string> = {
   retrieval_failure: "Retrieval failed",
   model_failure: "Model failed",
   processing_failure: "Processing failed",
+  conversational: "Conversational",
+  answered_from_history: "From conversation",
+  out_of_scope: "Redirected",
 };
 
 function outcomeClass(outcome: MessageOutcome) {
-  if (outcome === "answered_with_context") return "text-success";
+  if (outcome === "answered_with_context" || outcome === "answered_from_history") {
+    return "text-success";
+  }
+  if (outcome === "conversational" || outcome === "out_of_scope") return "text-muted-foreground";
   if (outcome === "low_confidence" || outcome === "fallback_no_context") {
     return "text-warning-foreground";
   }

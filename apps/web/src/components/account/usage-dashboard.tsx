@@ -21,8 +21,18 @@ import type {
   UsageSummary,
 } from "@/lib/hosting/usage-reports";
 import { cn } from "@/lib/utils";
+import { formatVoiceDuration, voiceMinutes } from "@/lib/voice/duration-format";
+import type { VoiceUsageReport } from "@/lib/voice/usage-report";
 
-function UsageMeter({ percent, tone }: { percent: number; tone: ReturnType<typeof usageBarTone> }) {
+function UsageMeter({
+  percent,
+  tone,
+  label = "Usage of period limit",
+}: {
+  percent: number;
+  tone: ReturnType<typeof usageBarTone>;
+  label?: string;
+}) {
   const width = Math.min(100, Math.max(0, percent));
   const barClass =
     tone === "danger"
@@ -38,11 +48,139 @@ function UsageMeter({ percent, tone }: { percent: number; tone: ReturnType<typeo
       aria-valuenow={Math.round(width)}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label="Usage of period limit"
+      aria-label={label}
     >
       <div className={cn("h-full rounded-full transition-[width]", barClass)} style={{ width: `${width}%` }} />
     </div>
   );
+}
+
+const VOICE_SOURCE_LABELS: Record<string, string> = {
+  widget: "Widget",
+  api: "API",
+  playground: "Playground",
+};
+
+function VoiceUsageSection({ voice }: { voice: VoiceUsageReport }) {
+  const percent = voice.usagePercent ?? 0;
+  const tone = voice.limitSeconds == null ? "default" : usageBarTone(percent);
+  const usedMinutes = voiceMinutes(voice.countedSeconds);
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+        Voice minutes
+      </h2>
+      <Card className="shadow-none">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Voice minutes this period</CardTitle>
+          <CardDescription>
+            {formatUsageDay(voice.periodStart)} – {formatUsageDay(voice.periodEnd)}
+            {voice.mode === "enforce"
+              ? null
+              : " · Measured only: Voice limits aren't enforced on this instance"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-2 text-sm">
+            <p className="tabular-nums text-foreground">
+              <span className="font-semibold">{usedMinutes.toLocaleString()} min</span>
+              <span className="text-muted-foreground">
+                {voice.limitSeconds == null
+                  ? " · Unlimited"
+                  : ` of ${voiceMinutes(voice.limitSeconds).toLocaleString()} min`}
+              </span>
+            </p>
+            {voice.usagePercent != null ? (
+              <p className="tabular-nums text-muted-foreground">{voice.usagePercent}% used</p>
+            ) : null}
+          </div>
+          {voice.limitSeconds != null ? (
+            <UsageMeter percent={percent} tone={tone} label="Voice minutes used" />
+          ) : null}
+          <div className="space-y-1 text-xs text-muted-foreground">
+            {voice.inProgressSessions > 0 ? (
+              <p>
+                {voice.inProgressSessions === 1
+                  ? "1 Voice session in progress"
+                  : `${voice.inProgressSessions} Voice sessions in progress`}
+                {voice.reservedSeconds > 0
+                  ? ` · ${formatVoiceDuration(voice.reservedSeconds)} held until they end`
+                  : null}
+              </p>
+            ) : null}
+            {voice.estimatedSeconds > 0 ? (
+              <p>
+                Includes {formatVoiceDuration(voice.estimatedSeconds)} estimated from sessions
+                interrupted by a server restart.
+              </p>
+            ) : null}
+            {voice.playgroundExempt && voice.playgroundSeconds > 0 ? (
+              <p>Playground testing isn&apos;t counted toward your Voice minutes.</p>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      {voice.sessionCount > 0 ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          <Card className="shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">By source</CardTitle>
+            </CardHeader>
+            <ul className="divide-y divide-border">
+              {voice.bySource.map((row) => (
+                <li
+                  key={`${row.source}:${row.quotaExempt}`}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
+                >
+                  <span className="flex flex-wrap items-center gap-2">
+                    {VOICE_SOURCE_LABELS[row.source] ?? row.source}
+                    {row.quotaExempt ? (
+                      <Badge variant="outline">Not counted toward quota</Badge>
+                    ) : null}
+                  </span>
+                  <span className="tabular-nums">{formatVoiceDuration(row.seconds)}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+          <Card className="shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">By assistant</CardTitle>
+            </CardHeader>
+            <ul className="divide-y divide-border">
+              {voice.byAssistant.map((row) => (
+                <li
+                  key={row.assistantId}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
+                >
+                  <Link
+                    href={`/dashboard/assistants/${row.assistantId}`}
+                    className="min-w-0 truncate font-medium hover:underline"
+                  >
+                    {row.assistantName ?? "Assistant"}
+                  </Link>
+                  <span className="shrink-0 tabular-nums">
+                    {formatVoiceDuration(row.seconds)}
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {row.sessions} {row.sessions === 1 ? "session" : "sessions"}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function voiceEventSeconds(event: UsageRecentEvent): number {
+  const seconds = event.metadata?.voiceSeconds;
+  return typeof seconds === "number" ? seconds : 0;
 }
 
 function statusBadge(status: UsageSummary["status"]) {
@@ -57,12 +195,14 @@ export function UsageDashboard({
   byAssistant,
   byModel,
   recent,
+  voice = null,
 }: {
   summary: UsageSummary;
   limits: UsageLimits;
   byAssistant: UsageByAssistantRow[];
   byModel: UsageByModelRow[];
   recent: UsageRecentEvent[];
+  voice?: VoiceUsageReport | null;
 }) {
   const tone = usageBarTone(summary.usagePercent);
   const statTone =
@@ -163,6 +303,23 @@ export function UsageDashboard({
           />
         </div>
       </section>
+
+      {voice && voice.mode === "enforce" && voice.usagePercent != null && voice.usagePercent >= 70 ? (
+        <Card className="border-warning/40 bg-warning/5 shadow-none">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6 text-sm">
+            <p>
+              {voice.usagePercent >= 100
+                ? "You've used all Voice minutes for this period. Voice calls are paused until your usage period resets or you upgrade."
+                : "You're approaching your Voice minutes for this period."}
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/dashboard/billing">Plans & billing</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {voice ? <VoiceUsageSection voice={voice} /> : null}
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Limits</h2>
@@ -306,21 +463,36 @@ export function UsageDashboard({
                   key={event.id}
                   className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-start sm:justify-between"
                 >
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="font-medium">
-                      <span className="capitalize">{event.operation.replaceAll("_", " ")}</span>
-                      <span className="text-muted-foreground"> · {event.provider}</span>
-                    </p>
-                    <p className="truncate font-mono text-xs text-muted-foreground">
-                      {event.model ?? "—"}
-                      {typeof event.metadata?.step === "string" ? ` · ${event.metadata.step}` : null}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {event.totalTokens.toLocaleString()} tokens · {event.billingMode} · {event.status}
-                    </p>
-                  </div>
+                  {event.operation === "voice_realtime" ? (
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="font-medium">Voice session</p>
+                      <p className="text-xs text-muted-foreground">
+                        {VOICE_SOURCE_LABELS[String(event.metadata?.source)] ?? "Voice"}
+                        {event.metadata?.quotaExempt === true ? " · not counted toward quota" : null}
+                        {event.metadata?.meteringStatus === "estimated" ? " · estimated" : null}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="font-medium">
+                        <span className="capitalize">{event.operation.replaceAll("_", " ")}</span>
+                        <span className="text-muted-foreground"> · {event.provider}</span>
+                      </p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">
+                        {event.model ?? "—"}
+                        {typeof event.metadata?.step === "string" ? ` · ${event.metadata.step}` : null}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {event.totalTokens.toLocaleString()} tokens · {event.billingMode} · {event.status}
+                      </p>
+                    </div>
+                  )}
                   <div className="shrink-0 text-right">
-                    <p className="font-medium tabular-nums">{formatUsdFromMicros(event.finalCostMicros)}</p>
+                    <p className="font-medium tabular-nums">
+                      {event.operation === "voice_realtime"
+                        ? formatVoiceDuration(voiceEventSeconds(event))
+                        : formatUsdFromMicros(event.finalCostMicros)}
+                    </p>
                     <time className="text-xs text-muted-foreground" dateTime={event.createdAt}>
                       {formatUsageDate(event.createdAt)}
                     </time>

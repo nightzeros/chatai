@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  answerRate,
   isAnsweredOutcome,
   isConfidenceOutcome,
+  isKnowledgeAnswerOutcome,
   isUnansweredOutcome,
   normalizeQuestion,
   toAnalyticsMetrics,
@@ -10,10 +12,21 @@ import {
 } from "./analytics-metrics";
 
 describe("analytics outcome semantics", () => {
-  it("counts only context-backed answers as answered", () => {
+  it("counts knowledge answers and history answers as answered, keeping them distinguishable", () => {
     expect(isAnsweredOutcome("answered_with_context")).toBe(true);
+    expect(isAnsweredOutcome("answered_from_history")).toBe(true);
+    expect(isKnowledgeAnswerOutcome("answered_with_context")).toBe(true);
+    expect(isKnowledgeAnswerOutcome("answered_from_history")).toBe(false);
     expect(isAnsweredOutcome("low_confidence")).toBe(false);
     expect(isAnsweredOutcome("fallback_no_context")).toBe(false);
+  });
+
+  it("keeps small talk out of answered, unanswered and the answer rate", () => {
+    expect(isAnsweredOutcome("conversational")).toBe(false);
+    expect(isUnansweredOutcome("conversational")).toBe(false);
+    expect(isConfidenceOutcome("conversational")).toBe(false);
+    expect(answerRate(3, 1)).toBe(0.75);
+    expect(answerRate(0, 0)).toBeNull();
   });
 
   it("treats fallback_no_context as an unanswered knowledge gap, not a successful answer", () => {
@@ -51,8 +64,10 @@ describe("toAnalyticsMetrics", () => {
       toAnalyticsMetrics({
         totalConversations: "3",
         totalQuestions: "8",
-        answered: "5",
+        answeredWithContext: "4",
+        answeredFromHistory: "1",
         unanswered: "2",
+        conversational: "1",
         positiveFeedback: "4",
         negativeFeedback: "1",
         averageConfidence: "0.82354",
@@ -62,7 +77,11 @@ describe("toAnalyticsMetrics", () => {
       totalConversations: 3,
       totalQuestions: 8,
       answered: 5,
+      answeredWithContext: 4,
+      answeredFromHistory: 1,
       unanswered: 2,
+      conversational: 1,
+      answerRate: 0.714,
       positiveFeedback: 4,
       negativeFeedback: 1,
       averageConfidence: 0.824,
@@ -75,8 +94,10 @@ describe("toAnalyticsMetrics", () => {
       toAnalyticsMetrics({
         totalConversations: 0,
         totalQuestions: 0,
-        answered: 0,
+        answeredWithContext: 0,
+        answeredFromHistory: 0,
         unanswered: 0,
+        conversational: 0,
         positiveFeedback: 0,
         negativeFeedback: 0,
         averageConfidence: null,
@@ -84,6 +105,7 @@ describe("toAnalyticsMetrics", () => {
       }),
     ).toMatchObject({
       totalConversations: 0,
+      answerRate: null,
       averageConfidence: null,
       averageResponseMs: null,
     });

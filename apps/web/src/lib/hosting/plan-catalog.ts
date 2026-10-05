@@ -25,6 +25,12 @@ export type PlanCatalogEntry = {
   monthlyRequestCap: number;
   evalsEnabled: boolean;
   teamReady: boolean;
+  /**
+   * Provisional Voice allowance (development configuration, not commercial pricing;
+   * not shown in marketing copy). null = unlimited, 0 = not included.
+   */
+  voiceMinutesMonthly: number | null;
+  maxConcurrentVoiceSessions: number | null;
 };
 
 export const PLAN_CATALOG: Record<HostingPlanCode, PlanCatalogEntry> = {
@@ -44,6 +50,8 @@ export const PLAN_CATALOG: Record<HostingPlanCode, PlanCatalogEntry> = {
     monthlyRequestCap: 75,
     evalsEnabled: false,
     teamReady: false,
+    voiceMinutesMonthly: 10,
+    maxConcurrentVoiceSessions: 1,
   },
   starter: {
     planCode: "starter",
@@ -61,6 +69,8 @@ export const PLAN_CATALOG: Record<HostingPlanCode, PlanCatalogEntry> = {
     monthlyRequestCap: 2000,
     evalsEnabled: false,
     teamReady: false,
+    voiceMinutesMonthly: 120,
+    maxConcurrentVoiceSessions: 2,
   },
   pro: {
     planCode: "pro",
@@ -78,6 +88,8 @@ export const PLAN_CATALOG: Record<HostingPlanCode, PlanCatalogEntry> = {
     monthlyRequestCap: 15000,
     evalsEnabled: true,
     teamReady: false,
+    voiceMinutesMonthly: 600,
+    maxConcurrentVoiceSessions: 5,
   },
   business: {
     planCode: "business",
@@ -95,6 +107,8 @@ export const PLAN_CATALOG: Record<HostingPlanCode, PlanCatalogEntry> = {
     monthlyRequestCap: 50000,
     evalsEnabled: true,
     teamReady: true,
+    voiceMinutesMonthly: 2000,
+    maxConcurrentVoiceSessions: 10,
   },
 };
 

@@ -1,4 +1,13 @@
-import { createDb, assistants, documents, eq, ingestJobs, sql } from "@chatai/database";
+import {
+  assistants,
+  checkDatabaseUrlPair,
+  createDb,
+  documents,
+  eq,
+  ingestJobs,
+  sources,
+  sql,
+} from "@chatai/database";
 
 import { ingestDocument, syncSource } from "@chatai/rag";
 
@@ -13,6 +22,7 @@ import {
 } from "@/lib/hosting/usage-gate";
 import { isUsageLimitExceededError, UsageLimitExceededError } from "@/lib/hosting/usage-limit-error";
 import { createId } from "@/lib/ids";
+import { onKnowledgeChanged } from "@/lib/profile/jobs";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
@@ -34,6 +44,10 @@ function workerDb() {
   const url = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
   if (!url) {
     throw new Error("DATABASE_URL is required for the ingest worker.");
+  }
+  const mismatch = checkDatabaseUrlPair(env.DATABASE_URL, env.DATABASE_URL_UNPOOLED);
+  if (mismatch) {
+    console.error(`[ingest-worker] ${mismatch.reason} Ingestion will not reach the app's database.`);
   }
   workerClient = createDb(url, { max: 1 });
   return workerClient;
@@ -188,7 +202,29 @@ async function processOnce() {
     console.error(`[ingest] ${target} failed:`, message);
   }
 
+  await notifyKnowledgeChanged(db, job);
   return true;
+}
+
+/** Debounced Key-facts refresh for assistants with published facts; never throws. */
+async function notifyKnowledgeChanged(
+  db: ReturnType<typeof createDb>,
+  job: { kind: string; documentId: string | null; sourceId: string | null },
+): Promise<void> {
+  try {
+    const [row] = job.documentId
+      ? await db
+          .select({ assistantId: documents.assistantId })
+          .from(documents)
+          .where(eq(documents.id, job.documentId))
+          .limit(1)
+      : job.sourceId
+        ? await db.select({ assistantId: sources.assistantId }).from(sources).where(eq(sources.id, job.sourceId)).limit(1)
+        : [];
+    if (row) await onKnowledgeChanged(db, row.assistantId);
+  } catch {
+    // Profile refresh is best-effort.
+  }
 }
 
 export function startIngestWorker() {

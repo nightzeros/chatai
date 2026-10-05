@@ -24,6 +24,10 @@ vi.mock("./entitlements", () => ({
   resolveEffectiveLimitMicros: vi.fn(async () => 5_000_000),
 }));
 
+vi.mock("./plan-entitlements", () => ({
+  resolveVoiceSecondsLimit: vi.fn(async () => 36_000),
+}));
+
 describe("remainingMicros / usagePercent", () => {
   it("computes remaining and percent from balance counters", async () => {
     const { remainingMicros, usagePercent } = await import("./period-balance");
@@ -130,6 +134,7 @@ describe("getOrCreateUsagePeriodBalance", () => {
         consumedMicros: 0,
         reservedMicros: 0,
         requestCount: 0,
+        voiceSecondsLimit: 36_000,
       }),
     );
     expect(balance.id).toBe("balance-1");

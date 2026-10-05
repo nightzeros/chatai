@@ -33,6 +33,8 @@ function prepared(overrides: Partial<PreparedAnswer> = {}): PreparedAnswer {
     system: "You are a helpful assistant.",
     shouldGenerate: true,
     fallbackText: FALLBACK_MESSAGE,
+    messages: [{ role: "user", content: "What is the refund policy?" }],
+    turn: { kind: "knowledge", retrieval: "performed" },
     debug: {},
     providerUsages: [],
     ...overrides,
@@ -90,6 +92,28 @@ describe("generateVerifiedAnswer", () => {
     expect(generateChat).toHaveBeenCalledTimes(2);
   });
 
+  it("generates with the prepared conversation history", async () => {
+    const generateChat = vi
+      .fn()
+      .mockResolvedValueOnce("Refunds are available within 30 days [1].")
+      .mockResolvedValueOnce('{"pass":true,"reason":"Supported."}');
+    const messages = [
+      { role: "user" as const, content: "Do you sell gift cards?" },
+      { role: "assistant" as const, content: "Yes." },
+      { role: "user" as const, content: "Can I return them?" },
+    ];
+
+    await generateVerifiedAnswer({
+      prepared: prepared({ messages }),
+      question: "Can I return them?",
+      chat: { apiKey: "test", baseURL: "https://example.com/v1", model: "test" },
+      deps: { generateChat },
+    });
+
+    expect(generateChat.mock.calls[0]?.[0]).toMatchObject({ messages });
+    expect(generateChat.mock.calls[0]?.[0]?.prompt).toBeUndefined();
+  });
+
   it("regenerates once after a failed first verdict", async () => {
     const generateChat = vi
       .fn()
@@ -108,6 +132,26 @@ describe("generateVerifiedAnswer", () => {
     expect(result.verifier).toMatchObject({ passed: true, regenerated: true });
     expect(result.text).toContain("30 days");
     expect(generateChat).toHaveBeenCalledTimes(4);
+  });
+
+  it("a retry that throws still reports the draft and verdict usage already incurred", async () => {
+    const generateChat = vi
+      .fn()
+      .mockResolvedValueOnce("We offer lifetime refunds.")
+      .mockResolvedValueOnce('{"pass":false,"reason":"Not in sources."}')
+      .mockRejectedValueOnce(new Error("provider 500"));
+    const reported: Array<{ step?: string }> = [];
+
+    await expect(
+      generateVerifiedAnswer({
+        prepared: prepared(),
+        question: "What is the refund policy?",
+        chat: { apiKey: "test", baseURL: "https://example.com/v1", model: "test" },
+        onUsage: (record) => reported.push(record),
+        deps: { generateChat },
+      }),
+    ).rejects.toThrow("provider 500");
+    expect(reported.map((record) => record.step)).toEqual(["verified_answer", "verify_answer"]);
   });
 
   it("falls back when the retry also fails verification", async () => {

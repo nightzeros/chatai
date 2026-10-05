@@ -23,6 +23,8 @@ describe("buildConversationExport", () => {
           outcome: null,
           feedback: null,
           confidence: null,
+          modality: "text",
+          wasInterrupted: false,
           createdAt: new Date("2026-08-20T12:00:01.000Z"),
         },
         {
@@ -33,6 +35,8 @@ describe("buildConversationExport", () => {
           outcome: "answered_with_context",
           feedback: "positive",
           confidence: 0.9,
+          modality: "voice",
+          wasInterrupted: false,
           createdAt: new Date("2026-08-20T12:00:02.000Z"),
         },
       ],

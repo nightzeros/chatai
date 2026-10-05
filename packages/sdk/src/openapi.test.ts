@@ -56,6 +56,46 @@ describe("getOpenApiDocument", () => {
     );
   });
 
+  it("documents Voice usage refusals and endReason additively", () => {
+    const paths = (doc.paths ?? {}) as Record<string, Record<string, unknown>>;
+    const mint = paths["/api/v1/voice/sessions"]?.post as {
+      responses: Record<string, { content: Record<string, { schema: unknown }> }>;
+    };
+    expect(Object.keys(mint.responses)).toEqual(expect.arrayContaining(["402", "429"]));
+    const refusal = JSON.stringify(mint.responses["402"]?.content["application/json"]?.schema);
+    expect(refusal).toContain("voice_minutes_exhausted");
+    expect(refusal).toContain("voice_concurrency_limit");
+
+    const end = paths["/api/v1/voice/sessions/{sessionId}/end"]?.post as {
+      responses: Record<string, { content: Record<string, { schema: { required?: string[]; properties?: Record<string, unknown> } }> }>;
+    };
+    const endSchema = end.responses["200"]?.content["application/json"]?.schema;
+    expect(endSchema?.properties).toHaveProperty("endReason");
+    expect(endSchema?.required ?? []).not.toContain("endReason");
+    expect(JSON.stringify(endSchema?.properties?.endReason)).toContain("voice_unavailable");
+
+    const widgetRefusal = JSON.stringify(mint.responses["403"]?.content["application/json"]?.schema);
+    expect(widgetRefusal).toContain("voice_unavailable");
+  });
+
+  it("documents the Voice control heartbeat additively", () => {
+    const paths = (doc.paths ?? {}) as Record<string, Record<string, unknown>>;
+    const heartbeat = paths["/api/v1/voice/sessions/{sessionId}/heartbeat"]?.post as {
+      responses: Record<string, { content: Record<string, { schema: unknown }> }>;
+    };
+    expect(Object.keys(heartbeat.responses)).toEqual(expect.arrayContaining(["200", "404", "421", "429"]));
+    expect(JSON.stringify(heartbeat.responses["200"]?.content["application/json"]?.schema)).toContain("degraded");
+
+    const mint = paths["/api/v1/voice/sessions"]?.post as {
+      requestBody: { content: Record<string, { schema: { properties?: Record<string, unknown> } }> };
+      responses: Record<string, { content: Record<string, { schema: { required?: string[]; properties?: Record<string, unknown> } }> }>;
+    };
+    expect(mint.requestBody.content["application/json"]?.schema.properties).toHaveProperty("capabilities");
+    const created = mint.responses["200"]?.content["application/json"]?.schema;
+    expect(created?.properties).toHaveProperty("controlToken");
+    expect(created?.required ?? []).not.toContain("controlToken");
+  });
+
   it("registers bearer auth", () => {
     expect(doc.components?.securitySchemes).toHaveProperty("bearerAuth");
   });

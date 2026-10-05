@@ -14,6 +14,12 @@ export async function register() {
       console.error("[eval] failed to start worker:", error);
     }
     try {
+      const { startProfileWorker } = await import("./lib/profile/worker");
+      startProfileWorker();
+    } catch (error) {
+      console.error("[profile] failed to start worker:", error);
+    }
+    try {
       const { startPrivacyWorker } = await import("./lib/privacy/retention-worker");
       startPrivacyWorker();
     } catch (error) {
@@ -24,6 +30,12 @@ export async function register() {
       startUsageReconcileWorker();
     } catch (error) {
       console.error("[usage] failed to start stale reconciler:", error);
+    }
+    try {
+      const { startVoiceRuntime } = await import("./lib/voice/boot");
+      startVoiceRuntime();
+    } catch (error) {
+      console.error("[voice] failed to set up the Voice runtime:", error instanceof Error ? error.message : error);
     }
   }
 }

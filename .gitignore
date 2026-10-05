@@ -22,6 +22,7 @@ examples/html-widget/chat.js
 uploads
 apps/web/uploads
 .tmp
+.voice-recording-spool
 
 # e2e generated static fixtures (from scripts/seed-e2e.mjs)
 apps/web/public/e2e/
@@ -58,3 +59,8 @@ chatai
 chatai*
 hubuntuChatai
 hubuntuChatai*
+
+# agents
+.agents
+.agents/*
+skills-lock.json

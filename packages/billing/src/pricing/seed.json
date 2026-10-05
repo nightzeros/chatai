@@ -277,5 +277,23 @@
     "priceMicrosPerUnit": 0,
     "unit": "per_million_tokens",
     "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_gpt_live_1_voice",
+    "provider": "openai",
+    "model": "gpt-live-1",
+    "operation": "voice_realtime",
+    "priceMicrosPerUnit": 50000,
+    "unit": "per_minute",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "mp_openai_voice_default",
+    "provider": "openai",
+    "model": "*",
+    "operation": "voice_realtime",
+    "priceMicrosPerUnit": 50000,
+    "unit": "per_minute",
+    "effectiveFrom": "2026-01-01T00:00:00.000Z"
   }
 ]

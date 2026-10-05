@@ -15,8 +15,10 @@ type UnansweredQuestionRow = {
 type AnalyticsMetricsRow = {
   totalConversations: number | string;
   totalQuestions: number | string;
-  answered: number | string;
+  answeredWithContext: number | string;
+  answeredFromHistory: number | string;
   unanswered: number | string;
+  conversational: number | string;
   positiveFeedback: number | string;
   negativeFeedback: number | string;
   averageConfidence: number | string | null;
@@ -38,8 +40,10 @@ async function getAssistantAnalytics(assistantId: string) {
     SELECT
       (SELECT cast(count(*) AS int) FROM conversations WHERE assistant_id = ${assistantId}) AS "totalConversations",
       cast(count(*) FILTER (WHERE m.role = 'user') AS int) AS "totalQuestions",
-      cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome = 'answered_with_context') AS int) AS "answered",
+      cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome = 'answered_with_context') AS int) AS "answeredWithContext",
+      cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome = 'answered_from_history') AS int) AS "answeredFromHistory",
       cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome IN ('fallback_no_context', 'low_confidence')) AS int) AS "unanswered",
+      cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome = 'conversational') AS int) AS "conversational",
       cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.feedback = 'positive') AS int) AS "positiveFeedback",
       cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.feedback = 'negative') AS int) AS "negativeFeedback",
       avg(m.confidence) FILTER (
@@ -87,8 +91,10 @@ async function getAssistantAnalytics(assistantId: string) {
       metricsRow ?? {
         totalConversations: 0,
         totalQuestions: 0,
-        answered: 0,
+        answeredWithContext: 0,
+        answeredFromHistory: 0,
         unanswered: 0,
+        conversational: 0,
         positiveFeedback: 0,
         negativeFeedback: 0,
         averageConfidence: null,

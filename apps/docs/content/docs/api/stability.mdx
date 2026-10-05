@@ -10,10 +10,17 @@ ChatAI **v1.0** freezes the public HTTP API under `/api/v1`. The OpenAPI documen
 | Area | Routes | Auth |
 | --- | --- | --- |
 | Chat | `POST /api/v1/chat` | Bearer key **or** keyless widget/playground |
+| Voice | `POST /api/v1/voice/sessions`, `POST /api/v1/voice/sessions/{sessionId}/end`, `POST /api/v1/voice/sessions/{sessionId}/heartbeat` | Bearer key (`voice` scope) **or** keyless widget/playground (same SecurityPolicy as chat); heartbeat: session `controlToken` only |
 | Owner REST | `/api/v1/assistants`, documents, conversations, analytics | Bearer `sk_live_…` |
 | Widget | `GET …/config`, `POST /api/v1/feedback`, `POST /api/v1/widget/sign` | Keyless (domain allowlist + rate limits) |
 
-Dashboard-only routes under `/api/assistants/*` (uploads, evals, sources) are **not** part of the v1 contract. Integrations should use `/api/v1/*` only.
+Voice recording is additive: `POST /api/v1/voice/sessions` accepts an optional `recordingConsent` and returns `recording`. When a session would be recorded and consent is required (always for widget/playground, and for API keys when the assistant requires it), a request without `recordingConsent: true` is rejected with `400`. Recording playback is dashboard-only.
+
+Voice minutes are additive. `POST /api/v1/voice/sessions` can return `402` (`reason: "voice_minutes_exhausted"`) when the account's Voice minutes for the period are used up, and `429` with `reason: "voice_concurrency_limit"` when too many Voice sessions are active (a plain `429` without `reason` is still the request rate limit). `POST /api/v1/voice/sessions/{sessionId}/end` may return `endReason`: `usage_limit` when ChatAI closed the call at the end of the account's allowance, `superseded` when a newer widget session from the same visitor replaced it, otherwise `null`. Widget (keyless, public) callers never receive usage reasons: mint refusals are `403` with `reason: "voice_unavailable"`, and a usage-limit end is reported as `endReason: "voice_unavailable"`. `POST /api/v1/chat` accepts an optional `voiceUnavailable: true`, which the widget sends after such an end so the assistant can answer "why did the voice end?" neutrally; it carries no reason and is not stored. After ChatAI ends a session, the end endpoint still answers for a short time with the final result. The dashboard usage summary (`GET /api/v1/account/usage/summary`, dashboard session only, not in the OpenAPI spec) includes a `voice` object with seconds used, limit, reserved and Playground seconds.
+
+Voice call supervision is additive. A mint request may declare `capabilities: ["heartbeat"]`; the response then includes a session-scoped `controlToken` and `heartbeatIntervalMs`, and the client posts `{ token }` to `POST /api/v1/voice/sessions/{sessionId}/heartbeat`. The heartbeat answers `healthy`, `degraded` (ChatAI is reconnecting to the provider; heartbeat every `nextHeartbeatMs`), `ended` or `lost`; `421` means the request reached a different server than the one running the call. Only clients that declare the capability are ended when heartbeats stop (after 45 s). `endReason` gains `idle`, `max_duration`, `heartbeat_lost` and `control_lost`; widget callers see `heartbeat_lost` and `control_lost` as `disconnected`. The browser's data channel cannot send control events to the provider session; if the provider does not confirm this restriction, the mint fails with `502` and `reason: "voice_unavailable"`.
+
+Dashboard-only routes under `/api/assistants/*` (uploads, evals, sources, Voice recording playback) are **not** part of the v1 contract. Integrations should use `/api/v1/*` only.
 
 ## Semver rules (API)
 

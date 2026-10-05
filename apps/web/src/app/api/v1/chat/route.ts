@@ -1,7 +1,6 @@
-import { streamChat } from "@chatai/ai";
+import { generateChat, streamChat } from "@chatai/ai";
 import {
   assistants,
-  asc,
   conversations,
   eq,
   messages,
@@ -9,10 +8,11 @@ import {
 } from "@chatai/database";
 import {
   finalizeAnswer,
-  generateVerifiedAnswer,
+  generateGuardedAnswer,
   prepareAnswer,
   resolveRagSettings,
-  withVerifierResult,
+  type ChatHistoryMessage,
+  type ProviderUsageRecord,
 } from "@chatai/rag/answer";
 import { enqueueOnlineEvalJob, shouldSampleEval } from "@chatai/evals";
 import { z } from "zod";
@@ -23,6 +23,11 @@ import { getOwnedAssistantByRef } from "@/lib/assistants";
 import { authorizeV1 } from "@/lib/authorize-v1";
 
 import { startEvalWorker } from "@/lib/eval-worker";
+import {
+  clientHistorySchema,
+  fromClientHistory,
+  loadRecentConversationHistory,
+} from "@/lib/conversation-history";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -36,6 +41,11 @@ import {
   finishChatUsageReservation,
 } from "@/lib/hosting/usage-gate";
 import { createId } from "@/lib/ids";
+import {
+  isPublicVisitor,
+  resolveChatSource,
+  VISITOR_UNAVAILABLE_MESSAGE,
+} from "@/lib/policies/chat-source";
 import { policyViolationResponse } from "@/lib/policies/policy-response";
 import { SecurityPolicy } from "@/lib/policies/security-policy";
 import { shouldPersistChatTranscript } from "@/lib/privacy/should-persist-chat";
@@ -49,6 +59,10 @@ const bodySchema = z.object({
   message: z.string().trim().min(1, "message is required").max(4000),
   visitorId: z.string().min(1).max(80).optional(),
   source: z.enum(["playground", "widget", "api"]).optional(),
+  /** Recent turns held by the client; used when the server stores no transcript. */
+  history: clientHistorySchema.optional(),
+  /** Voice became unavailable earlier in this conversation (neutral; no reason is sent). */
+  voiceUnavailable: z.boolean().optional(),
 });
 
 export async function OPTIONS() {
@@ -69,11 +83,11 @@ export async function POST(request: Request) {
   }
 
   const input = parsed.data;
-  const source: ConversationSource = input.source ?? "api";
   const started = Date.now();
+  const apiKey = usesApiKeyAuth(request);
 
   let assistant;
-  if (usesApiKeyAuth(request)) {
+  if (apiKey) {
     const auth = await authorizeV1(request, ["chat"]);
     if (!auth.ok) {
       return jsonWithCors({ error: auth.error }, { status: auth.status });
@@ -104,13 +118,15 @@ export async function POST(request: Request) {
     return jsonWithCors({ error: "Assistant not found." }, { status: 404 });
   }
 
-  const hostingAccount = await resolveBillableAccountForAssistant(assistant);
-  const hostingAccess = checkHostingAccountAccess(hostingAccount);
-  if (!hostingAccess.ok) {
-    return jsonWithCors({ error: hostingAccess.error }, { status: hostingAccess.status });
-  }
+  const session = !apiKey && input.source === "playground" ? await getSession() : null;
+  const source: ConversationSource = resolveChatSource({
+    claimed: input.source,
+    apiKey,
+    ownerSession: Boolean(session?.user.id) && session?.user.id === assistant.userId,
+  });
+  const visitor = isPublicVisitor({ apiKey, source });
 
-  if (!usesApiKeyAuth(request)) {
+  if (!apiKey) {
     const security = SecurityPolicy.fromAssistant(assistant, env);
     const violation = await security.enforceWidgetRequest(request, {
       visitorId: input.visitorId,
@@ -122,8 +138,15 @@ export async function POST(request: Request) {
     }
   }
 
-  const session = await getSession();
-  const includeDebug = input.source === "playground" && session?.user.id === assistant.userId;
+  const hostingAccount = await resolveBillableAccountForAssistant(assistant);
+  const hostingAccess = checkHostingAccountAccess(hostingAccount);
+  if (!hostingAccess.ok) {
+    return visitor
+      ? jsonWithCors({ error: VISITOR_UNAVAILABLE_MESSAGE }, { status: 403 })
+      : jsonWithCors({ error: hostingAccess.error }, { status: hostingAccess.status });
+  }
+
+  const includeDebug = source === "playground";
   const persist = shouldPersistChatTranscript({
     assistant,
     source,
@@ -132,7 +155,7 @@ export async function POST(request: Request) {
   });
 
   let conversationId = input.conversationId ?? createId();
-  let history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  let history: ChatHistoryMessage[] = [];
 
   if (persist) {
     if (input.conversationId) {
@@ -155,24 +178,13 @@ export async function POST(request: Request) {
       });
     }
 
-    const prior = await db()
-      .select({
-        role: messages.role,
-        content: messages.content,
-      })
-      .from(messages)
-      .where(eq(messages.conversationId, conversationId))
-      .orderBy(asc(messages.createdAt));
-
-    history = prior
-      .filter((row) => row.role === "user" || row.role === "assistant")
-      .map((row) => ({
-        role: row.role as "user" | "assistant",
-        content: row.content,
-      }));
+    // Stored turns only: client-held turns (e.g. unsaved Voice) never become history
+    // for a stored conversation.
+    history = await loadRecentConversationHistory(conversationId);
   } else {
     // Ephemeral id for the SSE response only — nothing is written.
     conversationId = createId();
+    history = fromClientHistory(input.history);
   }
 
   const userMessageId = createId();
@@ -197,33 +209,61 @@ export async function POST(request: Request) {
     embedding: models.embedding,
     billing: models.billing,
     message: input.message,
-    hasHistory: history.length > 0,
+    historyChars: history.reduce((sum, item) => sum + item.content.length, 0),
     queryExpansionEnabled: rag.queryExpansion,
     rerankEnabled: rag.rerank,
     verifyCitationsEnabled: rag.guardrails.verifyCitations,
     hasCohereKey: Boolean(env.COHERE_API_KEY),
+    outputScopeCheck: env.OUTPUT_SCOPE_CHECK,
     source,
   });
 
   if (!gate.ok) {
-    return jsonWithCors(
-      { error: gate.error, reason: gate.reason },
-      { status: gate.status },
-    );
+    return visitor
+      ? jsonWithCors({ error: VISITOR_UNAVAILABLE_MESSAGE }, { status: 403 })
+      : jsonWithCors({ error: gate.error, reason: gate.reason }, { status: gate.status });
   }
 
   const reservation = gate.reservation;
+  const outputCap = models.billing.chat === "hosted" ? { maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS } : {};
   const encoder = new TextEncoder();
   const assistantMessageId = createId();
+  const accrued: ProviderUsageRecord[] = [];
+  const onUsage = (record: ProviderUsageRecord) => accrued.push(record);
+  let usageSettled = false;
+  let disconnected = false;
+  const settleUsage = (records: ProviderUsageRecord[], failed: boolean) =>
+    finishChatUsageReservation({
+      reservation,
+      accountId: hostingAccount.id,
+      assistantId: assistant.id,
+      requestId: usageRequestId,
+      source,
+      visitorId: input.visitorId,
+      records,
+      billing: models.billing,
+      failed,
+    });
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (payload: unknown) => controller.enqueue(encoder.encode(sseLine(payload)));
+      // A client that goes away does not abort the turn: it still completes, is
+      // persisted and settles its usage once.
+      const send = (payload: unknown) => {
+        if (disconnected) return;
+        try {
+          controller.enqueue(encoder.encode(sseLine(payload)));
+        } catch {
+          disconnected = true;
+        }
+      };
 
       try {
-        let prepared = await prepareAnswer({
+        const initial = await prepareAnswer({
           db: db(),
           assistantId: assistant.id,
+          assistantName: assistant.name,
+          assistantDescription: assistant.description,
           instructions: assistant.instructions,
           mode: assistant.hallucinationMode,
           message: input.message,
@@ -233,60 +273,41 @@ export async function POST(request: Request) {
 
           ragSettings: assistant.ragSettings,
           cohereApiKey: env.COHERE_API_KEY ?? null,
+          voiceUnavailable: input.voiceUnavailable === true,
+          outputGuard: env.OUTPUT_SCOPE_CHECK,
+          profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
+          onUsage,
         });
 
-        let fullText = prepared.fallbackText;
-        let answerUsages = [...prepared.providerUsages];
-
-        if (!prepared.shouldGenerate) {
-          send({ type: "token", text: prepared.fallbackText });
-        } else if (rag.guardrails.verifyCitations) {
-          const verified = await generateVerifiedAnswer({
-            prepared,
-            question: input.message,
-            chat: models.chat,
-
-          });
-          prepared = withVerifierResult(prepared, verified);
-          fullText = verified.text;
-          answerUsages = prepared.providerUsages;
-          send({ type: "token", text: fullText });
-        } else {
-          fullText = "";
-          const result = streamChat({
-            config: models.chat,
-            system: prepared.system,
-            messages: [{ role: "user", content: input.message }],
-          });
-
-          for await (const delta of result.textStream) {
-            fullText += delta;
-            send({ type: "token", text: delta });
-          }
-
-          const streamUsage = await result.usage;
-          answerUsages = [
-            ...prepared.providerUsages,
-            {
-              kind: "chat_completion",
-              provider: models.chat.provider,
-              model: models.chat.model,
-              usage: streamUsage,
-              step: "stream_answer",
-            },
-          ];
-        }
-
-        await finishChatUsageReservation({
-          reservation,
-          accountId: hostingAccount.id,
-          assistantId: assistant.id,
-          requestId: usageRequestId,
-          source,
-          visitorId: input.visitorId,
-          records: answerUsages,
-          billing: models.billing,
+        const generated = await generateGuardedAnswer({
+          prepared: initial,
+          question: input.message,
+          chat: models.chat,
+          verifyCitations: rag.guardrails.verifyCitations,
+          outputGuard: env.OUTPUT_SCOPE_CHECK,
+          generate: async ({ system, messages: chatMessages }) => {
+            const result = await generateChat({ config: models.chat, system, messages: chatMessages, ...outputCap });
+            return { text: result.text, usage: result.usage };
+          },
+          stream: async ({ system, messages: chatMessages }, onDelta) => {
+            let text = "";
+            const result = streamChat({ config: models.chat, system, messages: chatMessages, ...outputCap });
+            for await (const delta of result.textStream) {
+              text += delta;
+              onDelta(delta);
+            }
+            return { text, usage: await result.usage };
+          },
+          onDelta: (text) => send({ type: "token", text }),
+          onUsage,
         });
+        const prepared = generated.prepared;
+        const fullText = generated.text;
+        const answerUsages = generated.usages;
+        if (!generated.streamed) send({ type: "token", text: fullText });
+
+        usageSettled = true;
+        await settleUsage(answerUsages, false);
 
         const latencyMs = Date.now() - started;
         const final = finalizeAnswer(fullText, {
@@ -326,10 +347,15 @@ export async function POST(request: Request) {
           confidence: final.confidence,
           outcome: final.outcome,
           debug: final.debug,
-        }, source, includeDebug));
+        }, includeDebug));
         send({ type: "done" });
       } catch (error) {
-        await abortChatUsageReservation(reservation);
+        if (!usageSettled) {
+          usageSettled = true;
+          await (accrued.length > 0 ? settleUsage(accrued, true) : abortChatUsageReservation(reservation)).catch(
+            (settleError: unknown) => console.error("[chat] usage settlement failed:", settleError),
+          );
+        }
 
         const message = error instanceof Error ? error.message : "Model failed.";
         const latencyMs = Date.now() - started;
@@ -356,11 +382,14 @@ export async function POST(request: Request) {
           confidence: 0,
           outcome: "model_failure",
           debug: { error: message },
-        }, source, includeDebug));
+        }, includeDebug));
         send({ type: "done" });
       } finally {
-        controller.close();
+        if (!disconnected) controller.close();
       }
+    },
+    cancel() {
+      disconnected = true;
     },
   });
 

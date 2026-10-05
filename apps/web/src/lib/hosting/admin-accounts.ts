@@ -18,6 +18,7 @@ import {
 import { nextLimitOverrideAfterCredit } from "./admin-credit";
 import { resolveEffectiveLimitMicros } from "./entitlements";
 import { getOrCreateUsagePeriodBalance } from "./period-balance";
+import { resolveVoiceSecondsLimit } from "./plan-entitlements";
 
 export type AdminAccountListRow = {
   id: string;
@@ -31,6 +32,14 @@ export type AdminAccountListRow = {
   periodReservedMicros: number;
   periodLimitMicros: number | null;
   periodRequestCount: number;
+  /** Customer Voice seconds measured this period (all sources, incl. exempt Playground). */
+  periodVoiceSeconds: number;
+  /** Voice seconds counted against the entitlement (enforce mode). */
+  periodVoiceSecondsConsumed: number;
+  periodVoiceSecondsLimit: number | null;
+  /** Operator-only: provider billable seconds and cost from the Voice ledger. */
+  periodVoiceProviderSeconds: number;
+  periodVoiceProviderCostMicros: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -54,6 +63,11 @@ export async function listAdminHostingAccounts(opts?: {
     period_reserved_micros: number | null;
     period_limit_micros: number | null;
     period_request_count: number | null;
+    period_voice_seconds: number | null;
+    period_voice_seconds_consumed: number | null;
+    period_voice_seconds_limit: number | null;
+    period_voice_provider_seconds: number | null;
+    period_voice_provider_cost_micros: number | null;
     created_at: Date | string;
     updated_at: Date | string;
   }>(sql`
@@ -69,6 +83,11 @@ export async function listAdminHostingAccounts(opts?: {
       coalesce(upb.reserved_micros, 0) AS period_reserved_micros,
       upb.limit_micros AS period_limit_micros,
       coalesce(upb.request_count, 0) AS period_request_count,
+      coalesce(vs.voice_seconds, 0) AS period_voice_seconds,
+      coalesce(upb.voice_seconds_consumed, 0) AS period_voice_seconds_consumed,
+      upb.voice_seconds_limit AS period_voice_seconds_limit,
+      coalesce(ve.provider_seconds, 0) AS period_voice_provider_seconds,
+      coalesce(ve.provider_cost_micros, 0) AS period_voice_provider_cost_micros,
       ha.created_at,
       ha.updated_at
     FROM hosting_accounts AS ha
@@ -78,7 +97,11 @@ export async function listAdminHostingAccounts(opts?: {
         b.consumed_micros,
         b.reserved_micros,
         b.limit_micros,
-        b.request_count
+        b.request_count,
+        b.period_start,
+        b.period_end,
+        b.voice_seconds_consumed,
+        b.voice_seconds_limit
       FROM usage_period_balances AS b
       WHERE b.account_id = ha.id
         AND b.period_start <= now()
@@ -86,6 +109,24 @@ export async function listAdminHostingAccounts(opts?: {
       ORDER BY b.period_start DESC
       LIMIT 1
     ) AS upb ON true
+    LEFT JOIN LATERAL (
+      SELECT cast(coalesce(sum(s.voice_seconds), 0) AS bigint) AS voice_seconds
+      FROM voice_sessions AS s
+      WHERE s.hosting_account_id = ha.id
+        AND s.usage_period_start = upb.period_start
+        AND s.metering_status IN ('settled', 'estimated')
+    ) AS vs ON true
+    LEFT JOIN LATERAL (
+      SELECT
+        cast(coalesce(sum(e.units), 0) AS bigint) AS provider_seconds,
+        cast(coalesce(sum(e.final_cost_micros), 0) AS bigint) AS provider_cost_micros
+      FROM usage_events AS e
+      WHERE e.account_id = ha.id
+        AND e.operation = 'voice_realtime'
+        AND e.status IN ('completed', 'shadow')
+        AND e.created_at >= upb.period_start
+        AND e.created_at < upb.period_end
+    ) AS ve ON true
     ORDER BY coalesce(upb.consumed_micros, 0) DESC, ha.created_at DESC
     LIMIT ${limit}
     OFFSET ${offset}
@@ -105,6 +146,12 @@ export async function listAdminHostingAccounts(opts?: {
     periodLimitMicros:
       row.period_limit_micros == null ? null : Number(row.period_limit_micros),
     periodRequestCount: Number(row.period_request_count) || 0,
+    periodVoiceSeconds: Number(row.period_voice_seconds) || 0,
+    periodVoiceSecondsConsumed: Number(row.period_voice_seconds_consumed) || 0,
+    periodVoiceSecondsLimit:
+      row.period_voice_seconds_limit == null ? null : Number(row.period_voice_seconds_limit),
+    periodVoiceProviderSeconds: Number(row.period_voice_provider_seconds) || 0,
+    periodVoiceProviderCostMicros: Number(row.period_voice_provider_cost_micros) || 0,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   }));
@@ -115,10 +162,12 @@ async function syncCurrentPeriodLimit(
   limitMicros: number,
 ): Promise<void> {
   const balance = await getOrCreateUsagePeriodBalance(account);
+  const voiceSecondsLimit = await resolveVoiceSecondsLimit(account);
   await db()
     .update(usagePeriodBalances)
     .set({
       limitMicros,
+      voiceSecondsLimit,
       updatedAt: new Date(),
     })
     .where(eq(usagePeriodBalances.id, balance.id));

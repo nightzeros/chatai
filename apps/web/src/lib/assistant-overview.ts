@@ -69,7 +69,7 @@ export async function getAssistantOverview(userId: string, assistantId: string) 
   }>(sql`
     SELECT
       (SELECT cast(count(*) AS int) FROM conversations WHERE assistant_id = ${assistant.id}) AS "totalConversations",
-      cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome = 'answered_with_context') AS int) AS answered,
+      cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome IN ('answered_with_context', 'answered_from_history')) AS int) AS answered,
       cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome IN ('fallback_no_context', 'low_confidence')) AS int) AS unanswered
     FROM messages AS m
     INNER JOIN conversations AS c ON c.id = m.conversation_id

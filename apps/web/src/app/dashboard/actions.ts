@@ -21,6 +21,8 @@ import {
   validateEmbeddingModelSettings,
 } from "@/lib/model-settings";
 import { requireSession } from "@/lib/session";
+import { deleteAssistantRecordingObjects } from "@/lib/voice/recording/cleanup";
+import { endVoiceSessionsForAssistant } from "@/lib/voice/recovery";
 
 export type ActionState = { error: string } | { saved: true } | null;
 
@@ -247,6 +249,16 @@ export async function deleteAssistant(formData: FormData) {
   if (!existing) {
     throw new Error("Assistant not found.");
   }
+
+  // Row deletion cascades every recording row, so objects must be gone first.
+  if (!(await deleteAssistantRecordingObjects(existing.id))) {
+    throw new Error(
+      "Voice recordings could not be deleted from object storage. Nothing was deleted; try again.",
+    );
+  }
+
+  // Settle Voice usage first: session rows cascade with the assistant.
+  await endVoiceSessionsForAssistant(existing.id);
 
   await db().delete(assistants).where(eq(assistants.id, existing.id));
 

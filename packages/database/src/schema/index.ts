@@ -2,7 +2,9 @@ export * from "./auth";
 export * from "./rag-settings";
 export * from "./security-settings";
 export * from "./privacy-settings";
+export * from "./voice-settings";
 export * from "./assistants";
+export * from "./assistant-profiles";
 export * from "./sources";
 export * from "./documents";
 export * from "./chunks";
@@ -22,4 +24,6 @@ export * from "./model-pricing";
 export * from "./polar-events";
 
 export * from "./conversations";
+export * from "./voice";
+export * from "./voice-cleanup";
 export * from "./pg-types";

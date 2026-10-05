@@ -1,27 +1,37 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans, Syne } from "next/font/google";
+import localFont from "next/font/local";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { brand } from "@/lib/site";
 
 import "./globals.css";
 
-const display = Syne({
+// Self-hosted (SIL OFL, see ./fonts): builds never depend on fetching Google Fonts.
+const display = localFont({
   variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  src: [
+    { path: "./fonts/syne-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/syne-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/syne-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
 });
 
-const body = IBM_Plex_Sans({
+const body = localFont({
   variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  src: [
+    { path: "./fonts/ibm-plex-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
 });
 
-const mono = IBM_Plex_Mono({
+const mono = localFont({
   variable: "--font-mono",
-  subsets: ["latin"],
-  weight: ["400", "500"],
+  adjustFontFallback: false,
+  src: [
+    { path: "./fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+  ],
 });
 
 const metadataBase =

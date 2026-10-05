@@ -1,0 +1,25 @@
+{
+  "name": "@chatai/voice",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mock": "./src/mock/index.ts",
+    "./providers/gpt-live": "./src/providers/gpt-live/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

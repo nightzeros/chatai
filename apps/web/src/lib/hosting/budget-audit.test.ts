@@ -108,7 +108,15 @@ const insertValues = vi.fn(async () => undefined);
 vi.mock("@/lib/db", () => ({
   db: () => ({
     insert: () => ({ values: insertValues }),
-    update: () => ({ set: () => ({ where: async () => undefined }) }),
+    // Conditional status claim (`… WHERE status = 'reserved' RETURNING id`) wins once.
+    update: () => ({
+      set: () => ({
+        where: () =>
+          Object.assign(Promise.resolve(undefined), {
+            returning: async () => [{ id: "evt-claimed" }],
+          }),
+      }),
+    }),
   }),
 }));
 
@@ -157,7 +165,7 @@ function makeReservationInput(overrides?: Partial<Parameters<typeof beginChatUsa
     embedding,
     billing,
     message: "hello",
-    hasHistory: false,
+    historyChars: 0,
     queryExpansionEnabled: false,
     rerankEnabled: false,
     verifyCitationsEnabled: false,

@@ -248,7 +248,7 @@ Each assistant can override chat/embedding provider and model in **Settings**. O
 
 ## API keys and REST
 
-Create and revoke keys under **Account**. Secrets use an `sk_live_` prefix, are hashed at rest (SHA-256), and the plaintext is shown **once**. Scopes: `chat`, `assistants:read/write`, `documents:read/write`, `conversations:read`, `analytics:read`.
+Create and revoke keys under **Account**. Secrets use an `sk_live_` prefix, are hashed at rest (SHA-256), and the plaintext is shown **once**. Scopes: `chat`, `assistants:read/write`, `documents:read/write`, `conversations:read`, `analytics:read`, `voice` (preview; not implied by `chat`).
 
 Bearer-only owner routes live under `/api/v1` (assistants CRUD, documents list/get/delete/reprocess, conversations, analytics). Document **upload** stays dashboard-only. Per-key Postgres rate limiting returns `429` with `Retry-After`.
 

@@ -1,4 +1,5 @@
 export {
+  clientHistory,
   createSseParser,
   createWidgetController,
   resolveApiUrl,
@@ -9,4 +10,41 @@ export {
   type WidgetSource,
   type WidgetState,
   type WidgetStreamEvent,
+  type WidgetVoiceState,
 } from "./client";
+export {
+  classifyHeartbeatResponse,
+  CONTROL_HEALTH_DEFAULTS,
+  createControlHealthMonitor,
+  initialControlHealth,
+  isControlMuted,
+  reduceControlHealth,
+  type ControlHealthMonitor,
+  type ControlHealthSettings,
+  type ControlHealthState,
+  type ControlHealthStatus,
+  type HeartbeatOutcome,
+} from "./control-health";
+export {
+  browserVoiceMedia,
+  createVoiceSession,
+  VOICE_END_NOTICES,
+  VOICE_ERROR_MESSAGES,
+  visitorEndReason,
+  type ClientHistoryMessage,
+  type VoiceEndReason,
+  type VoiceError,
+  type VoiceErrorCode,
+  type VoiceMediaDeps,
+  type VoiceSession,
+  type VoiceServerEndReason,
+  type VoiceSessionSnapshot,
+} from "./voice";
+export {
+  deriveVoicePhase,
+  isVoiceActive,
+  VOICE_PHASE_LABELS,
+  type VoiceConnection,
+  type VoicePhase,
+} from "./voice-state";
+export { BARGE_IN_MIN_WORDS, createVoiceTranscript, type VoiceTranscriptTurn } from "./voice-transcript";

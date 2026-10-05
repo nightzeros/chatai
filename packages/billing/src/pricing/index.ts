@@ -1,6 +1,6 @@
 export { calculateCostMicros, type CalculateCostInput, type CalculateCostResult } from "./calculate";
 export { applyRateMicros, findEffectiveRate } from "./registry";
-export { loadSeedPricingCatalog } from "./seed";
+export { loadSeedPricingCatalog, mergeSeedPricing } from "./seed";
 export type {
   ModelPricingOperation,
   ModelPricingRow,

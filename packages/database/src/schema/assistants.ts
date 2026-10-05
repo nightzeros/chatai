@@ -11,6 +11,7 @@ import { user } from "./auth";
 import type { PrivacySettings } from "./privacy-settings";
 import type { RagSettings } from "./rag-settings";
 import type { SecuritySettings } from "./security-settings";
+import type { VoiceSettings } from "./voice-settings";
 
 export const hallucinationModeEnum = pgEnum("hallucination_mode", [
   "strict",
@@ -51,6 +52,7 @@ export const assistants = pgTable("assistants", {
   modelSettings: jsonb("model_settings").$type<ModelSettings>().notNull().default({}),
   securitySettings: jsonb("security_settings").$type<SecuritySettings>().notNull().default({}),
   privacySettings: jsonb("privacy_settings").$type<PrivacySettings>().notNull().default({}),
+  voiceSettings: jsonb("voice_settings").$type<VoiceSettings>().notNull().default({}),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

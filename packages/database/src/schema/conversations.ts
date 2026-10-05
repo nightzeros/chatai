@@ -1,5 +1,7 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
+  boolean,
+  check,
   doublePrecision,
   index,
   integer,
@@ -27,12 +29,21 @@ export const messageOutcomeEnum = pgEnum("message_outcome", [
   "retrieval_failure",
   "model_failure",
   "processing_failure",
+  /** Small talk answered without retrieval. */
+  "conversational",
+  /** Follow-up answered from earlier grounded answers without new retrieval. */
+  "answered_from_history",
+  /** Request outside the assistant's purpose, redirected. Owner-visible only. */
+  "out_of_scope",
 ]);
 
 export const messageFeedbackEnum = pgEnum("message_feedback", ["positive", "negative"]);
 
+export const messageModalityEnum = pgEnum("message_modality", ["text", "voice"]);
+
 export type MessageOutcome = (typeof messageOutcomeEnum.enumValues)[number];
 export type ConversationSource = (typeof conversationSourceEnum.enumValues)[number];
+export type MessageModality = (typeof messageModalityEnum.enumValues)[number];
 
 export type MessageSource = {
   documentId: string;
@@ -93,9 +104,31 @@ export const messages = pgTable(
     debug: jsonb("debug").$type<MessageDebug>(),
     feedback: messageFeedbackEnum("feedback"),
     latencyMs: integer("latency_ms"),
+    /** text (default) or voice turn; existing rows remain text. */
+    modality: messageModalityEnum("modality").notNull().default("text"),
+    /** Assistant turn cut short by barge-in. */
+    wasInterrupted: boolean("was_interrupted").notNull().default(false),
+    /**
+     * Optional link to voice_sessions. FK is applied in migration SQL to avoid
+     * a circular TS import with voice.ts (which references conversations).
+     */
+    voiceSessionId: text("voice_session_id"),
+    /**
+     * Voice turn start in its call's recording (ms on the provider session timeline).
+     * Review navigation only — never used for metering, quota or billing. Null for
+     * text, legacy rows and turns without reliable timing.
+     */
+    audioOffsetMs: integer("audio_offset_ms"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("messages_conversation_id_created_at_idx").on(table.conversationId, table.createdAt)],
+  (table) => [
+    index("messages_conversation_id_created_at_idx").on(table.conversationId, table.createdAt),
+    index("messages_voice_session_id_idx").on(table.voiceSessionId),
+    check(
+      "messages_audio_offset_ms_check",
+      sql`${table.audioOffsetMs} IS NULL OR ${table.audioOffsetMs} >= 0`,
+    ),
+  ],
 );
 
 export const conversationsRelations = relations(conversations, ({ one, many }) => ({

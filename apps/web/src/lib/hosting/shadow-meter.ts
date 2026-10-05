@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   calculateCostMicros,
   loadSeedPricingCatalog,
+  mergeSeedPricing,
   type ModelPricingRow,
 } from "@chatai/billing";
 import {
@@ -52,7 +53,7 @@ async function resolveCatalog(catalog?: ModelPricingRow[]): Promise<ModelPricing
   if (catalog) return catalog;
   try {
     const rows = await loadModelPricingCatalog();
-    if (rows.length > 0) return rows;
+    if (rows.length > 0) return mergeSeedPricing(rows);
   } catch {
     // Fall through to seed catalog.
   }

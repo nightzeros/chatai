@@ -1,3 +1,16 @@
+import {
+  browserVoiceMedia,
+  createVoiceSession,
+  VOICE_ERROR_MESSAGES,
+  type ClientHistoryMessage,
+  type VoiceError,
+  type VoiceMediaDeps,
+  type VoiceSession,
+  type VoiceSessionSnapshot,
+} from "./voice";
+import { isVoiceActive, type VoiceConnection, type VoicePhase } from "./voice-state";
+import type { VoiceTranscriptTurn } from "./voice-transcript";
+
 export type WidgetSource = {
   documentId: string;
   documentName: string;
@@ -12,7 +25,9 @@ export type WidgetOutcome =
   | "low_confidence"
   | "retrieval_failure"
   | "model_failure"
-  | "processing_failure";
+  | "processing_failure"
+  | "conversational"
+  | "answered_from_history";
 
 export type WidgetStreamEvent =
   | { type: "token"; text: string }
@@ -33,6 +48,12 @@ export type WidgetConfig = {
   settings: Record<string, unknown>;
   /** When true, chat/feedback require X-ChatAI-Signature from the sign endpoint. */
   requireWidgetSigning?: boolean;
+  /** Public Voice availability (assistant enabled it and the instance supports it). */
+  voice?: {
+    enabled: boolean;
+    /** Sessions are recorded: the visitor must accept a disclosure before the mic is requested. */
+    recording?: { consentRequired: boolean };
+  };
 };
 
 export type WidgetMessage = {
@@ -41,6 +62,29 @@ export type WidgetMessage = {
   content: string;
   sources?: WidgetSource[];
   feedback?: "positive" | "negative";
+  modality?: "text" | "voice";
+  /** Voice: the visitor spoke over this assistant turn. */
+  interrupted?: boolean;
+  /** Voice: still being spoken. */
+  live?: boolean;
+  /** Voice turn the server did not save (storage on, Voice transcripts off); never reused as history. */
+  unsaved?: boolean;
+};
+
+export type WidgetVoiceState = {
+  connection: VoiceConnection;
+  phase: VoicePhase;
+  error?: VoiceError;
+  ephemeral?: boolean;
+  /** False when Voice turns are not saved as text in the conversation. */
+  transcriptSaved?: boolean;
+  /** The recording disclosure is showing; the mic has not been requested. */
+  consentPending?: boolean;
+  /** This session's audio is being recorded (the visitor consented). */
+  recording?: boolean;
+  /** Visitor-safe explanation when ChatAI ended the call (e.g. usage limit). */
+  notice?: string;
+  mock?: boolean;
 };
 
 export type WidgetState = {
@@ -49,9 +93,15 @@ export type WidgetState = {
   conversationId?: string;
   messages: WidgetMessage[];
   error?: string;
+  voice: WidgetVoiceState;
 };
 
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
+
+const CLIENT_HISTORY_LIMIT = 12;
+const CLIENT_HISTORY_MAX_CHARS = 1_500;
+
+const IDLE_VOICE: WidgetVoiceState = { connection: "idle", phase: "idle" };
 
 export type WidgetControllerOptions = {
   assistantId: string;
@@ -64,7 +114,32 @@ export type WidgetControllerOptions = {
    * Defaults to `${apiUrl}/api/v1/widget/sign` when config.requireWidgetSigning is true.
    */
   signEndpoint?: string;
+  /** Browser media for Voice; defaults to the real browser APIs (null = unsupported). */
+  voiceMedia?: VoiceMediaDeps | null;
 };
+
+/** Recent turns the server uses when nothing is stored (no-store). */
+export function clientHistory(messages: WidgetMessage[]): ClientHistoryMessage[] {
+  return messages
+    .filter((message) => message.content.trim() && !message.live && !message.unsaved)
+    .slice(-CLIENT_HISTORY_LIMIT)
+    .map((message) => ({
+      role: message.role,
+      content: message.content.slice(0, CLIENT_HISTORY_MAX_CHARS),
+    }));
+}
+
+function voiceMessages(turns: VoiceTranscriptTurn[], live: boolean, unsaved: boolean): WidgetMessage[] {
+  return turns.map((turn, index) => ({
+    id: undefined,
+    role: turn.role,
+    content: turn.text,
+    modality: "voice",
+    ...(turn.interrupted ? { interrupted: true } : {}),
+    ...(live && index === turns.length - 1 ? { live: true } : {}),
+    ...(unsaved ? { unsaved: true } : {}),
+  }));
+}
 
 export function resolveApiUrl(value: string): string {
   let url: URL;
@@ -181,7 +256,14 @@ export function createWidgetController(options: WidgetControllerOptions) {
   const visitorKey = `chatai.widget.${options.assistantId}.visitor`;
   const conversationKey = `chatai.widget.${options.assistantId}.conversation`;
   const listeners = new Set<(state: WidgetState) => void>();
-  let state: WidgetState = { status: "loading", messages: [] };
+  let state: WidgetState = { status: "loading", messages: [], voice: IDLE_VOICE };
+  const voiceMedia = options.voiceMedia === undefined ? browserVoiceMedia() : options.voiceMedia;
+  let voiceSession: VoiceSession | null = null;
+  /** Messages before the current Voice session; Voice turns are appended after them. */
+  let voiceBase = 0;
+  /** Voice became unavailable in this conversation; lets text chat answer "why did voice end?". */
+  let voiceUnavailable = false;
+  let removePageHide: (() => void) | null = null;
 
   const origin = () => resolveApiUrl(options.apiUrl);
 
@@ -230,6 +312,98 @@ export function createWidgetController(options: WidgetControllerOptions) {
     return body.signature;
   };
 
+  const requestHeaders = async (vid: string) => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const signature = await fetchSignatureHeader(vid);
+    if (signature) headers["X-ChatAI-Signature"] = signature;
+    return headers;
+  };
+
+  const applyVoiceSnapshot = (session: VoiceSession, snap: VoiceSessionSnapshot) => {
+    if (voiceSession !== session) return;
+    const active = isVoiceActive(snap.connection);
+    if (snap.endReason === "voice_unavailable") voiceUnavailable = true;
+    let conversationId = state.conversationId;
+    if (snap.conversationId) {
+      conversationId = snap.conversationId;
+      storage?.setItem(conversationKey, snap.conversationId);
+    }
+    state = {
+      ...state,
+      conversationId,
+      messages: [
+        ...state.messages.slice(0, voiceBase),
+        ...voiceMessages(snap.turns, active, snap.ephemeral === false && snap.transcriptSaved === false),
+      ],
+      voice: {
+        connection: snap.connection,
+        phase: snap.phase,
+        ...(snap.error ? { error: snap.error } : {}),
+        ...(snap.ephemeral !== undefined ? { ephemeral: snap.ephemeral } : {}),
+        ...(snap.transcriptSaved !== undefined ? { transcriptSaved: snap.transcriptSaved } : {}),
+        ...(snap.recording ? { recording: true } : {}),
+        ...(snap.notice ? { notice: snap.notice } : {}),
+        ...(snap.mock ? { mock: true } : {}),
+      },
+    };
+    if (!active) {
+      removePageHide?.();
+      removePageHide = null;
+    }
+    emit();
+  };
+
+  const watchPageHide = (session: VoiceSession) => {
+    if (typeof window === "undefined") return;
+    const onPageHide = () => void session.end("close_requested", { keepalive: true });
+    window.addEventListener("pagehide", onPageHide);
+    removePageHide = () => window.removeEventListener("pagehide", onPageHide);
+  };
+
+  const consentRequired = () =>
+    Boolean(state.config?.voice?.enabled && state.config.voice.recording?.consentRequired);
+
+  const beginVoice = async (recordingConsent: boolean) => {
+    if (!voiceMedia) {
+      state = {
+        ...state,
+        voice: {
+          connection: "failed",
+          phase: "error",
+          error: { code: "unsupported", message: VOICE_ERROR_MESSAGES.unsupported },
+        },
+      };
+      emit();
+      return;
+    }
+
+    let apiUrl: string;
+    try {
+      apiUrl = origin();
+    } catch (error) {
+      setState({ ...state, error: humanizeNetworkError(error, "Unable to start voice.") });
+      return;
+    }
+    const vid = visitorId();
+    voiceBase = state.messages.length;
+    const session: VoiceSession = createVoiceSession({
+      apiUrl,
+      assistantId: options.assistantId,
+      visitorId: vid,
+      conversationId: state.conversationId,
+      history: clientHistory(state.messages),
+      recordingConsent,
+      fetch: fetcher,
+      media: voiceMedia,
+      headers: () => requestHeaders(vid),
+      onChange: (snap) => applyVoiceSnapshot(session, snap),
+    });
+    voiceSession = session;
+    state = { ...state, error: undefined };
+    watchPageHide(session);
+    await session.start();
+  };
+
   return {
     getState() {
       return state;
@@ -263,10 +437,14 @@ export function createWidgetController(options: WidgetControllerOptions) {
     },
     async send(message: string) {
       const content = message.trim();
-      if (!content || state.status === "streaming") return;
+      // One live channel at a time keeps both modalities on the same history.
+      if (!content || state.status === "streaming" || isVoiceActive(state.voice.connection)) return;
 
       const userMessage: WidgetMessage = { role: "user", content };
       let assistantMessage: WidgetMessage = { role: "assistant", content: "" };
+      // Used by the server only when it keeps no transcript (storeConversations off).
+      const history = clientHistory(state.messages);
+
       setState({
         ...state,
         status: "streaming",
@@ -277,11 +455,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
       try {
         const apiUrl = origin();
         const vid = visitorId();
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        const signature = await fetchSignatureHeader(vid);
-        if (signature) {
-          headers["X-ChatAI-Signature"] = signature;
-        }
+        const headers = await requestHeaders(vid);
 
         const response = await fetcher(`${apiUrl}/api/v1/chat`, {
           method: "POST",
@@ -292,6 +466,8 @@ export function createWidgetController(options: WidgetControllerOptions) {
             conversationId: state.conversationId,
             visitorId: vid,
             source: "widget",
+            ...(history.length ? { history } : {}),
+            ...(voiceUnavailable ? { voiceUnavailable: true } : {}),
           }),
         });
         if (!response.ok || !response.body) {
@@ -337,11 +513,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
       try {
         const apiUrl = origin();
         const vid = visitorId();
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        const signature = await fetchSignatureHeader(vid);
-        if (signature) {
-          headers["X-ChatAI-Signature"] = signature;
-        }
+        const headers = await requestHeaders(vid);
 
         const response = await fetcher(`${apiUrl}/api/v1/feedback`, {
           method: "POST",
@@ -368,7 +540,58 @@ export function createWidgetController(options: WidgetControllerOptions) {
         throw error;
       }
     },
+    /** Voice can be offered: enabled for this assistant and supported by this browser. */
+    voiceAvailable() {
+      return Boolean(state.config?.voice?.enabled);
+    },
+    voiceSupported() {
+      return voiceMedia !== null;
+    },
+    /** Voice sessions are recorded, so starting one shows the disclosure first. */
+    voiceConsentRequired() {
+      return consentRequired();
+    },
+    /**
+     * Start Voice. When sessions are recorded this only opens the disclosure;
+     * the mic and the session wait for `acceptRecordingConsent()`.
+     */
+    async startVoice() {
+      if (!state.config?.voice?.enabled) return;
+      if (isVoiceActive(state.voice.connection) || state.status === "streaming") return;
+      if (consentRequired()) {
+        setState({ ...state, error: undefined, voice: { ...IDLE_VOICE, consentPending: true } });
+        return;
+      }
+      await beginVoice(false);
+    },
+    async acceptRecordingConsent() {
+      if (!state.voice.consentPending) return;
+      state = { ...state, voice: IDLE_VOICE };
+      await beginVoice(true);
+    },
+    /** Back to text chat; nothing was requested or started. */
+    declineRecordingConsent() {
+      if (!state.voice.consentPending) return;
+      setState({ ...state, voice: IDLE_VOICE });
+    },
+    async endVoice() {
+      await voiceSession?.end("close_requested");
+    },
+    /** Live mic/speaker levels for the waveform; zeros when Voice is off. */
+    voiceLevels() {
+      return voiceSession?.levels() ?? { input: 0, output: 0 };
+    },
+    /** Clears a Voice error or end notice so the visitor can return to text or try again. */
+    dismissVoiceError() {
+      if (isVoiceActive(state.voice.connection)) return;
+      setState({ ...state, voice: IDLE_VOICE });
+    },
     destroy() {
+      const session = voiceSession;
+      voiceSession = null;
+      removePageHide?.();
+      removePageHide = null;
+      void session?.end("close_requested", { keepalive: true });
       listeners.clear();
     },
   };

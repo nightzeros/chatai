@@ -73,6 +73,18 @@ chatai.example.com {
 }
 ```
 
+## Voice in production
+
+Voice keeps each live call's control link, meter and recording in the web process, so the runtime contract is strict:
+
+- **Long-lived Node.js server only.** The Docker image (`node apps/web/server.js`) and `next start` are supported. Serverless platforms (Vercel, AWS Lambda, Netlify) are not: Voice fails closed there and visitors see "Voice isn't available right now" while text chat keeps working.
+- **One Voice replica, or sticky routing** by Voice session id. A request that reaches the wrong replica is answered `421` and never touches the call.
+- **Signals reach Node.** The image sets `NEXT_MANUAL_SIG_HANDLE=1` and its entrypoint forwards `SIGTERM`/`SIGINT` to Node. With a custom entrypoint, `exec` Node or forward the signal yourself.
+- **Stop grace ≥ 15 s.** On `SIGTERM` ChatAI stops accepting new calls, hangs up every live call, settles its usage once, finalizes its recording, then exits — within `VOICE_SHUTDOWN_GRACE_MS` (default 8 s). The bundled Compose files set `stop_grace_period: 20s`; set the equivalent on Kubernetes (`terminationGracePeriodSeconds`) or your platform.
+- **Persistent spool.** Keep `VOICE_RECORDING_SPOOL_DIR` on the uploads volume so a recording interrupted by a crash (or a drain that runs out of time) is recovered as a partial recording.
+
+Visitors on a call during a deploy see the call end ("Voice disconnected. You can keep typing here.") and can keep typing or start a new call once the server is back; they are never shown deployment or infrastructure details. A hard kill (`SIGKILL`, OOM) skips the drain: the next process recovers the call when the visitor's heartbeat arrives, hangs it up and settles it from the provider or the last checkpoint.
+
 ## Secrets
 
 - Generate a long `BETTER_AUTH_SECRET` (min 16 characters; prefer 32+ random bytes)

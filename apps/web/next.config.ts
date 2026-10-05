@@ -18,12 +18,14 @@ const nextConfig: NextConfig = {
     "@chatai/ai",
     "@chatai/evals",
     "@chatai/rag",
+    "@chatai/voice",
     "@nightzeros/chatai-react",
     "@nightzeros/chatai-widget",
     "@nightzeros/chatai-widget-core",
   ],
   outputFileTracingRoot: path.join(appDir, "../.."),
-  serverExternalPackages: ["unpdf", "mammoth"],
+  // `ws` has optional native deps (bufferutil/utf-8-validate); keep it external.
+  serverExternalPackages: ["unpdf", "mammoth", "ws", "@audio/encode-opus", "mediabunny"],
   async headers() {
     return [{ source: WIDGET_ASSET_PATH, headers: widgetAssetHeaders }];
   },

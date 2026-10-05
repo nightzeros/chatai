@@ -23,6 +23,10 @@ function formatDuration(value: number | null) {
   return value === null ? "—" : `${value} ms`;
 }
 
+function formatRate(value: number | null) {
+  return value === null ? "—" : `${Math.round(value * 100)}%`;
+}
+
 const metricDefinitions: Array<{
   key: keyof AnalyticsMetrics;
   label: string;
@@ -32,13 +36,35 @@ const metricDefinitions: Array<{
 }> = [
   { key: "totalConversations", label: "Conversations", description: "All chat sessions" },
   { key: "totalQuestions", label: "Questions", description: "Messages from visitors" },
-  { key: "answered", label: "Answered", description: "Responses with context", tone: "success" },
+  {
+    key: "answerRate",
+    label: "Answer rate",
+    description: "Answered ÷ knowledge questions (small talk excluded)",
+    format: formatRate,
+  },
+  {
+    key: "answered",
+    label: "Answered",
+    description: "From knowledge or earlier answers",
+    tone: "success",
+  },
+  {
+    key: "answeredWithContext",
+    label: "From knowledge",
+    description: "Answered with retrieved context",
+  },
+  {
+    key: "answeredFromHistory",
+    label: "From conversation",
+    description: "Follow-ups answered from earlier grounded replies",
+  },
   {
     key: "unanswered",
     label: "Unanswered",
     description: "Fallback or low confidence",
     tone: "warning",
   },
+  { key: "conversational", label: "Small talk", description: "Greetings and thanks" },
   { key: "positiveFeedback", label: "Helpful", description: "Thumbs up responses", tone: "success" },
   {
     key: "negativeFeedback",

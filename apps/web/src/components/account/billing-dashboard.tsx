@@ -23,6 +23,7 @@ import {
   usageBarTone,
 } from "@/lib/hosting/format-usage";
 import { cn } from "@/lib/utils";
+import { voiceMinutes } from "@/lib/voice/duration-format";
 
 export type BillingPageData = {
   planCode: HostingPlanCode;
@@ -47,6 +48,10 @@ export type BillingPageData = {
   maxAssistants: number;
   usagePercent: number;
   configuredPaidPlans: PaidHostingPlanCode[];
+  /** Voice seconds counted toward the entitlement this period. */
+  voiceSecondsUsed: number;
+  /** null = unlimited, 0 = not included. */
+  voiceSecondsLimit: number | null;
 };
 
 function Meter({
@@ -178,10 +183,16 @@ export function BillingDashboard({ data }: { data: BillingPageData }) {
       ? Math.round((data.assistantCount / data.maxAssistants) * 100)
       : 0;
 
+  const voicePercent =
+    data.voiceSecondsLimit != null && data.voiceSecondsLimit > 0
+      ? Math.min(100, Math.round((data.voiceSecondsUsed / data.voiceSecondsLimit) * 100))
+      : 0;
+
   const nearLimit =
     data.usagePercent >= 70 ||
     requestPercent >= 70 ||
-    assistantPercent >= 70;
+    assistantPercent >= 70 ||
+    voicePercent >= 70;
 
   async function upgrade(planCode: PaidHostingPlanCode) {
     setError(null);
@@ -301,6 +312,17 @@ export function BillingDashboard({ data }: { data: BillingPageData }) {
               label="Assistants"
               usedLabel={`${data.assistantCount} / ${data.maxAssistants}`}
               percent={assistantPercent}
+            />
+            <Meter
+              label="Voice minutes"
+              usedLabel={
+                data.voiceSecondsLimit == null
+                  ? `${voiceMinutes(data.voiceSecondsUsed).toLocaleString()} min (unlimited)`
+                  : data.voiceSecondsLimit === 0
+                    ? "Not included on this plan"
+                    : `${voiceMinutes(data.voiceSecondsUsed).toLocaleString()} / ${voiceMinutes(data.voiceSecondsLimit).toLocaleString()} min`
+              }
+              percent={voicePercent}
             />
             {data.usagePercent >= 100 ||
             (data.monthlyRequestCap != null && data.requestCount >= data.monthlyRequestCap) ? (

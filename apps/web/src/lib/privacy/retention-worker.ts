@@ -70,10 +70,23 @@ export async function defaultListAssistants() {
 
 export async function defaultDeleteExpiredConversations(assistantId: string, cutoff: Date) {
   const { db } = await import("@/lib/db");
+  const { releaseConversationRecordings } = await import("@/lib/voice/recording/cleanup");
+  const expired = await db().execute<{ id: string }>(sql`
+    SELECT id FROM conversations
+    WHERE assistant_id = ${assistantId}
+      AND updated_at < ${cutoff.toISOString()}
+  `);
+  const ids = expired.map((row) => row.id);
+  if (ids.length === 0) return 0;
+  // Recording objects before rows (the FK would only null their conversation link).
+  await releaseConversationRecordings(ids);
   const deleted = await db().execute<{ id: string }>(sql`
     DELETE FROM conversations
     WHERE assistant_id = ${assistantId}
-      AND updated_at < ${cutoff.toISOString()}
+      AND id IN (${sql.join(
+        ids.map((id) => sql`${id}`),
+        sql`, `,
+      )})
     RETURNING id
   `);
   return deleted.length;
@@ -115,6 +128,15 @@ export function startPrivacyWorker() {
       });
     } catch (error) {
       console.error("[privacy] worker tick failed:", error instanceof Error ? error.message : error);
+    }
+    try {
+      const { runRecordingMaintenance } = await import("@/lib/voice/recording/cleanup");
+      await runRecordingMaintenance();
+    } catch (error) {
+      console.error(
+        "[privacy] recording maintenance failed:",
+        error instanceof Error ? error.message : error,
+      );
     }
   };
 

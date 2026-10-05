@@ -30,6 +30,7 @@ Keys are hashed at rest. Scopes:
 | `documents:read` / `documents:write` | List/delete/reprocess documents (upload stays dashboard-only) |
 | `conversations:read` | List/get conversations |
 | `analytics:read` | Assistant analytics |
+| `voice` | Realtime Voice session mint/end (preview). Not implied by `chat`; existing keys must be re-created or granted `voice` explicitly. API Voice sessions count toward the account's Voice minutes (mint returns `402`/`429` with a `reason` when refused). |
 
 Missing/invalid key → **401**. Missing scope → **403**.
 

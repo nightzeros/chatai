@@ -28,7 +28,17 @@ cleanup() {
     wait "$app_pid" 2>/dev/null || true
   fi
 }
-trap cleanup INT TERM
+
+# Node is not PID 1: forward SIGTERM/SIGINT so it can drain live Voice calls
+# (bounded by VOICE_SHUTDOWN_GRACE_MS, default 8 s), then exit with its status.
+# A repeated signal is forwarded again; the app ignores it while draining.
+forward_signal() {
+  kill -TERM "$app_pid" 2>/dev/null || true
+  status=0
+  wait "$app_pid" 2>/dev/null || status=$?
+  exit "$status"
+}
+trap forward_signal INT TERM
 
 echo "[entrypoint] Waiting for /api/health…"
 ready=0

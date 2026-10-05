@@ -28,6 +28,12 @@ export const usagePeriodBalances = pgTable(
     consumedMicros: bigint("consumed_micros", { mode: "number" }).notNull().default(0),
     reservedMicros: bigint("reserved_micros", { mode: "number" }).notNull().default(0),
     requestCount: integer("request_count").notNull().default(0),
+    /** Voice-second entitlement frozen at period open; null = unlimited. */
+    voiceSecondsLimit: integer("voice_seconds_limit"),
+    /** Seconds granted to open Voice sessions (released at settlement). */
+    voiceSecondsReserved: integer("voice_seconds_reserved").notNull().default(0),
+    /** Settled customer Voice seconds counted toward the entitlement. */
+    voiceSecondsConsumed: integer("voice_seconds_consumed").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

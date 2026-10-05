@@ -1,4 +1,4 @@
-import { and, eq, lt, sql, usageEvents } from "@chatai/database";
+import { and, eq, lt, ne, sql, usageEvents } from "@chatai/database";
 
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -35,6 +35,8 @@ export async function reconcileStaleReservations(opts?: {
     .where(
       and(
         eq(usageEvents.status, "reserved"),
+        // Voice grants live on voice_sessions and settle through the Voice meter.
+        ne(usageEvents.operation, "voice_realtime"),
         lt(usageEvents.createdAt, cutoff),
         sql`${usageEvents.reservedCostMicros} > 0`,
       ),
@@ -111,6 +113,12 @@ export function startUsageReconcileWorker() {
       await reconcileStaleReservations();
     } catch (error) {
       console.error("[usage] stale reconciler tick failed:", error);
+    }
+    try {
+      const { recoverOrphanedVoiceSessions } = await import("@/lib/voice/recovery");
+      await recoverOrphanedVoiceSessions();
+    } catch (error) {
+      console.error("[usage] voice recovery tick failed:", error);
     }
   };
 

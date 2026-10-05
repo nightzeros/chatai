@@ -4,7 +4,10 @@ import type { ConversationSource, MessageOutcome } from "@chatai/database";
 
 import {
   buildConversationListItems,
+  classifyConversation,
   conversationVisitorLabel,
+  matchesConversationFilter,
+  parseConversationTypeFilter,
   groupConversationsByDay,
   toTranscriptMessages,
   truncatePreview,
@@ -224,5 +227,35 @@ describe("toTranscriptMessages", () => {
       sources: [{ documentId: "d1", documentName: "Policy" }],
     });
     expect(transcript[1]).not.toHaveProperty("debug");
+  });
+});
+
+describe("conversation classification and filter", () => {
+  it("classifies Text, Voice (turns or a call without transcripts) and Mixed", () => {
+    expect(classifyConversation({ textMessageCount: 3, voiceMessageCount: 0, voiceCallCount: 0 })).toBe("text");
+    expect(classifyConversation({ textMessageCount: 0, voiceMessageCount: 0, voiceCallCount: 0 })).toBe("text");
+    expect(classifyConversation({ textMessageCount: 0, voiceMessageCount: 4, voiceCallCount: 1 })).toBe("voice");
+    expect(classifyConversation({ textMessageCount: 0, voiceMessageCount: 0, voiceCallCount: 1 })).toBe("voice");
+    expect(classifyConversation({ textMessageCount: 2, voiceMessageCount: 4, voiceCallCount: 2 })).toBe("mixed");
+    expect(classifyConversation({ textMessageCount: 2, voiceMessageCount: 0, voiceCallCount: 1 })).toBe("mixed");
+  });
+
+  it("the Voice filter includes Mixed; Text means text-only", () => {
+    expect(matchesConversationFilter("voice", "voice")).toBe(true);
+    expect(matchesConversationFilter("mixed", "voice")).toBe(true);
+    expect(matchesConversationFilter("text", "voice")).toBe(false);
+    expect(matchesConversationFilter("text", "text")).toBe(true);
+    expect(matchesConversationFilter("mixed", "text")).toBe(false);
+    for (const kind of ["text", "voice", "mixed"] as const) {
+      expect(matchesConversationFilter(kind, "all")).toBe(true);
+    }
+  });
+
+  it("parses the filter query parameter leniently", () => {
+    expect(parseConversationTypeFilter("voice")).toBe("voice");
+    expect(parseConversationTypeFilter("text")).toBe("text");
+    expect(parseConversationTypeFilter(undefined)).toBe("all");
+    expect(parseConversationTypeFilter(["voice"])).toBe("all");
+    expect(parseConversationTypeFilter("mixed")).toBe("all");
   });
 });

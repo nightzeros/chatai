@@ -9,7 +9,9 @@
     "./rag-settings": "./src/schema/rag-settings.ts",
     "./security-settings": "./src/schema/security-settings.ts",
     "./privacy-settings": "./src/schema/privacy-settings.ts",
-    "./api-key-scopes": "./src/schema/api-key-scopes.ts"
+    "./voice-settings": "./src/schema/voice-settings.ts",
+    "./api-key-scopes": "./src/schema/api-key-scopes.ts",
+    "./testing": "./src/testing/pglite.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
@@ -17,6 +19,7 @@
     "migrate:prod": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
@@ -26,8 +29,11 @@
     "postgres": "^3.4.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-pgvector": "0.0.9",
     "@types/node": "^20.19.43",
     "drizzle-kit": "^0.30.5",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.10"
   }
 }

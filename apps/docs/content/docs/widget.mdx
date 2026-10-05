@@ -73,8 +73,24 @@ If `data-api-url` is missing or wrong, the launcher may appear while config/chat
 | --- | --- | --- |
 | `data-assistant-id` | Yes | Assistant `publicId` |
 | `data-api-url` | Self-host only | Absolute ChatAI API origin |
+| `data-voice` | No | Set to `off` to hide the Voice button on this page even when the assistant offers Voice |
 
 Appearance (colors, position, suggested questions) is controlled from **Customize** on the assistant and loaded at runtime — keep Customize **saved** so embeds match the draft preview.
+
+## Voice (preview)
+
+When the assistant owner turns on **Offer Voice in the public widget** (assistant **Settings → Privacy**) and the instance has a Voice provider configured, the widget shows a microphone button next to the message box. Visitors can switch between typing and speaking in the same conversation: earlier text turns are available to Voice, and spoken turns stay in the transcript when the visitor goes back to typing.
+
+- Answers come from the same assistant instructions and knowledge base as text chat. The widget never receives provider keys; each Voice session is minted by ChatAI with the same domain allowlist, rate limits, bot checks and widget signing as text chat.
+- Voice needs HTTPS (or `localhost`), microphone permission, and WebRTC. When any of these is missing, the widget explains why and text chat keeps working.
+- If your page sets a `Permissions-Policy` header, it must allow `microphone` for your own origin. Pages embedded in an iframe need `allow="microphone"` on the iframe.
+- Only one input runs at a time: typing is paused while Voice is on, and Voice can't start while a text reply is streaming.
+- Closing the panel, navigating away, or removing the widget ends the Voice session and releases the microphone.
+- When the assistant doesn't store conversations, Voice sessions aren't stored either, and the Voice bar shows **Not saved**.
+- When conversations are stored but **Save Voice transcripts (text only)** is off, the Voice bar shows **Voice transcript not saved**. Voice turns are used only during the live session and aren't available to later text chat.
+- Audio is recorded only when the owner turns on **Record Voice audio**, conversations are stored, and the instance has object storage configured. Before the microphone turns on, the widget then shows a recording notice; the visitor must choose **Agree and start** for each Voice session, and **Cancel** returns to typing without starting Voice. While recording, the Voice bar shows **Recording**. Recording and transcript saving are separate settings: a session can be recorded while its transcript is not saved.
+- Recordings are private to the assistant owner, who can play them back in the dashboard conversation view. If saving a recording fails, the Voice conversation is not affected.
+- Voice usage counts toward the account's Voice minutes. When the minutes run out or too many Voice sessions are active, visitors see **Voice isn't available right now** and can keep typing; a call that reaches the end of the allowance ends with **Voice is unavailable for the rest of this conversation, but we can keep chatting here.** If the visitor then asks why Voice ended, the assistant says only that Voice became unavailable and the chat continues in text. Visitors, and the assistant, are never told about plans, billing, usage or remaining minutes. Starting Voice in a second tab ends the first tab's call.
 
 ## Auth model
 

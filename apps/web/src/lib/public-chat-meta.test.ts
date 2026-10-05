@@ -13,7 +13,7 @@ const meta = {
 
 describe("publicChatMeta", () => {
   it("omits RAG debug data from widget streams", () => {
-    expect(publicChatMeta(meta, "widget")).toEqual({
+    expect(publicChatMeta(meta)).toEqual({
       type: "meta",
       messageId: "message-1",
       conversationId: "conversation-1",
@@ -23,21 +23,17 @@ describe("publicChatMeta", () => {
     });
   });
 
-  it("retains debug data for the dashboard playground", () => {
-    expect(publicChatMeta(meta, "playground", true)).toMatchObject({
+  it("retains debug data for the verified owner", () => {
+    expect(publicChatMeta(meta, true)).toMatchObject({
       type: "meta",
       debug: meta.debug,
     });
   });
 
-  it("redacts a spoofed playground source without an authenticated owner", () => {
-    expect(publicChatMeta(meta, "playground", false)).toEqual({
-      type: "meta",
-      messageId: "message-1",
-      conversationId: "conversation-1",
-      sources: [],
-      confidence: 0.91,
-      outcome: "answered_with_context",
-    });
+  it("relabels internal outcomes unless the verified owner is viewing", () => {
+    const outOfScope = { ...meta, outcome: "out_of_scope" };
+    expect(publicChatMeta(outOfScope, false)).toMatchObject({ outcome: "conversational" });
+    expect(publicChatMeta(outOfScope, false)).not.toHaveProperty("debug");
+    expect(publicChatMeta(outOfScope, true)).toMatchObject({ outcome: "out_of_scope" });
   });
 });

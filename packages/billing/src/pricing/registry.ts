@@ -76,6 +76,8 @@ export function applyRateMicros(
       return Math.floor((quantity * priceMicrosPerUnit) / 1_000);
     case "per_request":
       return Math.floor(quantity * priceMicrosPerUnit);
+    case "per_minute":
+      return Math.floor((quantity * priceMicrosPerUnit) / 60);
     default: {
       const _exhaustive: never = unit;
       return _exhaustive;

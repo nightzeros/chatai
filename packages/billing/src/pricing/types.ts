@@ -4,17 +4,20 @@ export const MODEL_PRICING_OPERATIONS = [
   "chat_cached_input",
   "embedding",
   "rerank",
+  "voice_realtime",
 ] as const;
 export type ModelPricingOperation = (typeof MODEL_PRICING_OPERATIONS)[number];
 
+/** `per_minute` prices a quantity given in seconds (per-second billing, no rounding up). */
 export const MODEL_PRICING_UNITS = [
   "per_million_tokens",
   "per_request",
   "per_1k_tokens",
+  "per_minute",
 ] as const;
 export type ModelPricingUnit = (typeof MODEL_PRICING_UNITS)[number];
 
-export const USAGE_OPERATIONS = ["chat_completion", "embedding", "rerank"] as const;
+export const USAGE_OPERATIONS = ["chat_completion", "embedding", "rerank", "voice_realtime"] as const;
 export type UsageOperation = (typeof USAGE_OPERATIONS)[number];
 
 /** Catalog row used for live price lookup (DB or seed). */

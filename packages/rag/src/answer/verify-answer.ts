@@ -11,14 +11,28 @@ import { extractCitationIndexes } from "./citations";
 import { FALLBACK_MESSAGE } from "./decide";
 import type { PreparedAnswer } from "./answer";
 import { buildContextBlocks, uniqueContextChunks } from "./prompt";
-import type { ProviderUsageRecord } from "./provider-usage";
+import type { ProviderUsageListener, ProviderUsageRecord } from "./provider-usage";
 
 export type VerifierVerdict = {
   enabled: boolean;
   passed: boolean;
   reason: string;
   regenerated: boolean;
+  /** Output scope result when the verifier also checked the Purpose (null: not reported). */
+  onPurpose?: boolean | null;
 };
+
+/** Ask the verifier to also report whether the answer stays within the Purpose (same call). */
+export type PurposeCheck = {
+  purposeBlock: string;
+  request: string;
+  /** The Scope Router accepted the request (in or partial); only the reply is judged. */
+  requestAccepted?: boolean;
+};
+
+/** Shared by the verifier and the output checker when the request was already accepted. */
+export const OUTPUT_CHECK_ACCEPTED_REQUEST =
+  "The request was already accepted as within the Purpose, so answering it is on purpose. Judge only whether the reply adds help, information or engagement on a different topic outside the Purpose, or takes on another role.";
 
 export type VerifiedGeneration = {
   text: string;
@@ -100,38 +114,60 @@ export async function verifyAnswer(opts: {
   context: string;
   retrievedCount: number;
   chat: ChatConfig;
+  purposeCheck?: PurposeCheck;
   deps?: Partial<VerifyAnswerDeps>;
-}): Promise<{ passed: boolean; reason: string; usage: ProviderUsage }> {
+}): Promise<{ passed: boolean; reason: string; usage: ProviderUsage; onPurpose?: boolean | null }> {
   const citations = citationMarkersValid(opts.answer, opts.retrievedCount);
   if (!citations.ok) {
     return {
       passed: false,
       reason: citations.reason ?? "Invalid citations.",
       usage: emptyProviderUsage(),
+      ...(opts.purposeCheck ? { onPurpose: null } : {}),
     };
   }
 
   const generate = opts.deps?.generateChat ?? generateChat;
+  const purpose = opts.purposeCheck;
 
   try {
     const { text: raw, usage } = await runGenerateChat(generate, {
       config: opts.chat,
-      system:
-        'You verify whether an answer is supported by retrieved sources and uses citation markers correctly. Return ONLY JSON like {"pass":true,"reason":"..."}.',
+      system: purpose
+        ? 'You verify whether an answer is supported by retrieved sources, uses citation markers correctly, and stays within the assistant\'s Purpose. Return ONLY JSON like {"pass":true,"onPurpose":true,"reason":"..."}.'
+        : 'You verify whether an answer is supported by retrieved sources and uses citation markers correctly. Return ONLY JSON like {"pass":true,"reason":"..."}.',
       prompt: [
         `Question: ${opts.question}`,
         `Sources:\n${opts.context}`,
         `Answer:\n${opts.answer}`,
         "Fail if the answer invents facts, contradicts the sources, or uses citation markers that do not match the sources.",
+        ...(purpose
+          ? [
+              `Purpose:\n${purpose.purposeBlock.slice(0, 2_000)}`,
+              ...(purpose.requestAccepted ? [OUTPUT_CHECK_ACCEPTED_REQUEST] : []),
+              '"onPurpose" is false only if the answer gives help, information, suggestions or engagement on a subject unrelated to the Purpose (for example a recipe, travel plans, shopping advice, a joke, story or poem, code, or general trivia), even partly, or takes on another role. Facts about the organization, person or subject the assistant represents are within the Purpose.',
+            ]
+          : []),
       ].join("\n\n"),
     });
-    return { ...parseVerifierResponse(raw), usage };
+    const verdict = parseVerifierResponse(raw);
+    return { ...verdict, usage, ...(purpose ? { onPurpose: parseOnPurposeField(raw) } : {}) };
   } catch {
     return {
       passed: true,
       reason: "Verifier unavailable; accepted the generated answer.",
       usage: emptyProviderUsage(),
+      ...(purpose ? { onPurpose: null } : {}),
     };
+  }
+}
+
+function parseOnPurposeField(raw: string): boolean | null {
+  try {
+    const parsed = JSON.parse(raw.trim()) as { onPurpose?: unknown };
+    return typeof parsed?.onPurpose === "boolean" ? parsed.onPurpose : null;
+  } catch {
+    return null;
   }
 }
 
@@ -139,6 +175,8 @@ export async function generateVerifiedAnswer(opts: {
   prepared: PreparedAnswer;
   question: string;
   chat: ChatConfig;
+  purposeCheck?: PurposeCheck;
+  onUsage?: ProviderUsageListener;
   deps?: Partial<VerifyAnswerDeps>;
 }): Promise<VerifiedGeneration> {
   const generate = opts.deps?.generateChat ?? generateChat;
@@ -146,13 +184,21 @@ export async function generateVerifiedAnswer(opts: {
   const context = buildContextBlocks(contextChunks);
   const retrievedCount = contextChunks.length;
   const providerUsages: ProviderUsageRecord[] = [];
+  const record = (usage: ProviderUsage, step: string) => {
+    const item = chatUsageRecord(opts.chat, usage, step);
+    providerUsages.push(item);
+    opts.onUsage?.(item);
+  };
+  const messages = opts.prepared.messages?.length
+    ? opts.prepared.messages
+    : [{ role: "user" as const, content: opts.question }];
 
   const first = await runGenerateChat(generate, {
     config: opts.chat,
     system: opts.prepared.system,
-    prompt: opts.question,
+    messages,
   });
-  providerUsages.push(chatUsageRecord(opts.chat, first.usage, "verified_answer"));
+  record(first.usage, "verified_answer");
 
   const firstVerdict = await verifyAnswer({
     question: opts.question,
@@ -160,15 +206,25 @@ export async function generateVerifiedAnswer(opts: {
     context,
     retrievedCount,
     chat: opts.chat,
+    purposeCheck: opts.purposeCheck,
     deps: opts.deps,
   });
-  providerUsages.push(chatUsageRecord(opts.chat, firstVerdict.usage, "verify_answer"));
+  record(firstVerdict.usage, "verify_answer");
+  const purposeField = (verdict: { onPurpose?: boolean | null }) =>
+    opts.purposeCheck ? { onPurpose: verdict.onPurpose ?? null } : {};
 
-  if (firstVerdict.passed) {
+  // An off-purpose draft is replaced by the caller; regenerating it would not help.
+  if (firstVerdict.passed || firstVerdict.onPurpose === false) {
     return {
       text: first.text,
       usedFallback: false,
-      verifier: { enabled: true, passed: true, reason: firstVerdict.reason, regenerated: false },
+      verifier: {
+        enabled: true,
+        passed: firstVerdict.passed,
+        reason: firstVerdict.reason,
+        regenerated: false,
+        ...purposeField(firstVerdict),
+      },
       providerUsages,
     };
   }
@@ -176,9 +232,9 @@ export async function generateVerifiedAnswer(opts: {
   const retry = await runGenerateChat(generate, {
     config: opts.chat,
     system: `${opts.prepared.system}\n\n${STRICT_RETRY_SYSTEM}`,
-    prompt: opts.question,
+    messages,
   });
-  providerUsages.push(chatUsageRecord(opts.chat, retry.usage, "verified_answer_retry"));
+  record(retry.usage, "verified_answer_retry");
 
   const retryVerdict = await verifyAnswer({
     question: opts.question,
@@ -186,15 +242,22 @@ export async function generateVerifiedAnswer(opts: {
     context,
     retrievedCount,
     chat: opts.chat,
+    purposeCheck: opts.purposeCheck,
     deps: opts.deps,
   });
-  providerUsages.push(chatUsageRecord(opts.chat, retryVerdict.usage, "verify_answer_retry"));
+  record(retryVerdict.usage, "verify_answer_retry");
 
-  if (retryVerdict.passed) {
+  if (retryVerdict.passed || retryVerdict.onPurpose === false) {
     return {
       text: retry.text,
       usedFallback: false,
-      verifier: { enabled: true, passed: true, reason: retryVerdict.reason, regenerated: true },
+      verifier: {
+        enabled: true,
+        passed: retryVerdict.passed,
+        reason: retryVerdict.reason,
+        regenerated: true,
+        ...purposeField(retryVerdict),
+      },
       providerUsages,
     };
   }
@@ -202,7 +265,13 @@ export async function generateVerifiedAnswer(opts: {
   return {
     text: FALLBACK_MESSAGE,
     usedFallback: true,
-    verifier: { enabled: true, passed: false, reason: retryVerdict.reason, regenerated: true },
+    verifier: {
+      enabled: true,
+      passed: false,
+      reason: retryVerdict.reason,
+      regenerated: true,
+      ...purposeField(retryVerdict),
+    },
     providerUsages,
   };
 }

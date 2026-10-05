@@ -10,6 +10,7 @@ import { createId } from "@/lib/ids";
 import type { HostingAccount } from "./accounts";
 import { resolveEffectiveLimitMicros } from "./entitlements";
 import { currentBillingPeriod } from "./period-anchor";
+import { resolveVoiceSecondsLimit } from "./plan-entitlements";
 
 export type UsagePeriodBalance = typeof usagePeriodBalances.$inferSelect;
 
@@ -46,6 +47,7 @@ export async function getOrCreateUsagePeriodBalance(
   }
 
   const limitMicros = await resolveEffectiveLimitMicros(account);
+  const voiceSecondsLimit = await resolveVoiceSecondsLimit(account);
   const createdAt = new Date();
 
   const [inserted] = await db()
@@ -59,6 +61,7 @@ export async function getOrCreateUsagePeriodBalance(
       consumedMicros: 0,
       reservedMicros: 0,
       requestCount: 0,
+      voiceSecondsLimit,
       createdAt,
       updatedAt: createdAt,
     })
