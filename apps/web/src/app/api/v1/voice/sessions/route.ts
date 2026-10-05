@@ -16,6 +16,7 @@ import { authorizeV1 } from "@/lib/authorize-v1";
 import {
   clientHistorySchema,
   fromClientHistory,
+  voiceSeedHistory,
   withServerGrounding,
 } from "@/lib/conversation-history";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
@@ -303,7 +304,7 @@ async function mintVoiceSession(request: Request) {
     purpose: assistantContext.purpose,
     voiceSettings: assistant.voiceSettings,
     // Text→voice continuity: seed the live model with prior turns.
-    history: history.map((turn) => ({ role: turn.role, text: turn.content })),
+    history: voiceSeedHistory(history).map((turn) => ({ role: turn.role, text: turn.content })),
   });
 
   const sessionId = createId();

@@ -7,6 +7,7 @@ import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { getOwnedDocument } from "@/lib/documents";
+import { onKnowledgeChanged } from "@/lib/profile/jobs";
 import { serializeDocument } from "@/lib/rest-serialize";
 import { isV1Error, requireV1, v1Options } from "@/lib/v1";
 
@@ -66,6 +67,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       via: "api",
     },
   });
+  await onKnowledgeChanged(db(), assistant.id);
 
   return jsonWithCors({ ok: true });
 }

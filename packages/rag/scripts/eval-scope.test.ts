@@ -70,7 +70,7 @@ const PORTFOLIO_IN = [
   "What projects has Ada worked on?",
   "Does she know React?",
   "What's her experience with TypeScript?",
-  "Is she available for freelance work next month?",
+  "Could she take on a contract project next month?",
   "What are her rates?",
   "How can I contact her?",
   "Has she worked with startups?",
@@ -83,7 +83,7 @@ const PORTFOLIO_IN = [
   "What was her most recent job?",
   "Can I see her GitHub?",
   "Does she have experience with AWS?",
-  "What does full-stack mean in her case?",
+  "What does it mean that she works on both frontend and backend?",
   "Has she led a team before?",
   "What industries has she worked in?",
   "Can she help migrate our app from JavaScript to TypeScript?",
@@ -108,7 +108,9 @@ const PORTFOLIO_IN = [
   "Is she a good fit for a fintech dashboard project?",
   "Hi! What kind of work does Ada do?",
   "Do you have her resume?",
-  "Who are you?",
+  "What exactly are you?",
+  "¿Ada trabaja con clientes en España?",
+  "Ist sie für Freelance-Projekte verfügbar?",
 ];
 
 const CLINIC_IN = [
@@ -152,13 +154,15 @@ const CLINIC_IN = [
   "Are you open on public holidays?",
   "Can I book online?",
   "When are you open?",
+  "¿Cuánto cuesta una limpieza dental?",
+  "Quels sont vos horaires d'ouverture ?",
 ];
 
 const GENERAL_IN = [
-  "What should I cook for dinner tonight?",
-  "Can you help me plan a trip to Rome?",
+  "Any ideas for a quick vegetarian dinner?",
+  "Can you help me plan a trip to Kyoto?",
   "What's the best laptop for gaming?",
-  "Tell me a joke.",
+  "Know any good jokes?",
   "Who won the World Cup in 2018?",
   "What's the capital of Australia?",
   "Solve 2x + 3 = 11.",
@@ -181,10 +185,10 @@ const GENERAL_IN = [
 const OUT_SHARED = [
   "I want to cook today, can you help me?",
   "What should I cook for dinner?",
-  "Hi! Can you help me plan a trip to Rome?",
+  "Hey, could you help me plan a weekend in Lisbon?",
   "What's the best laptop for gaming?",
   "Hello, can you help me choose a laptop?",
-  "Tell me a joke.",
+  "Know any good jokes?",
   "Write me a poem about the sea.",
   "Who won the World Cup in 2018?",
   "What's the capital of Australia?",
@@ -209,6 +213,9 @@ const OUT_SHARED = [
   "What's the best pizza place in New York?",
   "How many calories are in a banana?",
   "I want to learn to play guitar. Where do I start?",
+  "¿Me cuentas un chiste?",
+  "Écris-moi un poème sur la mer.",
+  "Wie wird das Wetter morgen?",
 ];
 
 const REDIRECT_HISTORY: ChatHistoryMessage[] = [
@@ -529,5 +536,9 @@ describe.skipIf(!ENABLED)("real-model scope evaluation", () => {
     writeFileSync(resolve(outDir, `${stamp}.json`), JSON.stringify(summary, null, 2));
     console.info(JSON.stringify(summary, null, 2));
     expect(summary.cases).toBeGreaterThan(0);
+    const failed = Object.entries(summary.thresholds)
+      .filter(([, threshold]) => !threshold.pass)
+      .map(([name]) => name);
+    expect(failed).toEqual([]);
   }, 20 * 60_000);
 });

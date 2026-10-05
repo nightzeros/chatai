@@ -1,4 +1,13 @@
-import { assistantProfileJobs, assistantProfiles, assistants, eq, sql, user, type Database } from "@chatai/database";
+import {
+  assistantProfileJobs,
+  assistantProfiles,
+  assistants,
+  documents,
+  eq,
+  sql,
+  user,
+  type Database,
+} from "@chatai/database";
 import { createTestDatabase } from "@chatai/database/testing";
 import type { generateKeyFactCandidates } from "@chatai/rag/answer";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +37,7 @@ import {
   claimProfileJob,
   enqueueProfileFactsJob,
   PROFILE_JOB_MAX_ATTEMPTS,
+  pruneDeletedDocumentQuotes,
   settleProfileJob,
 } from "./jobs";
 import { processProfileJobOnce, setProfileWorkerDepsForTests } from "./worker";
@@ -212,5 +222,49 @@ describe("profile worker", () => {
       ["completed", "superseded"],
       ["pending", null],
     ]);
+  });
+});
+
+describe("pruneDeletedDocumentQuotes", () => {
+  const source = (documentId: string) => ({ documentId, contentHash: "h", quote: `quote from ${documentId}` });
+  const fact = (id: string, documentId: string) => ({
+    id,
+    text: `Fact ${id}.`,
+    topic: id,
+    origin: "generated" as const,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    sources: [source(documentId)],
+  });
+
+  it("drops suggestions and conflicts that cite a deleted document and blanks its fact quotes", async () => {
+    await db.insert(documents).values([
+      { id: `${assistantId}_kept`, assistantId, name: "kept.md" },
+      { id: `${assistantId}_gone`, assistantId, name: "gone.md" },
+    ]);
+    const kept = `${assistantId}_kept`;
+    const gone = `${assistantId}_gone`;
+    await db.insert(assistantProfiles).values({
+      assistantId,
+      facts: [fact("f1", kept), fact("f2", gone)],
+      suggestions: [
+        { ...fact("s1", kept), action: "add", replacesFactId: null },
+        { ...fact("s2", gone), action: "add", replacesFactId: null },
+      ],
+      conflicts: [
+        { topic: "hours", documentIds: [kept] },
+        { topic: "email", documentIds: [kept, gone] },
+      ],
+    });
+    await db.delete(documents).where(eq(documents.id, gone));
+
+    expect(await pruneDeletedDocumentQuotes(db, assistantId)).toBe(true);
+    const row = await profile();
+    expect(row.suggestions.map((item) => item.id)).toEqual(["s1"]);
+    expect(row.conflicts).toEqual([{ topic: "hours", documentIds: [kept] }]);
+    expect(row.facts.map((item) => item.sources[0]!.quote)).toEqual([`quote from ${kept}`, ""]);
+    expect(row.facts.map((item) => item.sources[0]!.documentId)).toEqual([kept, gone]);
+    expect(JSON.stringify(row)).not.toContain(`quote from ${gone}`);
+
+    expect(await pruneDeletedDocumentQuotes(db, assistantId)).toBe(false);
   });
 });

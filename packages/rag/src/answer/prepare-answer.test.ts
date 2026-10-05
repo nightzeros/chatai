@@ -316,9 +316,10 @@ describe("prepareAnswer scope enforcement", () => {
     const { prepared, loadKnowledgeTitles } = runScoped("When are you open?", [], model);
     await prepared;
     expect(loadKnowledgeTitles).toHaveBeenCalledWith({}, "asst-clinic");
-    const system = String(plannerCalls(model)[0]?.[0].system);
+    const { system, prompt } = plannerCalls(model)[0]![0] as { system: string; prompt: string };
     expect(system).toContain(CLINIC);
-    expect(system).toContain("- Price list");
+    expect(system).not.toContain("Price list");
+    expect(JSON.parse(prompt).terminologyHints.knowledgeTitles).toContain("Price list");
   });
 
   it("organization question that no title mentions stays in scope (titles are hints only)", async () => {

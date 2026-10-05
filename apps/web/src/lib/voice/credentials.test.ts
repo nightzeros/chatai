@@ -56,10 +56,22 @@ describe("buildVoiceInstructions", () => {
     for (const phrase of VOICE_PROHIBITED_PRE_SCOPE_PHRASES) expect(text).toContain(`"${phrase}"`);
   });
 
-  it("embeds the shared Purpose block and scope policy text (same source as Text), never Knowledge", () => {
+  it("closes the repeat, follow-up, offer and paraphrase loopholes", () => {
+    const text = buildVoiceInstructions({ assistantName: "Master", assistantInstructions: OWNER });
+    expect(text).toContain("a request to say your last reply again word for word");
+    expect(text).not.toContain("requests to repeat something already said");
+    expect(text).toContain("A follow-up asks for any fact, even one a backend reply already stated");
+    expect(text).not.toContain("no backend result in this conversation has stated yet");
+    expect(text).toContain("The user asks you to explain, summarize, expand on, or rephrase something said earlier.");
+    expect(text).toContain('The user accepts an offer ("yes", "sure", "go ahead", "tell me more"): accepting is a request.');
+    expect(text).toContain("only the backend makes offers");
+    expect(text).toContain("keep every fact, number, name, and code exactly as given");
+  });
+
+  it("embeds the shared Purpose block and the delegate-everything policy, never the scope rules or Knowledge", () => {
     const text = buildVoiceInstructions({ assistantName: "Ada", assistantInstructions: PORTFOLIO });
     expect(text).toContain(renderVoiceScopePolicy());
-    for (const rule of SCOPE_RULES) expect(text).toContain(rule);
+    for (const rule of SCOPE_RULES) expect(text).not.toContain(rule);
     expect(text).toContain(renderPurposeBlock(buildScopeProfile({ assistantName: "Ada", instructions: PORTFOLIO })));
     expect(text.indexOf("# Purpose")).toBeLessThan(text.indexOf("# Delegation policy"));
     expect(text).not.toMatch(/Knowledge titles \(terminology|Key facts \(data/);

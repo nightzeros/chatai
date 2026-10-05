@@ -1,6 +1,7 @@
 import { calculateCostMicros, type ModelPricingRow } from "@chatai/billing";
 import type { ChatConfig, EmbeddingConfig } from "@chatai/ai";
 import type { UsageBillingMode } from "@chatai/database";
+import { CONVERSATION_HISTORY_WINDOW } from "@chatai/rag/answer";
 
 import type { AssistantBillingModes } from "@/lib/ai-config";
 
@@ -10,7 +11,8 @@ export type ChatCostEstimateInput = {
   embedding: EmbeddingConfig;
   billing: AssistantBillingModes;
   message: string;
-  hasHistory: boolean;
+  /** Total characters of the conversation history sent with this turn. */
+  historyChars: number;
   queryExpansionEnabled: boolean;
   rerankEnabled: boolean;
   verifyCitationsEnabled: boolean;
@@ -27,8 +29,22 @@ export type ChatCostEstimate = {
   components: Array<{ step: string; micros: number; billingMode: UsageBillingMode }>;
 };
 
+/** Scope Router prompt ceiling: planner rules, Purpose, Knowledge titles and Key Fact hints. */
+const ROUTER_PROMPT_TOKENS = 6_000;
+const ROUTER_OUTPUT_TOKENS = 300;
+/** Purpose and Key Facts added to the answer prompt. */
+const PROFILE_CONTEXT_TOKENS = 1_500;
+const RETRIEVED_CONTEXT_TOKENS = 2_000;
+/** Partial turns retrieve a second time for the authorized part of the request. */
+const RETRIEVAL_PASSES = 2;
+
 function approxTokensFromChars(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
+}
+
+function historyTokens(historyChars: number): number {
+  const chars = Math.min(Math.max(0, historyChars), CONVERSATION_HISTORY_WINDOW.maxTotalChars);
+  return chars > 0 ? Math.ceil(chars / 4) : 0;
 }
 
 function chatCost(
@@ -64,19 +80,19 @@ export function estimateChatRequestCostMicros(input: ChatCostEstimateInput): Cha
     components.push({ step, micros: hostedMicros, billingMode });
   };
 
-  if (input.hasHistory) {
-    add(
-      "rewrite_query",
-      chatCost(input.catalog, input.chat, 500, 100, at),
-      input.billing.chat,
-    );
-  }
+  const priorTokens = historyTokens(input.historyChars);
 
-  const queryCount = input.queryExpansionEnabled ? 3 : 1;
+  add(
+    "rewrite_query",
+    chatCost(input.catalog, input.chat, ROUTER_PROMPT_TOKENS + priorTokens + messageTokens, ROUTER_OUTPUT_TOKENS, at),
+    input.billing.chat,
+  );
+
+  const queryCount = (input.queryExpansionEnabled ? 3 : 1) * RETRIEVAL_PASSES;
   if (input.queryExpansionEnabled) {
     add(
       "expand_query",
-      chatCost(input.catalog, input.chat, 300, 100, at),
+      chatCost(input.catalog, input.chat, 300, 100, at) * RETRIEVAL_PASSES,
       input.billing.chat,
     );
   }
@@ -100,20 +116,20 @@ export function estimateChatRequestCostMicros(input: ChatCostEstimateInput): Cha
         model: "*",
         usageOperation: "rerank",
         at,
-        units: 1,
+        units: RETRIEVAL_PASSES,
       }).costMicros;
       add("rerank_cohere", rerankMicros, input.billing.rerank);
     } else {
       add(
         "rerank_llm",
-        chatCost(input.catalog, input.chat, 2000, 200, at),
+        chatCost(input.catalog, input.chat, 2000, 200, at) * RETRIEVAL_PASSES,
         input.billing.chat,
       );
     }
   }
 
-  // Answer generation: assume up to ~2k context tokens + message + max output.
-  const answerInput = 2000 + messageTokens;
+  // Answer generation is capped at `maxOutputTokens` for hosted chat.
+  const answerInput = RETRIEVED_CONTEXT_TOKENS + PROFILE_CONTEXT_TOKENS + priorTokens + messageTokens;
   const answerCalls = input.verifyCitationsEnabled ? 4 : 1;
   add(
     input.verifyCitationsEnabled ? "verified_answer" : "stream_answer",

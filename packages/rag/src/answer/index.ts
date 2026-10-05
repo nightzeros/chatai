@@ -50,6 +50,7 @@ export {
   knowledgeFingerprint,
   MAX_KEY_FACTS,
   mergeFactSuggestions,
+  pruneDeletedDocuments,
   suggestPurpose,
   verifyFactCandidate,
 } from "./profile-generate";

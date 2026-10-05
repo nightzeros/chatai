@@ -34,6 +34,32 @@ describe("verifyFactCandidate", () => {
   ])("rejects %s", (_label, candidate) => {
     expect(verifyFactCandidate(candidate, SOURCE)).toBe(false);
   });
+
+  const TEAM = "Dr. Maria Lee founded the clinic. Write to hello@brightsmile.example or visit brightsmile.example/book.";
+
+  it("accepts names, emails and URLs that the quote contains", () => {
+    expect(
+      verifyFactCandidate({ text: "The clinic was founded by Dr. Maria Lee.", topic: "founder", quote: "Dr. Maria Lee founded the clinic" }, TEAM),
+    ).toBe(true);
+    expect(
+      verifyFactCandidate(
+        { text: "Email hello@brightsmile.example.", topic: "email", quote: "Write to hello@brightsmile.example or visit" },
+        TEAM,
+      ),
+    ).toBe(true);
+    expect(
+      verifyFactCandidate({ text: "Book at brightsmile.example/book.", topic: "booking", quote: "or visit brightsmile.example/book" }, TEAM),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["a name missing from the quote", { text: "The clinic was founded by Dr. John Smith.", topic: "founder", quote: "Dr. Maria Lee founded the clinic" }],
+    ["an email missing from the quote", { text: "Email info@other.example.", topic: "email", quote: "Write to hello@brightsmile.example or visit" }],
+    ["a URL missing from the quote", { text: "Book at evil.example/book.", topic: "booking", quote: "or visit brightsmile.example/book" }],
+    ["a name that only partly matches", { text: "The clinic was founded by Dr. Leeann.", topic: "founder", quote: "Dr. Maria Lee founded the clinic" }],
+  ])("rejects %s", (_label, candidate) => {
+    expect(verifyFactCandidate(candidate, TEAM)).toBe(false);
+  });
 });
 
 const candidate = (overrides: Partial<VerifiedFactCandidate> = {}): VerifiedFactCandidate => ({
@@ -52,6 +78,25 @@ describe("dropConflicts", () => {
     ]);
     expect(result.facts.map((f) => f.topic)).toEqual(["phone"]);
     expect(result.conflicts).toEqual([{ topic: "hours", documentIds: ["doc-1", "doc-2"] }]);
+  });
+
+  it("records different number-free facts on one topic as a conflict instead of keeping one silently", () => {
+    const result = dropConflicts([
+      candidate({ topic: "email", text: "Email hello@brightsmile.example." }),
+      candidate({
+        topic: "email",
+        text: "Email info@brightsmile.example.",
+        sources: [{ documentId: "doc-2", contentHash: "h2", quote: "q" }],
+      }),
+    ]);
+    expect(result.facts).toEqual([]);
+    expect(result.conflicts).toEqual([{ topic: "email", documentIds: ["doc-1", "doc-2"] }]);
+  });
+
+  it("keeps one copy of the same fact found twice", () => {
+    const result = dropConflicts([candidate(), candidate({ sources: [{ documentId: "doc-2", contentHash: "h2", quote: "q" }] })]);
+    expect(result.facts).toHaveLength(1);
+    expect(result.conflicts).toEqual([]);
   });
 });
 

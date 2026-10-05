@@ -6,6 +6,7 @@ import {
   clientHistorySchema,
   fromClientHistory,
   toHistoryMessages,
+  voiceSeedHistory,
   withServerGrounding,
 } from "./conversation-history";
 
@@ -52,6 +53,18 @@ describe("shared conversation history", () => {
     expect(withServerGrounding(client, history).some((item) => item.grounded)).toBe(false);
   });
 
+  it("tags stored GPT-Live live replies so they are never treated as backend answers", () => {
+    expect(
+      toHistoryMessages([
+        { role: "user", content: "How much did you say?", outcome: null },
+        { role: "assistant", content: "Seventy dollars.", outcome: null, answeredBy: "realtime_model" },
+      ]),
+    ).toEqual([
+      { role: "user", content: "How much did you say?" },
+      { role: "assistant", content: "Seventy dollars.", liveReply: true },
+    ]);
+  });
+
   it("drops error placeholders and non-conversation roles", () => {
     expect(
       toHistoryMessages([
@@ -79,9 +92,26 @@ describe("shared conversation history", () => {
       ]),
     ).toEqual([
       { role: "user", content: "How many members?" },
-      { role: "assistant", content: "Zenith has 17 members.", grounded: true },
-      { role: "assistant", content: "Zenith has 900 members." },
+      { role: "assistant", content: "Zenith has 17 members.", clientSupplied: true, grounded: true },
+      { role: "assistant", content: "Zenith has 900 members.", clientSupplied: true },
     ]);
+  });
+
+  it("seeds GPT-Live with user turns and server-verified assistant turns only", () => {
+    const client = withServerGrounding(
+      fromClientHistory([
+        { role: "user", content: "How many members?" },
+        { role: "assistant", content: "Zenith has 17 members." },
+        { role: "assistant", content: "Sure, I can also plan your trip." },
+      ]),
+      [{ role: "assistant", content: "Zenith has 17 members.", grounded: true }],
+    );
+    expect(voiceSeedHistory(client).map((turn) => turn.content)).toEqual(["How many members?", "Zenith has 17 members."]);
+    const stored = [
+      { role: "user" as const, content: "Hi" },
+      { role: "assistant" as const, content: "Hello! How can I help?" },
+    ];
+    expect(voiceSeedHistory(stored)).toEqual(stored);
   });
 
   it("bounds client history size", () => {

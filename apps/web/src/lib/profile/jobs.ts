@@ -2,6 +2,7 @@ import {
   and,
   assistantProfileJobs,
   assistantProfiles,
+  documents,
   eq,
   gte,
   inArray,
@@ -9,6 +10,7 @@ import {
   sql,
   type Database,
 } from "@chatai/database";
+import { pruneDeletedDocuments } from "@chatai/rag/answer";
 
 import { createId } from "@/lib/ids";
 
@@ -177,6 +179,33 @@ export async function enqueueProfileFactsJob(
   return rows.length > 0;
 }
 
+/** Drops profile suggestions, conflicts and fact quotes that cite documents that no longer exist. */
+export async function pruneDeletedDocumentQuotes(db: Database, assistantId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [profile] = await tx
+      .select({
+        facts: assistantProfiles.facts,
+        suggestions: assistantProfiles.suggestions,
+        conflicts: assistantProfiles.conflicts,
+      })
+      .from(assistantProfiles)
+      .where(eq(assistantProfiles.assistantId, assistantId))
+      .for("update");
+    if (!profile) return false;
+    const existing = await tx
+      .select({ id: documents.id })
+      .from(documents)
+      .where(eq(documents.assistantId, assistantId));
+    const pruned = pruneDeletedDocuments(profile, new Set(existing.map((row) => row.id)));
+    if (!pruned) return false;
+    await tx
+      .update(assistantProfiles)
+      .set({ ...pruned, updatedAt: new Date() })
+      .where(eq(assistantProfiles.assistantId, assistantId));
+    return true;
+  });
+}
+
 /**
  * Knowledge changed (document ready, failed, deleted, excluded, re-synced). Only
  * assistants whose owner already published Key facts get a debounced refresh; the
@@ -184,6 +213,11 @@ export async function enqueueProfileFactsJob(
  * must not fail because of the profile.
  */
 export async function onKnowledgeChanged(db: Database, assistantId: string): Promise<void> {
+  try {
+    await pruneDeletedDocumentQuotes(db, assistantId);
+  } catch {
+    // Missing table before migration 0020, or a transient DB error: the next change retries.
+  }
   try {
     const rows = (await db.execute(sql`
       SELECT 1 AS ok FROM assistant_profiles

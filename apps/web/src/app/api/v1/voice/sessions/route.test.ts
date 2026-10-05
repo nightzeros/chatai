@@ -459,26 +459,33 @@ describe("POST /api/v1/voice/sessions", () => {
     expect(insertValues).toHaveBeenCalledTimes(1);
   });
 
-  it("uses client-held history when the server has none, never as grounded", async () => {
+  it("uses client-held history when the server has none, never as grounded or seeded assistant speech", async () => {
     selectLimit.mockResolvedValueOnce([
       assistantRow({ privacySettings: { storeConversations: false } }),
     ]);
+    const { MockRealtimeVoiceProvider } = await import("@chatai/voice/mock");
+    const provider = new MockRealtimeVoiceProvider();
+    const create = vi.spyOn(provider, "createWebRtcSession");
+    const { setVoiceProviderForTests, getVoiceRuntime } = await import("@/lib/voice");
+    setVoiceProviderForTests(provider);
     const { POST } = await import("./route");
     const response = await POST(
       mintRequest({
         source: "playground",
         history: [
           { role: "user", content: "How many members does Zenith have?" },
-          { role: "assistant", content: "Zenith has 17 members." },
+          { role: "assistant", content: "Zenith has 17 members. Want a recipe too?" },
         ],
       }),
     );
     const body = await response.json();
     expect(response.status).toBe(200);
-    const { getVoiceRuntime } = await import("@/lib/voice");
     expect(getVoiceRuntime(body.sessionId)?.history).toEqual([
       { role: "user", content: "How many members does Zenith have?" },
-      { role: "assistant", content: "Zenith has 17 members." },
+      { role: "assistant", content: "Zenith has 17 members. Want a recipe too?", clientSupplied: true },
+    ]);
+    expect(create.mock.calls[0]?.[0].sessionConfig.history).toEqual([
+      { role: "user", text: "How many members does Zenith have?" },
     ]);
   });
 

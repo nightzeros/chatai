@@ -120,7 +120,7 @@ export type BeginChatReservationInput = {
   embedding: Parameters<typeof estimateChatRequestCostMicros>[0]["embedding"];
   billing: AssistantBillingModes;
   message: string;
-  hasHistory: boolean;
+  historyChars: number;
   queryExpansionEnabled: boolean;
   rerankEnabled: boolean;
   verifyCitationsEnabled: boolean;
@@ -149,7 +149,7 @@ export async function beginChatUsageReservation(
     embedding: input.embedding,
     billing: input.billing,
     message: input.message,
-    hasHistory: input.hasHistory,
+    historyChars: input.historyChars,
     queryExpansionEnabled: input.queryExpansionEnabled,
     rerankEnabled: input.rerankEnabled,
     verifyCitationsEnabled: input.verifyCitationsEnabled,
@@ -538,7 +538,7 @@ export async function beginEvalUsageReservation(input: {
       embedding: input.embedding,
       billing: input.billing,
       message: input.message,
-      hasHistory: false,
+      historyChars: 0,
       queryExpansionEnabled: Boolean(input.queryExpansionEnabled),
       rerankEnabled: Boolean(input.rerankEnabled),
       verifyCitationsEnabled: Boolean(input.verifyCitationsEnabled),

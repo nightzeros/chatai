@@ -1,4 +1,4 @@
-import { desc, eq, messages, type MessageOutcome } from "@chatai/database";
+import { desc, eq, messages, sql, type MessageOutcome } from "@chatai/database";
 import type { ChatHistoryMessage } from "@chatai/rag/answer";
 import { z } from "zod";
 
@@ -23,7 +23,10 @@ export function isGroundedOutcome(outcome: MessageOutcome | null | undefined): b
   return Boolean(outcome && GROUNDED_OUTCOMES.has(outcome));
 }
 
-type HistoryRow = { role: string; content: string; outcome: MessageOutcome | null };
+/** `debug.voice.answeredBy` of a reply GPT-Live gave without delegating. */
+const LIVE_REPLY_ANSWERED_BY = "realtime_model";
+
+type HistoryRow = { role: string; content: string; outcome: MessageOutcome | null; answeredBy?: string | null };
 
 export function toHistoryMessages(rows: HistoryRow[]): ChatHistoryMessage[] {
   return rows.flatMap((row): ChatHistoryMessage[] => {
@@ -36,6 +39,7 @@ export function toHistoryMessages(rows: HistoryRow[]): ChatHistoryMessage[] {
         content: row.content,
         ...(row.role === "assistant" && isGroundedOutcome(row.outcome) ? { grounded: true } : {}),
         ...(row.role === "assistant" && row.outcome === "out_of_scope" ? { redirected: true } : {}),
+        ...(row.role === "assistant" && row.answeredBy === LIVE_REPLY_ANSWERED_BY ? { liveReply: true } : {}),
       },
     ];
   });
@@ -45,7 +49,12 @@ export async function loadRecentConversationHistory(
   conversationId: string,
 ): Promise<ChatHistoryMessage[]> {
   const rows = await db()
-    .select({ role: messages.role, content: messages.content, outcome: messages.outcome })
+    .select({
+      role: messages.role,
+      content: messages.content,
+      outcome: messages.outcome,
+      answeredBy: sql<string | null>`${messages.debug} -> 'voice' ->> 'answeredBy'`,
+    })
     .from(messages)
     .where(eq(messages.conversationId, conversationId))
     .orderBy(desc(messages.createdAt))
@@ -89,5 +98,17 @@ export function fromClientHistory(
 ): ChatHistoryMessage[] {
   return (items ?? [])
     .filter((item) => item.content.trim())
-    .map((item) => ({ role: item.role, content: item.content }));
+    .map((item) =>
+      item.role === "assistant"
+        ? { role: item.role, content: item.content, clientSupplied: true }
+        : { role: item.role, content: item.content },
+    );
+}
+
+/**
+ * Turns safe to seed into GPT-Live as prior speech: user turns, and assistant turns
+ * the server stored or verified. Client-written assistant turns are never seeded.
+ */
+export function voiceSeedHistory(history: ChatHistoryMessage[]): ChatHistoryMessage[] {
+  return history.filter((turn) => turn.role === "user" || !turn.clientSupplied || turn.grounded === true);
 }

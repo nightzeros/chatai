@@ -53,6 +53,8 @@ export const VOICE_ORCHESTRATION_DEFAULTS = {
   utteranceSettleMaxMs: 700,
   /** Input fragments starting this long after the delegation offset still belong to it. */
   utteranceTailGraceMs: 300,
+  /** Speech running past the delegation offset is complete once no fragment arrived for this long. */
+  utteranceQuietMs: 150,
   /**
    * Assistant speech this long between two user fragments is a reply, so the
    * fragments belong to different turns. Shorter output is a barge-in cut-off.
@@ -90,7 +92,7 @@ export const VOICE_ORCHESTRATION_DEFAULTS = {
 
 /** Re-states the delegation rule after GPT-Live engaged with or answered a request itself. */
 export const SCOPE_REMINDER_INSTRUCTIONS =
-  'Reminder: delegate every request for information, advice, help, recommendations, an activity, or a task to the backend immediately, including requests that seem unrelated or name no topic. Before the backend reply say only "One moment." or nothing: never agree, offer help, or ask about the request. Speak only the backend\'s reply and add nothing. Handle yourself only greetings, thanks, goodbyes, acknowledgements, and requests to repeat something already said.';
+  'Reminder: delegate every request for information, advice, help, recommendations, an activity, or a task to the backend immediately, including requests that seem unrelated or name no topic. Before the backend reply say only "One moment." or nothing: never agree, offer help, or ask about the request. Speak only the backend\'s reply, keep its facts exactly, and add nothing. Accepting an offer ("yes", "tell me more") is a request: delegate it. Handle yourself only greetings, thanks, goodbyes, plain acknowledgements, and saying your last reply again word for word.';
 
 const ENGAGEMENT_PATTERN =
   /\b(sure|absolutely|of course|certainly|happy to|glad to|i can help|i could help|i'd love to|i would love to|i'd be happy|let's (do|get|start|plan|make)|great idea|what kind of|what type of|what sort of|which \w+( \w+)? (are|do|would) you)\b/i;
@@ -323,14 +325,25 @@ function discardLateResult(session: VoiceRuntimeSession, turn: VoiceTurn, stage:
  * claim the unassigned fragments that belong to this utterance.
  */
 async function collectUtterance(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<string> {
-  const { utteranceSettleMaxMs, utteranceTailGraceMs } = deps.settings;
+  const { utteranceSettleMaxMs, utteranceTailGraceMs, utteranceQuietMs } = deps.settings;
   const deadline = Date.now() + utteranceSettleMaxMs;
+  let fragmentCount = session.inputFragments.length;
+  let lastArrivalAt = Date.now();
   const caughtUp = () => {
     const last = session.inputFragments.at(-1);
     return Boolean(last && last.endMs >= turn.offsetMs - 200);
   };
-  while (!caughtUp() && Date.now() < deadline && !turn.abort.signal.aborted) {
+  // Delegation can fire mid-utterance: speech past the offset may still be transcribing.
+  const settled = () => {
+    const last = session.inputFragments.at(-1);
+    return !last || last.endMs <= turn.offsetMs || Date.now() - lastArrivalAt >= utteranceQuietMs;
+  };
+  while ((!caughtUp() || !settled()) && Date.now() < deadline && !turn.abort.signal.aborted) {
     await sleep(Math.min(40, Math.max(0, deadline - Date.now())));
+    if (session.inputFragments.length !== fragmentCount) {
+      fragmentCount = session.inputFragments.length;
+      lastArrivalAt = Date.now();
+    }
   }
   // A superseded turn must not claim fragments that now belong to the newer turn.
   if (turn.abort.signal.aborted) return "";
@@ -391,7 +404,7 @@ function recordLiveExchange(
   auditLiveExchange(session, exchange);
   session.liveExchanges.push(exchange);
   session.history.push({ role: "user", content: exchange.userText });
-  if (exchange.replyText) session.history.push({ role: "assistant", content: exchange.replyText });
+  if (exchange.replyText) session.history.push({ role: "assistant", content: exchange.replyText, liveReply: true });
   const persisted = insertVoiceLiveExchange(session, exchange).catch(() => undefined);
   track(session, persisted);
   return persisted;
@@ -693,7 +706,7 @@ async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Pro
     embedding: models.embedding,
     billing: models.billing,
     message: turn.userText,
-    hasHistory: history.length > 0,
+    historyChars: history.reduce((sum, item) => sum + item.content.length, 0),
     queryExpansionEnabled: rag.queryExpansion,
     rerankEnabled: rag.rerank,
     verifyCitationsEnabled: rag.guardrails.verifyCitations,
@@ -793,7 +806,12 @@ async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Pro
       outputGuard: env.OUTPUT_SCOPE_CHECK,
       systemSuffix: VOICE_ANSWER_STYLE,
       generate: async ({ system, messages }) => {
-        const result = await deps.generateChat({ config: models.chat, system, messages });
+        const result = await deps.generateChat({
+          config: models.chat,
+          system,
+          messages,
+          ...(models.billing.chat === "hosted" ? { maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS } : {}),
+        });
         return { text: result.text, usage: result.usage };
       },
       generateVerified: deps.generateVerifiedAnswer,

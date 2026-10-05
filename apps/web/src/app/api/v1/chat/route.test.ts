@@ -65,11 +65,12 @@ const enforceWidgetRequest = vi.fn();
 vi.mock("@/lib/policies/security-policy", () => ({
   SecurityPolicy: { fromAssistant: () => ({ enforceWidgetRequest }) },
 }));
+let modelBilling: Record<string, string> = {};
 vi.mock("@/lib/ai-config", () => ({
   resolveAssistantModels: async () => ({
     chat: { provider: "openai", model: "gpt", apiKey: "k", baseURL: "" },
     embedding: { provider: "openai", model: "e", apiKey: "k", baseURL: "", dimensions: 3 },
-    billing: {},
+    billing: modelBilling,
   }),
 }));
 let idSeq = 0;
@@ -224,7 +225,27 @@ describe("POST /api/v1/chat conversation history", () => {
       { role: "assistant", content: "Zenith has 17 members.", grounded: true },
     ]);
     expect(streamChat.mock.calls[0]?.[0]).toMatchObject({ messages: generationMessages });
+    expect(streamChat.mock.calls[0]?.[0]).not.toHaveProperty("maxOutputTokens");
     expect(result.text).toBe("Zenith was founded in 2011.");
+  });
+
+  it("caps hosted answer output at the reserved output tokens", async () => {
+    modelBilling = { chat: "hosted", embedding: "hosted", rerank: "hosted" };
+    envMock.HOSTED_USAGE_MAX_OUTPUT_TOKENS = 1024;
+    try {
+      prepareAnswer.mockResolvedValueOnce(prepared({}));
+      streamChat.mockReturnValueOnce({
+        textStream: (async function* () {
+          yield "Open 8 to 6.";
+        })(),
+        usage: Promise.resolve({ inputTokens: 1, outputTokens: 1, totalTokens: 2 }),
+      });
+      await post({ message: "When are you open?", source: "playground" });
+      expect(streamChat.mock.calls[0]?.[0]).toMatchObject({ maxOutputTokens: 1024 });
+    } finally {
+      modelBilling = {};
+      delete envMock.HOSTED_USAGE_MAX_OUTPUT_TOKENS;
+    }
   });
 
   it("persists both turns even when retrieval fails", async () => {
@@ -279,7 +300,7 @@ describe("POST /api/v1/chat conversation history", () => {
     expect(result.status).toBe(200);
     expect(prepareAnswer.mock.calls[0]?.[0].history).toEqual([
       { role: "user", content: "How many members does Zenith have?" },
-      { role: "assistant", content: "Zenith has 17 members." },
+      { role: "assistant", content: "Zenith has 17 members.", clientSupplied: true },
     ]);
     expect(inserted).toEqual([]);
   });

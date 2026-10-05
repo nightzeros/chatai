@@ -9,6 +9,7 @@ import {
   hasRecentRedirect,
   isLongConversationalReply,
   parseOnPurpose,
+  replyExcerpt,
   riskReasons,
   type OutputGuardPlan,
 } from "./output-guard";
@@ -113,6 +114,32 @@ describe("checker", () => {
       timeoutMs: 10,
     });
     expect(result.onPurpose).toBeNull();
+  });
+
+  it("aborts the provider call when the check times out", async () => {
+    let signal: AbortSignal | undefined;
+    const slow = vi.fn((opts: { abortSignal?: AbortSignal }) => {
+      signal = opts.abortSignal;
+      return new Promise<string>((resolve) => setTimeout(() => resolve('{"offTopic":false}'), 200));
+    });
+    await checkOutputScope({ purposeBlock: "p", request: "r", answer: "a", chat, generate: slow as never, timeoutMs: 10 });
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("checks the whole short reply and the head and tail of a long one", async () => {
+    const replies: string[] = [];
+    const capture = vi.fn(async (opts: { prompt: string }) => {
+      replies.push((JSON.parse(opts.prompt) as { reply: string }).reply);
+      return '{"offTopic":false}';
+    });
+    const short = "Open 8 to 6.";
+    const long = `${"We open at 8. ".repeat(150)}Also, here is a lasagna recipe.`;
+    await checkOutputScope({ purposeBlock: "p", request: "r", answer: short, chat, generate: capture as never });
+    await checkOutputScope({ purposeBlock: "p", request: "r", answer: long, chat, generate: capture as never });
+    expect(replies[0]).toBe(short);
+    expect(replies[1]!.startsWith("We open at 8.")).toBe(true);
+    expect(replies[1]).toContain("lasagna recipe");
+    expect(replyExcerpt(long).length).toBeLessThan(1_600);
   });
 
   it("deterministic replacements per decision", () => {
@@ -228,6 +255,14 @@ describe("generateGuardedAnswer", () => {
 
     const injection = await run({ injectionSuspected: true, reasons: ["injection"] });
     expect(injection.guard).toMatchObject({ failClosed: true, replaced: true });
+
+    const partial = await run({ decision: "partial", reasons: ["partial"] });
+    expect(partial.guard).toMatchObject({ unavailable: true, failClosed: true, replaced: true });
+    expect(partial.text).toBe(`${FALLBACK_MESSAGE} ${PARTIAL_REDIRECT_SENTENCE}`);
+
+    const redirected = await run({ reasons: ["recent_redirect"] });
+    expect(redirected.guard).toMatchObject({ unavailable: true, failClosed: true, replaced: true });
+    expect(redirected.text).toBe(REDIRECT);
 
     const flexible = await run({ reasons: ["flexible"] });
     expect(flexible.guard).toMatchObject({ unavailable: true, passed: true });

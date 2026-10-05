@@ -165,7 +165,7 @@ function makeReservationInput(overrides?: Partial<Parameters<typeof beginChatUsa
     embedding,
     billing,
     message: "hello",
-    hasHistory: false,
+    historyChars: 0,
     queryExpansionEnabled: false,
     rerankEnabled: false,
     verifyCitationsEnabled: false,

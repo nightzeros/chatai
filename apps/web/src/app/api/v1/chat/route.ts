@@ -209,7 +209,7 @@ export async function POST(request: Request) {
     embedding: models.embedding,
     billing: models.billing,
     message: input.message,
-    hasHistory: history.length > 0,
+    historyChars: history.reduce((sum, item) => sum + item.content.length, 0),
     queryExpansionEnabled: rag.queryExpansion,
     rerankEnabled: rag.rerank,
     verifyCitationsEnabled: rag.guardrails.verifyCitations,
@@ -225,6 +225,7 @@ export async function POST(request: Request) {
   }
 
   const reservation = gate.reservation;
+  const outputCap = models.billing.chat === "hosted" ? { maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS } : {};
   const encoder = new TextEncoder();
   const assistantMessageId = createId();
   const accrued: ProviderUsageRecord[] = [];
@@ -285,12 +286,12 @@ export async function POST(request: Request) {
           verifyCitations: rag.guardrails.verifyCitations,
           outputGuard: env.OUTPUT_SCOPE_CHECK,
           generate: async ({ system, messages: chatMessages }) => {
-            const result = await generateChat({ config: models.chat, system, messages: chatMessages });
+            const result = await generateChat({ config: models.chat, system, messages: chatMessages, ...outputCap });
             return { text: result.text, usage: result.usage };
           },
           stream: async ({ system, messages: chatMessages }, onDelta) => {
             let text = "";
-            const result = streamChat({ config: models.chat, system, messages: chatMessages });
+            const result = streamChat({ config: models.chat, system, messages: chatMessages, ...outputCap });
             for await (const delta of result.textStream) {
               text += delta;
               onDelta(delta);

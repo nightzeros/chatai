@@ -608,6 +608,26 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     expect(prepareAnswer.mock.calls[0]?.[0].message).toBe("Do you ship to Canada?");
   });
 
+  it("keeps collecting while speech that ran past the delegation offset is still transcribing", async () => {
+    const { session, channel, prepareAnswer } = setup({ settings: { utteranceSettleMaxMs: 700, utteranceQuietMs: 150 } });
+    channel.userSays("Do you ship to", 1_000, 1_600);
+    channel.delegate("del_1", 1_500);
+    setTimeout(() => channel.userSays(" Canada and Mexico?", 1_650, 1_750), 100);
+    await waitForVoiceTurnsIdle(session);
+    expect(prepareAnswer.mock.calls[0]?.[0].message).toBe("Do you ship to Canada and Mexico?");
+    expect(session.liveExchanges).toEqual([]);
+  });
+
+  it("does not wait when the utterance ended before the delegation offset", async () => {
+    const { session, channel, prepareAnswer } = setup({ settings: { utteranceSettleMaxMs: 700, utteranceQuietMs: 150 } });
+    channel.userSays("Do you ship to Canada?", 1_000, 1_450);
+    const started = Date.now();
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+    expect(prepareAnswer.mock.calls[0]?.[0].message).toBe("Do you ship to Canada?");
+    expect(Date.now() - started).toBeLessThan(150);
+  });
+
   it("usage limit: no RAG call, spoken apology", async () => {
     const { session, channel, prepareAnswer } = setup({ gateOk: false });
     channel.userSays("What is the Pro plan?", 1_000);
@@ -786,7 +806,7 @@ describe("voice delegation → prepareAnswer → commentary", () => {
 
     expect(prepareAnswer.mock.calls[0]?.[0].history).toEqual([
       { role: "user", content: "Hi there" },
-      { role: "assistant", content: "Hello! How can I help?" },
+      { role: "assistant", content: "Hello! How can I help?", liveReply: true },
     ]);
     channel.userSays(" Bye", 8_000, 8_400);
     await terminateVoiceSession(session, { reason: "close_requested", requestProviderClose: true });
@@ -933,9 +953,10 @@ describe("Zenith knowledge (fictional, only answerable from the knowledge base)"
     await waitForVoiceTurnsIdle(session);
     const phone = prepareAnswer.mock.calls[3]?.[0];
     expect(phone?.message).toBe("Does it include phone support");
+    // GPT-Live's own reply stays for context but is tagged: it is never grounded backend text.
     expect(phone?.history?.slice(-2)).toEqual([
       { role: "user", content: "How much did you say it was again" },
-      { role: "assistant", content: "Seventy-three dollars per month." },
+      { role: "assistant", content: "Seventy-three dollars per month.", liveReply: true },
     ]);
 
     // Every exchange is part of the conversation, in spoken order, whether or not RAG ran.
