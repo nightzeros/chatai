@@ -28,9 +28,9 @@ if [[ -f "$STATE_FILE" ]]; then
   previous_tag="${current_tag:-}"
 fi
 
-echo "[deploy] Target image: ghcr.io/master-tecs/chatai:${IMAGE_TAG}"
+echo "[deploy] Target image: ghcr.io/nightzeros/chatai:${IMAGE_TAG}"
 if [[ -n "$previous_tag" ]]; then
-  echo "[deploy] Previous image: ghcr.io/master-tecs/chatai:${previous_tag}"
+  echo "[deploy] Previous image: ghcr.io/nightzeros/chatai:${previous_tag}"
 fi
 
 export CHATAI_IMAGE_TAG="$IMAGE_TAG"
@@ -75,4 +75,4 @@ previous_tag=${previous_tag}
 deployed_at=${deployed_at}
 EOF
 
-echo "[deploy] Success. Deployed ghcr.io/master-tecs/chatai:${IMAGE_TAG} at ${deployed_at}"
+echo "[deploy] Success. Deployed ghcr.io/nightzeros/chatai:${IMAGE_TAG} at ${deployed_at}"

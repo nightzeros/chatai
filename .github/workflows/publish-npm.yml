@@ -87,7 +87,7 @@ jobs:
     name: Publish to npm
     needs: validate
     if: >-
-      github.repository == 'master-tecs/chatai' &&
+      github.repository == 'nightzeros/chatai' &&
       (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
         (github.event_name == 'workflow_dispatch' && inputs.publish == true)

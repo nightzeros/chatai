@@ -13,4 +13,4 @@ export const brand = {
   },
 } as const;
 
-export const GITHUB_REPO_URL = "https://github.com/master-tecs/chatai";
+export const GITHUB_REPO_URL = "https://github.com/nightzeros/chatai";

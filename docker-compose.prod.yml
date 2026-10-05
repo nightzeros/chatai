@@ -2,7 +2,7 @@ name: chatai
 
 services:
   chatai:
-    image: ghcr.io/master-tecs/chatai:${CHATAI_IMAGE_TAG:?Set CHATAI_IMAGE_TAG to an immutable GHCR tag}
+    image: ghcr.io/nightzeros/chatai:${CHATAI_IMAGE_TAG:?Set CHATAI_IMAGE_TAG to an immutable GHCR tag}
     expose:
       - "3000"
     env_file:

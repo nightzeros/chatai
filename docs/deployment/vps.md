@@ -2,8 +2,8 @@
 
 Deploy ChatAI to a single Ubuntu 24.04 VPS at **https://app.nightzeros.com** using Docker, Caddy, external Neon Postgres, and immutable images from **GHCR**.
 
-**Repository:** [github.com/master-tecs/chatai](https://github.com/master-tecs/chatai)  
-**Container image:** `ghcr.io/master-tecs/chatai:<immutable-tag>`
+**Repository:** [github.com/nightzeros/chatai](https://github.com/nightzeros/chatai)  
+**Container image:** `ghcr.io/nightzeros/chatai:<immutable-tag>`
 
 NightZeros marketing and docs are deployed separately. This VPS runs only the ChatAI application and its in-process workers.
 
@@ -30,7 +30,7 @@ GitHub Actions (production environment approval)
         ↓
 Build Docker image once
         ↓
-Push immutable image to ghcr.io/master-tecs/chatai
+Push immutable image to ghcr.io/nightzeros/chatai
         ↓
 VPS pulls exact tag (no build on VPS)
         ↓
@@ -119,7 +119,9 @@ chmod 600 .env.production
 echo "<read-only-github-pat>" | docker login ghcr.io -u <github-username> --password-stdin
 ```
 
-Use a fine-grained PAT with `read:packages` for `ghcr.io/master-tecs/chatai`.
+Use a fine-grained PAT with `read:packages` for `ghcr.io/nightzeros/chatai`.
+
+Images built before the repository moved from `master-tecs/chatai` live at `ghcr.io/master-tecs/chatai` and were not moved with it. `docker-compose.prod.yml` on the VPS must use the new image path, and `rollback.sh` can only reach tags published under `ghcr.io/nightzeros/chatai`.
 
 ## Environment variables
 

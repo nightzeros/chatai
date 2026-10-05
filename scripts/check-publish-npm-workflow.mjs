@@ -39,7 +39,7 @@ assert.doesNotMatch(
 );
 assert.match(
   publishWorkflow,
-  /github\.repository == 'master-tecs\/chatai'/,
+  /github\.repository == 'nightzeros\/chatai'/,
   "publish-npm.yml must guard against fork/untrusted repository publishes",
 );
 assert.match(

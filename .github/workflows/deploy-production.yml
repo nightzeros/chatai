@@ -24,7 +24,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: master-tecs/chatai
+  IMAGE_NAME: nightzeros/chatai
   NEXT_PUBLIC_DOCS_URL: https://docs.nightzeros.com
   NEXT_PUBLIC_APP_URL: https://app.nightzeros.com
 
@@ -32,7 +32,7 @@ jobs:
   build-and-push:
     name: Build and push GHCR image
     runs-on: ubuntu-latest
-    if: github.repository == 'master-tecs/chatai'
+    if: github.repository == 'nightzeros/chatai'
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       git_sha: ${{ steps.meta.outputs.git_sha }}
@@ -115,7 +115,7 @@ jobs:
     name: Deploy to VPS
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.repository == 'master-tecs/chatai'
+    if: github.repository == 'nightzeros/chatai'
     environment: production
     steps:
       - name: Deploy over SSH

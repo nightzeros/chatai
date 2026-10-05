@@ -7,10 +7,10 @@
   "homepage": "https://nightzeros.com/chatai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/master-tecs/chatai.git",
+    "url": "git+https://github.com/nightzeros/chatai.git",
     "directory": "packages/react"
   },
-  "bugs": "https://github.com/master-tecs/chatai/issues",
+  "bugs": "https://github.com/nightzeros/chatai/issues",
   "type": "module",
   "sideEffects": false,
   "files": [

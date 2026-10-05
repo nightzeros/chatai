@@ -34,7 +34,7 @@ sleep 5
 
 export CHATAI_IMAGE_TAG="$rollback_tag"
 
-echo "[rollback] Pulling ghcr.io/master-tecs/chatai:${rollback_tag}…"
+echo "[rollback] Pulling ghcr.io/nightzeros/chatai:${rollback_tag}…"
 docker compose -f "$COMPOSE_FILE" pull chatai
 
 echo "[rollback] Restarting services (no migrations — RUN_MIGRATIONS=0)…"
@@ -62,4 +62,4 @@ deployed_at=${deployed_at}
 rolled_back_at=${deployed_at}
 EOF
 
-echo "[rollback] Success. Running ghcr.io/master-tecs/chatai:${rollback_tag}"
+echo "[rollback] Success. Running ghcr.io/nightzeros/chatai:${rollback_tag}"

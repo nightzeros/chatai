@@ -37,7 +37,7 @@ Configure on **each** live package page:
 | Field | Value |
 | --- | --- |
 | Provider | GitHub Actions |
-| GitHub owner | `master-tecs` |
+| GitHub owner | `nightzeros` |
 | Repository | `chatai` |
 | Workflow filename | `publish-npm.yml` |
 | Environment | `npm` |
@@ -71,7 +71,7 @@ Use the workflow **filename only** (`publish-npm.yml`), not the full `.github/wo
 
 **Publish job guards:**
 
-- Repository must be `master-tecs/chatai`
+- Repository must be `nightzeros/chatai`
 - Ref must be `main` or a `v*` tag
 - Tag must match `VERSION` on tag pushes
 - Package versions must match `VERSION` (`sync-package-versions --check`)

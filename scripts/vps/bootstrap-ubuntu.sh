@@ -3,7 +3,7 @@
 # Run as root on first login. Does NOT contain secrets or SSH keys.
 #
 # Usage (on VPS):
-#   curl -fsSL https://raw.githubusercontent.com/master-tecs/chatai/main/scripts/vps/bootstrap-ubuntu.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/nightzeros/chatai/main/scripts/vps/bootstrap-ubuntu.sh | bash
 #   # or copy from repo and run locally:
 #   sudo bash scripts/vps/bootstrap-ubuntu.sh
 #
@@ -86,6 +86,6 @@ echo "     sudo sed -i 's/^PasswordAuthentication.*/PasswordAuthentication no/' 
 echo "     sudo systemctl reload ssh"
 echo "  3. Clone repo or copy compose/scripts to ${DEPLOY_DIR}"
 echo "  4. Create ${DEPLOY_DIR}/.env.production (chmod 600)"
-echo "  5. docker login ghcr.io (read-only PAT for ghcr.io/master-tecs/chatai)"
+echo "  5. docker login ghcr.io (read-only PAT for ghcr.io/nightzeros/chatai)"
 echo "  6. Point DNS: app.nightzeros.com → this VPS (Cloudflare DNS-only / grey cloud)"
 echo "  7. Deploy with CHATAI_IMAGE_TAG=<tag> ./scripts/deploy.sh"

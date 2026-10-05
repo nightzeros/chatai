@@ -11,7 +11,7 @@
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-Email **hello@nightzeros.com** (or open a private [GitHub Security Advisory](https://github.com/master-tecs/chatai/security/advisories/new) if available) with:
+Email **hello@nightzeros.com** (or open a private [GitHub Security Advisory](https://github.com/nightzeros/chatai/security/advisories/new) if available) with:
 
 - A description of the issue and impact
 - Steps to reproduce or a proof of concept
