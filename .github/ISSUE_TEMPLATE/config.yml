@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: Questions / discussion
-    url: https://github.com/master-tecs/chatai/discussions
+    url: https://github.com/nightzeros/chatai/discussions
     about: Ask questions, share ideas, and discuss roadmap items (not bugs).
   - name: Public roadmap
-    url: https://github.com/master-tecs/chatai/blob/main/ROADMAP.md
+    url: https://github.com/nightzeros/chatai/blob/main/ROADMAP.md
     about: See what shipped in v1.0 and what is planned next.
   - name: Security vulnerability
-    url: https://github.com/master-tecs/chatai/security/advisories/new
+    url: https://github.com/nightzeros/chatai/security/advisories/new
     about: Report a security issue privately (do not file a public bug).

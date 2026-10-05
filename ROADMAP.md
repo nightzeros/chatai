@@ -1,6 +1,6 @@
 # Roadmap
 
-Public product roadmap for ChatAI, an open-source project maintained by [NightZeros](https://nightzeros.com). For discussion, use [GitHub Discussions](https://github.com/master-tecs/chatai/discussions). For bugs and features, open an [issue](https://github.com/master-tecs/chatai/issues).
+Public product roadmap for ChatAI, an open-source project maintained by [NightZeros](https://nightzeros.com). For discussion, use [GitHub Discussions](https://github.com/nightzeros/chatai/discussions). For bugs and features, open an [issue](https://github.com/nightzeros/chatai/issues).
 
 ## Shipped (v1.0)
 

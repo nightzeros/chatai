@@ -29,7 +29,9 @@ This document is the launch checklist from the pre-public security/licensing aud
 - [ ] Confirm `.env` / `.env.production` / SSH private keys remain untracked (`git status`, `git check-ignore`)
 - [ ] Confirm ChatAI Cloud VPS has `HOSTED_USAGE_ENFORCEMENT=enforce` and Polar production vars (not sandbox). The committed `.env.production.example` defaults to `shadow` so self-hosters who copy it are not blocked by free-plan limits.
 - [ ] Enable GitHub secret scanning + push protection (section C)
-- [ ] Decide whether GitHub org/repo rename from `master-tecs` → NightZeros is required for brand (optional; docs currently match real owner)
+- [x] Move the GitHub repository from `master-tecs/chatai` to `nightzeros/chatai` (workflows, GHCR image, package metadata and docs updated)
+- [ ] Update each npm Trusted Publisher to owner `nightzeros` (see `docs/deployment/npm-publish.md`)
+- [ ] Point the VPS at `ghcr.io/nightzeros/chatai` (updated `docker-compose.prod.yml`, GHCR read token for the new owner)
 - [ ] Smoke: clean clone → `pnpm install` → `pnpm build` / docs quickstart
 - [ ] npm: confirm published packages will pick up `Apache-2.0` on next release (metadata already updated on branch)
 
@@ -47,7 +49,7 @@ Enable/configure:
 - [ ] Branch protection / ruleset on `main`: required CI, required review, no force-push
 - [ ] Environments: `production` (deploy) and `npm` (publish) with required reviewers
 - [ ] Actions: restrict default GITHUB_TOKEN; disallow fork workflow write to prod secrets
-- [ ] Confirm deploy/publish workflows remain gated (`github.repository == 'master-tecs/chatai'` where required)
+- [ ] Confirm deploy/publish workflows remain gated (`github.repository == 'nightzeros/chatai'` where required)
 
 ---
 

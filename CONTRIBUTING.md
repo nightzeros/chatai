@@ -11,7 +11,7 @@ Please read the [Code of Conduct](./CODE_OF_CONDUCT.md) and [Security Policy](./
 2. Clone and install:
 
 ```bash
-git clone https://github.com/master-tecs/chatai.git
+git clone https://github.com/nightzeros/chatai.git
 cd chatai
 cp .env.example .env
 pnpm install
@@ -52,12 +52,12 @@ The dashboard is at [http://localhost:3000](http://localhost:3000).
 
 ## Pull requests
 
-1. Open an issue first for larger features (or start a [Discussion](https://github.com/master-tecs/chatai/discussions)).
+1. Open an issue first for larger features (or start a [Discussion](https://github.com/nightzeros/chatai/discussions)).
 2. Create a branch from `main`.
 3. Ensure `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
 4. Fill out the PR template (include semver impact).
 
-Good first issues are labeled [`good first issue`](https://github.com/master-tecs/chatai/labels/good%20first%20issue).
+Good first issues are labeled [`good first issue`](https://github.com/nightzeros/chatai/labels/good%20first%20issue).
 
 ## Reporting bugs
 

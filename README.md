@@ -1,6 +1,6 @@
 # ChatAI
 
-[![CI](https://github.com/master-tecs/chatai/actions/workflows/ci.yml/badge.svg)](https://github.com/master-tecs/chatai/actions/workflows/ci.yml)
+[![CI](https://github.com/nightzeros/chatai/actions/workflows/ci.yml/badge.svg)](https://github.com/nightzeros/chatai/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-0F766E.svg)](./VERSION)
 
