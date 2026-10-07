@@ -16,6 +16,8 @@ COPY packages/database/package.json ./packages/database/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/rag/package.json ./packages/rag/
 COPY packages/evals/package.json ./packages/evals/
+COPY packages/billing/package.json ./packages/billing/
+COPY packages/voice/package.json ./packages/voice/
 COPY packages/sdk/package.json ./packages/sdk/
 COPY packages/widget-core/package.json ./packages/widget-core/
 COPY packages/widget/package.json ./packages/widget/
