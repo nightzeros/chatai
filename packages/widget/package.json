@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@nightzeros/chatai-widget-core": "workspace:*",
-    "preact": "^10.27.2"
+    "preact": "^11.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
