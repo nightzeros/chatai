@@ -42,7 +42,8 @@ jobs:
             console.error(`No CHANGELOG section for ${version}`);
             process.exit(1);
           }
-          const rest = changelog.slice(start + header.length);
+          const headingEnd = changelog.indexOf("\n", start);
+          const rest = headingEnd < 0 ? "" : changelog.slice(headingEnd + 1);
           const next = rest.search(/\n## \[/);
           const body = (next < 0 ? rest : rest.slice(0, next)).trim();
           fs.writeFileSync("release-notes.md", `# ChatAI ${version}\n\n${body}\n`);

@@ -1,0 +1,89 @@
+---
+title: Billing and usage
+description: Hosted usage metering and enforcement, plan limits, Polar billing, and admin access.
+---
+
+ChatAI meters the AI provider cost of every chat, ingestion and eval request against a per-account **hosting account**. The hosted service at app.nightzeros.com uses this to enforce plans; self-hosted instances can use it for visibility or turn it off.
+
+## Enforcement modes
+
+`HOSTED_USAGE_ENFORCEMENT` controls what happens with metered usage:
+
+| Mode               | Behavior                                                                                                                           | Typical use                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `shadow` (default) | Records usage events and spend; never blocks a request                                                                             | Self-hosting with visibility; validating limits before turning them on |
+| `enforce`          | Reserves estimated cost before each provider call and reconciles actual usage afterward; requests over the plan limits are refused | Hosted SaaS selling plans                                              |
+| `off`              | No metering writes and no limits                                                                                                   | Self-hosting without usage tracking                                    |
+
+In `enforce` mode, refusals shown to visitors never mention plans, billing or remaining usage. Owners see limit details on the **Usage** and **Billing** dashboard pages and in the `/api/v1/account/usage/*` endpoints.
+
+Related settings:
+
+| Variable                               | Default        | Purpose                                                                                       |
+| -------------------------------------- | -------------- | --------------------------------------------------------------------------------------------- |
+| `HOSTED_USAGE_DEFAULT_LIMIT_MICROS`    | `1000000` ($1) | Fallback monthly provider-cost ceiling when an account has no plan row. 1,000,000 micros = $1 |
+| `HOSTED_USAGE_MAX_OUTPUT_TOKENS`       | `4096`         | Output-token ceiling used to estimate and cap hosted chat cost                                |
+| `HOSTED_USAGE_RECONCILE_STALE_MINUTES` | `15`           | When abandoned reservations are released                                                      |
+| `HOSTED_USAGE_EXEMPT_PLAYGROUND`       | `false`        | Skip hard-limit reservation for owner playground chat (still metered)                         |
+| `VOICE_QUOTA_EXEMPT_PLAYGROUND`        | `true`         | Owner playground Voice is not counted toward Voice minutes                                    |
+
+## Plans and limits
+
+Enforceable limits live in the `plan_entitlements` table; new accounts start on `free`. The default ladder:
+
+| Plan       | Monthly AI budget | Assistants | Requests / month | Evals |
+| ---------- | ----------------- | ---------- | ---------------- | ----- |
+| `free`     | $1.00             | 1          | 75               | No    |
+| `starter`  | $12.00            | 5          | 2,000            | No    |
+| `pro`      | $45.00            | 20         | 15,000           | Yes   |
+| `business` | $150.00           | 100        | 50,000           | Yes   |
+
+Each plan also carries a Voice-minute allowance and a concurrent Voice call limit (see [Voice (preview)](/docs/voice#usage-minutes-and-limits)). Operators can edit `plan_entitlements` rows, override an account's limit, or grant credits through the admin API.
+
+If you self-host with `enforce`, every account gets the Free limits until you assign plans, so most self-hosters should keep `shadow` or use `off`.
+
+## Polar billing (optional)
+
+To sell plans, connect [Polar](https://polar.sh) (Merchant of Record):
+
+```bash
+POLAR_ACCESS_TOKEN=...          # secret
+POLAR_WEBHOOK_SECRET=...        # secret
+POLAR_SERVER=production         # or sandbox (default)
+POLAR_PRODUCT_ID_STARTER=...
+POLAR_PRODUCT_ID_PRO=...
+POLAR_PRODUCT_ID_BUSINESS=...
+HOSTED_USAGE_ENFORCEMENT=enforce
+```
+
+- Register the webhook at `https://<your-origin>/api/webhooks/polar`.
+- Checkout maps a plan code to an allowlisted Product ID on the server; browsers never choose a Product ID.
+- Webhooks are idempotent and sync the plan and billing period onto the hosting account; cancellations return the account to `free` when the subscription ends.
+- Without `POLAR_ACCESS_TOKEN`, billing endpoints return `503` and accounts stay on Free unless an admin changes them.
+- Never put Polar secrets in `NEXT_PUBLIC_*` variables.
+
+Full setup, events and lifecycle: [Polar billing deployment guide](https://github.com/nightzeros/chatai/blob/main/docs/deployment/polar-billing.md).
+
+## Admin access
+
+`ADMIN_USER_IDS` is a comma-separated list of user IDs (the `id` column of the `user` table) allowed to call the operator endpoints:
+
+| Endpoint                              | Purpose                                                          |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| `GET /api/admin/accounts`             | List hosting accounts                                            |
+| `PATCH /api/admin/accounts/:id`       | Set `status`, `limitOverrideMicros` or `planCode` (audit-logged) |
+| `POST /api/admin/accounts/:id/credit` | Grant credit for the current period                              |
+
+Requests without a session get `401`; signed-in users who are not listed get `403`. An empty value means nobody is an admin. Find a user ID with:
+
+```sql
+SELECT id, email FROM "user" WHERE email = 'you@example.com';
+```
+
+Assistant owners never need admin access to manage their own assistants, usage or billing.
+
+## Related
+
+- [Environment reference](/docs/self-hosting/env-reference)
+- [Production checklist](/docs/self-hosting/production-checklist)
+- [Upgrading to 1.1](/docs/self-hosting/upgrade-1-1)

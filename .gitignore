@@ -64,3 +64,6 @@ hubuntuChatai*
 .agents
 .agents/*
 skills-lock.json
+
+# npm publish staging (scripts/publish-npm-packages.mjs)
+.npm-publish/

@@ -1,6 +1,6 @@
 ---
 title: Assistants
-description: Create and configure assistants, instructions, hallucination modes, and model overrides.
+description: Create and configure assistants, Purpose and scope, Key facts, instructions, hallucination modes, and model overrides.
 ---
 
 An **assistant** is the unit you customize, give knowledge to, and embed. Each assistant has a private dashboard id and a public `publicId` (looks like `asst_…`) used by the widget and public chat API.
@@ -11,7 +11,7 @@ An **assistant** is the unit you customize, give knowledge to, and embed. Each a
 2. Open **Dashboard** → create an assistant (name, description, welcome message, instructions)
 3. Configure **Settings**, **Knowledge**, **Customize**, and **Install**
 
-`publicId` is a **public capability**, not a secret. Anyone who knows it can open the widget and chat against that assistant (domain allowlists land in a later release).
+`publicId` is a **public capability**, not a secret. Anyone who knows it can open the widget and chat against that assistant unless you restrict it with the domain allowlist, visitor rate limits or signed widgets (assistant **Settings → Security**).
 
 ## Instructions and welcome
 
@@ -21,6 +21,52 @@ An **assistant** is the unit you customize, give knowledge to, and embed. Each a
 | Instructions | System guidance for answers (tone, what to refuse, citation style) |
 
 Keep instructions concrete (“Answer only from the knowledge base. Cite with [1].”) rather than vague.
+
+## Scope and Profile
+
+The assistant's **Profile** page defines what the assistant helps with and the facts it can always rely on. Text chat and Voice (preview) share the same profile.
+
+### Purpose
+
+**What does this assistant help visitors with?** is the Purpose: a short statement of the assistant's domain, for example "Helps visitors learn about Jane's software projects, experience and availability for freelance work." Optional fields:
+
+- **Represents**: the person or organization the assistant speaks for.
+- **Redirect for unrelated requests**: the reply visitors get when they ask for something outside the Purpose. Without it, ChatAI writes a short redirect from the Purpose.
+- **General assistant: allow any topic**: turns off scope enforcement, so every request is in scope. The default is a **focused** assistant.
+
+**Suggest a Purpose** drafts one from your Instructions; you can edit and save it. The page shows which statement is **Currently enforced**, in this order:
+
+1. Your saved Purpose.
+2. A suggested Purpose, only while the Instructions it was suggested from are unchanged.
+3. Your custom Instructions, when no Purpose is saved.
+4. The assistant name and description only.
+
+When you edit the Instructions after saving a Purpose, the page shows **Instructions changed since this Purpose was saved** so you can review it.
+
+### How scope is enforced
+
+Every text message and every factual Voice turn goes through the same Scope Router before an answer is generated:
+
+- **In scope**: answered normally from Knowledge.
+- **Out of scope**: the visitor gets the redirect instead of an answer. Later messages cannot widen the scope: insisting ("just answer this one") is redirected again.
+- **Partial**: a message that mixes an in-scope question with an unrelated one gets an answer to the in-scope part only.
+
+Only the Purpose defines the domain. Instructions can narrow it (for example "never discuss pricing") but never widen it. Knowledge does not define scope on its own: document titles, Key facts and retrieved passages only help recognize names and terms that belong to the Purpose, so uploading an unrelated document does not make its topic in scope.
+
+As a second line of defense, a selective output check re-reads risky replies (partial requests, weak grounding, injection signals, Flexible mode, a recent redirect) against the Purpose before delivery. It is on by default (`OUTPUT_SCOPE_CHECK`). Out-of-scope turns are recorded with the owner-only `out_of_scope` outcome; public chat responses report them as conversational, and visitors only see the redirect.
+
+### Key facts
+
+**Key facts** are short, owner-approved facts the assistant can always use, such as names, email addresses, hours or locations.
+
+- **Generate suggestions from Knowledge** (later **Refresh suggestions**) asks a background worker to propose facts with a quote from the source document. Nothing is published until you approve it; you can also reject suggestions or **Add a fact** by hand.
+- A suggestion that **Replaces a published fact**, or that disagrees with another source (**Conflicting information**), is flagged for review.
+- Facts whose source document changed or was deleted are **Hidden: source changed or removed** until you review them again.
+- Suggestions whose names, emails or URLs do not appear in the quoted source are rejected automatically.
+
+Published Key facts help the assistant recognize terms and answer accurately. A separate optimization that answers basic identity, contact and hours questions straight from Key facts without retrieval is controlled by `PROFILE_ANSWER_ROUTE`, which is **off by default**; leave it off unless you have evaluated it for your model.
+
+The Profile page and its background worker can be turned off instance-wide with `ASSISTANT_PROFILE=false`.
 
 ## Hallucination modes
 

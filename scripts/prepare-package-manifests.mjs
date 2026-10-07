@@ -48,9 +48,11 @@ export function preparePackageManifests(destRoot) {
 
     cpSync(path.join(sourceDir, "dist"), path.join(targetDir, "dist"), { recursive: true });
 
-    const readme = path.join(sourceDir, "README.md");
-    if (existsSync(readme)) {
-      cpSync(readme, path.join(targetDir, "README.md"));
+    for (const file of ["README.md", "LICENSE"]) {
+      const source = path.join(sourceDir, file);
+      if (existsSync(source)) {
+        cpSync(source, path.join(targetDir, file));
+      }
     }
 
     prepared.push({ ...pkg, targetDir, version: manifest.version });

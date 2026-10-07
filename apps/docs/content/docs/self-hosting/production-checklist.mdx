@@ -1,0 +1,85 @@
+---
+title: Production checklist
+description: What to configure and verify before running ChatAI 1.1 in production.
+---
+
+Work through this list before pointing real traffic at a ChatAI instance. Every variable is described in the [environment reference](/docs/self-hosting/env-reference); start from [`.env.production.example`](https://github.com/nightzeros/chatai/blob/main/.env.production.example), keep the file `chmod 600`, and never commit it.
+
+## Database
+
+- [ ] Postgres with the `vector` extension (Docker Compose uses `pgvector/pgvector:pg17`; Neon works too).
+- [ ] `DATABASE_URL` set. On Neon, also set `DATABASE_URL_UNPOOLED` to the direct URL of the **same** endpoint for migrations and workers.
+- [ ] Automated backups or point-in-time recovery enabled, and a restore tested once. See [Backup and upgrade](/docs/self-hosting/backup-upgrade).
+- [ ] Migrations run before the new version serves traffic: the Docker entrypoint does it by default, or the VPS deploy script runs them as a one-off step with `RUN_MIGRATIONS=0` on the app.
+
+## Authentication
+
+- [ ] `BETTER_AUTH_SECRET` is at least 32 random bytes (`openssl rand -base64 32`) and unique to this instance.
+- [ ] `BETTER_AUTH_URL` is the exact public HTTPS origin browsers use (no path, no trailing slash).
+- [ ] Password-reset email configured with `RESEND_API_KEY` and `EMAIL_FROM`; otherwise reset links only appear in server logs.
+- [ ] GitHub OAuth (optional) uses a callback on the same origin.
+- [ ] `SEED_DEMO_ON_START` is unset. The demo account must never exist in production.
+
+## Secrets and encryption
+
+- [ ] `ENCRYPTION_KEY` set (32 bytes) if any assistant will store its own provider key, and backed up somewhere other than the server. Losing it makes stored keys unreadable.
+- [ ] Provider keys (`AI_API_KEY`, `VOICE_OPENAI_API_KEY`, `POLAR_*`, object storage) live only in server-side environment variables, never in `NEXT_PUBLIC_*`.
+- [ ] Logs and error trackers don't capture request bodies or environment dumps.
+
+## Admin access
+
+- [ ] `ADMIN_USER_IDS` lists only the operators who need `/api/admin/*`, or stays empty. See [Billing and usage](/docs/self-hosting/billing-usage#admin-access).
+
+## Usage and billing
+
+- [ ] `HOSTED_USAGE_ENFORCEMENT` chosen deliberately: `shadow` (default) to meter without blocking, `enforce` for a hosted service selling plans, or `off`.
+- [ ] With `enforce`, plans are assigned or Polar is connected; otherwise every account gets Free limits.
+- [ ] With Polar: `POLAR_SERVER=production`, production Product IDs, and the webhook registered at `/api/webhooks/polar` with `POLAR_WEBHOOK_SECRET`.
+
+## Voice (preview)
+
+Skip this section to run without Voice; text chat is unaffected.
+
+- [ ] `VOICE_OPENAI_API_KEY` set, and `VOICE_PROVIDER` left at `gpt-live`.
+- [ ] One long-lived Node.js web instance (or sticky routing by Voice session id); not serverless. See [Voice in production](/docs/self-hosting/docker#voice-in-production).
+- [ ] Platform stop grace of at least 15 seconds (the bundled Compose files set `stop_grace_period: 20s`).
+- [ ] `VOICE_MAX_CONCURRENT_SESSIONS` set below your provider organization's concurrent-session limit.
+
+## Object storage and recordings
+
+Only needed if owners will record Voice audio.
+
+- [ ] Private S3-compatible bucket (no public-read policy) and `OBJECT_STORAGE_*` credentials limited to that bucket.
+- [ ] `VOICE_RECORDING_SPOOL_DIR` on persistent disk (Docker: `/app/uploads/voice-spool`).
+- [ ] Recording stays off by default per assistant. Owners turn on **Record Voice audio** in **Settings → Privacy**, choose a **Recording retention**, and visitors must accept the recording notice for every session.
+
+## Widget security
+
+For each production assistant, in **Settings → Security**:
+
+- [ ] **Allowed domains** lists the sites that embed the widget. An empty list accepts any origin.
+- [ ] Per-visitor and per-assistant rate limits fit expected traffic (instance defaults: `WIDGET_RATE_LIMIT_PER_VISITOR_PER_MINUTE=20`, `WIDGET_RATE_LIMIT_PER_ASSISTANT_PER_MINUTE=120`).
+- [ ] **Require widget signing** turned on for embeds you control server-side.
+
+## Privacy and retention
+
+- [ ] Each assistant's **Store visitor conversations**, **Retention** and **Anonymize visitor identifiers** settings match your privacy policy. When conversations aren't stored, Voice sessions aren't stored either.
+- [ ] Your privacy notice tells visitors about AI chat and, if enabled, Voice transcripts and recordings.
+
+## Network and TLS
+
+- [ ] TLS terminated at a reverse proxy (the VPS setup uses Caddy) and `X-Forwarded-Proto` forwarded.
+- [ ] Proxy allows long-lived connections for streaming chat and doesn't strip CORS headers on `/api/v1/*`. Public API routes send permissive CORS headers by design; access is controlled by API keys, the domain allowlist and rate limits.
+- [ ] Only ports 80 and 443 are exposed publicly; Postgres is not reachable from the internet.
+
+## Container image
+
+- [ ] Running an image built from a release tag (for example `git checkout v1.1.0 && docker build`), pushed to your own registry under an immutable tag. Build with `--build-arg NEXT_PUBLIC_APP_URL=…` and `NEXT_PUBLIC_DOCS_URL=…` for your origins; the `ghcr.io/nightzeros/chatai` image is built for the hosted service.
+- [ ] `GET /api/health` returns `{"status":"ok","db":"ok"}` after deploy.
+
+## Before go-live
+
+- [ ] Sign up, create an assistant, upload a document and get a grounded answer.
+- [ ] Embed the widget on an allowed domain and confirm a different domain is refused.
+- [ ] If Voice is enabled, complete a short call from a real browser over HTTPS.
+- [ ] Review the [Upgrading to 1.1](/docs/self-hosting/upgrade-1-1) notes if this instance previously ran 1.0.

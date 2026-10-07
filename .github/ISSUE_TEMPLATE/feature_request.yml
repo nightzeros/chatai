@@ -27,9 +27,10 @@ body:
       options:
         - Unsure
         - v1.x maintenance
-        - Post-1.0 — AI Actions / Tools
-        - Post-1.0 — Human handoff
-        - Post-1.0 — Leads
-        - Post-1.0 — Teams / organizations
-        - Post-1.0 — Multi-language
+        - Voice (toward GA)
+        - AI Actions / Tools
+        - Human handoff
+        - Leads
+        - Teams / organizations
+        - Multi-language
         - Docs / DX only

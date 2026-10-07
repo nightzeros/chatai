@@ -6,6 +6,41 @@ body:
     attributes:
       value: |
         Thanks for filing a bug. Clear repro steps help us fix it faster.
+        Security issues: do not file them here; see SECURITY.md. Remove secrets and visitor data from anything you paste.
+  - type: input
+    id: version
+    attributes:
+      label: ChatAI version
+      description: The `VERSION` file, Docker image tag, or npm package version. Add the commit if you run from source.
+      placeholder: e.g. 1.1.0, or main @ abc1234
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How do you run ChatAI?
+      options:
+        - Hosted (app.nightzeros.com)
+        - Self-hosted with Docker Compose
+        - Self-hosted from source (pnpm dev / next start)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Dashboard
+        - Knowledge / ingestion
+        - Answers / scope
+        - Widget or React package
+        - Voice (preview)
+        - REST API / SDK
+        - Usage / billing
+        - Self-hosting / deployment
+        - Docs
   - type: textarea
     id: description
     attributes:
@@ -35,11 +70,6 @@ body:
       label: Actual behavior
     validations:
       required: true
-  - type: input
-    id: version
-    attributes:
-      label: Version / commit
-      placeholder: e.g. main @ abc1234
   - type: textarea
     id: environment
     attributes:

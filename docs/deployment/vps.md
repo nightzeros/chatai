@@ -157,10 +157,12 @@ Workflow: [.github/workflows/deploy-production.yml](../../.github/workflows/depl
 
 | Trigger | Image tag |
 | --- | --- |
-| Push tag `v*` (must match [VERSION](../../VERSION)) | `v1.0.0` |
+| Push tag `v*` (must match [VERSION](../../VERSION)) | `v1.1.0` (plus the git SHA) |
 | `workflow_dispatch` | Input `image_tag` or git SHA |
 
-Requires GitHub **Environment** `production` with reviewers and secrets:
+A `v*` tag also triggers npm publishing and the GitHub Release; see [Release checklist](../RELEASE.md#what-a-v-tag-triggers).
+
+Requires GitHub **Environment** `production` with **required reviewers** and secrets. The deploy job waits for approval only when reviewers are configured; without them, every `v*` tag and dispatch deploys straight to production. Treat a missing reviewer rule as a release blocker.
 
 | Secret | Purpose |
 | --- | --- |
@@ -174,7 +176,7 @@ App runtime secrets stay on the VPS only.
 
 ```bash
 cd /opt/chatai
-CHATAI_IMAGE_TAG=v1.0.0 ./scripts/deploy.sh
+CHATAI_IMAGE_TAG=v1.1.0 ./scripts/deploy.sh
 ```
 
 **Deploy sequence:**
@@ -217,8 +219,10 @@ Before running `./scripts/rollback.sh`:
 ```bash
 cd /opt/chatai
 # Uses previous_tag from .deploy-state, or set explicitly:
-CHATAI_IMAGE_TAG=v1.0.0 ./scripts/rollback.sh
+CHATAI_IMAGE_TAG=<previous-tag> ./scripts/rollback.sh
 ```
+
+`v1.1.0` is the first version tag. Earlier production deploys used git-SHA image tags, so rolling back from `v1.1.0` targets the SHA tag recorded in `.deploy-state`.
 
 Rollback pulls the previous image and restarts **without running migrations**. Read [Migration compatibility](#migration-compatibility-read-before-rollback) first.
 
@@ -312,7 +316,7 @@ new VPS + GitHub repo + .env.production backup + Neon + uploads backup = restore
 4. Restore deployment files
 5. `docker login ghcr.io`
 6. Restore uploads: `./scripts/backup-uploads.sh restore …`
-7. Deploy known GHCR tag: `CHATAI_IMAGE_TAG=v1.0.0 ./scripts/deploy.sh`
+7. Deploy known GHCR tag: `CHATAI_IMAGE_TAG=v1.1.0 ./scripts/deploy.sh`
 8. Point DNS to new VPS
 9. Health, auth, widget smoke tests
 

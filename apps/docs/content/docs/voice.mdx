@@ -1,0 +1,134 @@
+---
+title: Voice (preview)
+description: Let visitors talk to an assistant in the same widget. Setup, recordings, consent, usage minutes, limits and troubleshooting.
+---
+
+> **Preview.** Voice is available in ChatAI 1.1 as a preview. It is usable in production, but its behavior, settings and client APIs may change in minor releases, and it is not yet covered by the same stability guarantees as text chat.
+
+Voice (preview) lets visitors speak to an assistant from the same widget they type in. Answers come from the same Purpose, Instructions and Knowledge as text chat, and the conversation continues seamlessly when the visitor switches between typing and speaking.
+
+## How it works
+
+1. The visitor presses the microphone button. The widget asks ChatAI for a Voice session; ChatAI applies the same domain allowlist, rate limits, bot checks and widget signing as text chat, plus usage limits.
+2. The browser connects to the realtime voice model (GPT-Live) over WebRTC with a short-lived session. Provider keys never reach the browser.
+3. ChatAI supervises the call from the server over a separate control link. Small talk is handled by the voice model; factual questions are handed to ChatAI's text answer pipeline (Scope Router, retrieval, citations), and the voice model speaks that answer. The text answer is the canonical record.
+4. When the call ends, ChatAI settles the usage and, if enabled, saves the transcript and the recording.
+
+Voice runtime state lives in the web process, so Voice needs a long-lived Node.js server (the Docker image or `next start`) and a single web instance or sticky routing. Serverless hosting is not supported for Voice; text chat keeps working there. See [Voice in production](/docs/self-hosting/docker#voice-in-production).
+
+## Set up Voice (instance)
+
+Set the server-side key and restart:
+
+```bash
+VOICE_OPENAI_API_KEY=sk-...        # OpenAI project key with realtime access
+# optional
+VOICE_MAX_CONCURRENT_SESSIONS=10   # instance-wide cap
+VOICE_IDLE_TIMEOUT_SECONDS=180
+```
+
+| Variable                        | Default                  | Purpose                                                                                                                        |
+| ------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `VOICE_PROVIDER`                | `gpt-live`               | `mock` only for tests without credentials                                                                                      |
+| `VOICE_OPENAI_API_KEY`          | none                     | Required for Voice. Server-side secret, independent of the text chat provider                                                  |
+| `VOICE_OPENAI_BASE_URL`         | `https://api.openai.com` | Provider API origin                                                                                                            |
+| `VOICE_MAX_CONCURRENT_SESSIONS` | unset                    | Instance-wide cap on simultaneous calls                                                                                        |
+| `VOICE_IDLE_TIMEOUT_SECONDS`    | `180`                    | Silence before the assistant checks in; the call ends 30 s later                                                               |
+| `VOICE_SHUTDOWN_GRACE_MS`       | `8000`                   | Drain budget for live calls on shutdown; keep the container stop grace at least 7 s longer (Compose: `stop_grace_period: 20s`) |
+| `VOICE_QUOTA_EXEMPT_PLAYGROUND` | `true`                   | Owner playground calls are measured but not counted toward the Voice-minute quota                                              |
+
+Without a key, the Voice switch has no effect and the widget never shows a microphone. Full list: [Environment reference](/docs/self-hosting/env-reference#voice-preview).
+
+## Turn Voice on (assistant owner)
+
+In the assistant's **Settings → Privacy**:
+
+| Setting                                | Effect                                                                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Offer Voice in the public widget**   | Shows the microphone button to visitors                                                                                                                       |
+| **Save Voice transcripts (text only)** | Saves what was said as messages, so it appears in Conversations and later text chat can refer to it. When off, Voice turns are used only during the live call |
+| **Record Voice audio**                 | Saves one audio recording per call for owner playback. Off by default. Requires object storage and conversation storage                                       |
+| **Recording retention**                | Keep recordings while the conversation is kept, or delete after 7, 30 or 90 days                                                                              |
+
+If **Store visitor conversations** is off, Voice stays ephemeral: nothing is saved and nothing is recorded, regardless of the other settings.
+
+Try it first from the assistant **Playground**.
+
+## Recordings and consent
+
+Recording needs S3-compatible object storage (AWS S3, Cloudflare R2, MinIO) configured with the `OBJECT_STORAGE_*` variables. Without it, **Record Voice audio** is disabled and Voice works normally.
+
+When recording is on:
+
+- Before the microphone turns on, the widget shows a recording notice. The visitor must choose **Agree and start** for each call; **Cancel** returns to typing without starting Voice.
+- While recording, the Voice bar shows **Recording**.
+- Each call produces one stereo WebM/Opus file (visitor left, assistant right), about 0.36 MB per minute. Only compressed audio is written to the server's spool; raw audio never touches disk.
+- Recordings are private. The bucket is never exposed to browsers; owners play recordings back in **Conversations** through an authenticated proxy, with the transcript timeline alongside.
+- Recordings are deleted with their conversation, by the recording retention setting, and when the assistant is deleted.
+- If saving a recording fails, the call itself is not affected.
+
+Storage setup and a MinIO example: [Environment reference](/docs/self-hosting/env-reference#voice-audio-recording-optional).
+
+## Usage minutes and limits
+
+Voice usage is measured in seconds per call and follows `HOSTED_USAGE_ENFORCEMENT` (see [Billing and usage](/docs/self-hosting/billing-usage)):
+
+- `shadow` (default) and `off` record usage without refusing calls, apart from `VOICE_MAX_CONCURRENT_SESSIONS`.
+- `enforce` reserves time from the account's Voice-minute allowance in 5-minute blocks while the visitor talks. New calls are refused when fewer than 30 seconds remain or when the plan's concurrent-call limit is reached. A call that reaches the end of the allowance is warned about 30 seconds before it ends.
+
+Other limits:
+
+- Calls end after 60 minutes (with a warning about 30 seconds before) and after the idle timeout.
+- Starting Voice in a second tab ends the call in the first tab.
+- Only one input runs at a time: typing is paused during a call, and Voice cannot start while a text reply is streaming.
+
+When Voice is refused or ends early, visitors see **Voice isn't available right now** or **Voice is unavailable for the rest of this conversation, but we can keep chatting here.** and can keep typing. Visitors and the assistant are never told about plans, billing, usage or remaining minutes.
+
+## Hide Voice on a page
+
+Voice appears automatically when the assistant offers it. To hide it on a specific page:
+
+```html
+<script
+  src="https://app.nightzeros.com/widget/chat.js"
+  data-assistant-id="asst_your_public_id"
+  data-voice="off"
+  async
+></script>
+```
+
+```tsx
+<ChatWidget assistantId="asst_your_public_id" apiUrl="https://app.nightzeros.com" voice={false} />
+```
+
+npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.1.0 or later** to get Voice at all.
+
+## Browser requirements
+
+- HTTPS (or `localhost`), microphone permission and WebRTC. When any is missing, the widget explains why and text chat keeps working.
+- If your page sets a `Permissions-Policy` header, it must allow `microphone` for your origin. Pages inside an iframe need `allow="microphone"` on the iframe.
+- Closing the panel, navigating away or removing the widget ends the call and releases the microphone.
+
+## Troubleshooting
+
+| Symptom                           | Likely cause                                                                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No microphone button              | Voice not offered in **Settings → Privacy**; no `VOICE_OPENAI_API_KEY` on the server; `data-voice="off"` / `voice={false}`; or an npm widget older than 1.1.0 |
+| "Voice isn't available right now" | Minutes exhausted, concurrent-call limit reached, provider error, or a serverless deployment                                                                  |
+| Microphone blocked                | Page not on HTTPS, permission denied, `Permissions-Policy` or iframe `allow` missing                                                                          |
+| Calls drop during deploys         | Expected: the call ends with "Voice disconnected. You can keep typing here." Set `stop_grace_period` so calls drain cleanly                                   |
+| `421` responses in logs           | A Voice request reached a different replica; use one instance or sticky routing                                                                               |
+| **Record Voice audio** disabled   | Object storage not configured, or conversation storage off                                                                                                    |
+
+## Privacy notes
+
+- The voice model receives the assistant's Purpose (owner text) and the conversation, not your Knowledge base; Knowledge reaches it only through ChatAI's answers.
+- Transcripts and recordings follow the assistant's privacy settings and retention.
+- Recording requires explicit visitor consent for every call.
+- Provider keys, plan details and usage figures are never sent to the browser.
+
+## Related
+
+- [Widget](/docs/widget) and [React](/docs/react)
+- [Assistants: Scope and Profile](/docs/assistants#scope-and-profile)
+- [Docker: Voice in production](/docs/self-hosting/docker#voice-in-production)

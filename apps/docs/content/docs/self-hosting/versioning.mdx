@@ -8,14 +8,17 @@ description: Semver guarantees, database migration policy, and safe upgrades.
 ChatAI uses [Semantic Versioning](https://semver.org/). The canonical version lives in the repository root `VERSION` file and is mirrored in:
 
 - OpenAPI `info.version`
-- Git tags (`v1.0.0`, …)
-- GitHub Releases
+- Git tags (`v1.1.0`, …)
+- GitHub Releases, whose notes come from [`CHANGELOG.md`](https://github.com/nightzeros/chatai/blob/main/CHANGELOG.md)
 
 | Component | Versioning |
 | --- | --- |
 | Self-hosted app (Docker image) | Tracks product semver |
-| `@nightzeros/chatai-sdk`, `@nightzeros/chatai-widget`, `@nightzeros/chatai-react` | Same major.minor as product when published |
+| `@nightzeros/chatai-widget-core`, `@nightzeros/chatai-widget`, `@nightzeros/chatai-react`, `@nightzeros/chatai-sdk` | Published together at the product version |
 | Database schema | Forward-only Drizzle migrations; no down migrations |
+| REST API | `/api/v1` stays backward compatible within major version 1; see [API stability](/docs/api/stability) |
+
+Features labelled **preview**, currently [Voice](/docs/voice), are usable in production but their configuration and behavior may change in a minor release. Changes are always noted in the changelog.
 
 ## Database migration guarantees
 
@@ -24,7 +27,7 @@ Migrations live in `packages/database/migrations/` and apply automatically on Do
 | Guarantee | Detail |
 | --- | --- |
 | **Forward-only** | Each release adds numbered SQL files; we do not ship down migrations |
-| **Additive by default** | Minor/patch releases use additive DDL (new tables/columns, indexes) |
+| **Additive for released tables** | Minor and patch releases only add tables, columns, enum values and indexes to tables that shipped in an earlier release. Each release's notes list any data changes |
 | **Breaking DDL** | Reserved for major releases with explicit upgrade notes |
 | **Legacy bootstrap** | Pre-journal Docker installs are baselined before applying pending migrations |
 | **CI verification** | `pnpm test:migrations` applies all migrations on a fresh Postgres |
@@ -32,8 +35,8 @@ Migrations live in `packages/database/migrations/` and apply automatically on Do
 ### Before upgrading
 
 1. Back up Postgres and uploads — see [Backup and upgrades](/docs/self-hosting/backup-upgrade).
-2. Read the release notes for migration-specific steps.
-3. Pull/rebuild and restart so the entrypoint runs `pnpm migrate`.
+2. Read the release notes for migration-specific steps. For 1.0 → 1.1, see [Upgrading to 1.1](/docs/self-hosting/upgrade-1-1).
+3. Pull or rebuild and restart so the entrypoint runs `migrate.mjs`.
 
 ### Embedding dimension constraint
 
@@ -41,10 +44,11 @@ The schema uses `vector(1536)`. Switching to a model with a different dimension 
 
 ## Package semver (npm)
 
-Publishable packages (`@nightzeros/chatai-sdk`, `@nightzeros/chatai-widget`, `@nightzeros/chatai-react`) follow the product **major** for breaking API/widget embed changes. Patch releases are bugfix-only.
+The four `@nightzeros/chatai-*` packages are released together with the same version. Breaking changes to the public API or the widget embed contract only happen in a new major version; minor releases add features (such as the Voice APIs in 1.1.0) and patch releases are bugfix-only. Install matching versions of `widget-core`, `widget` and `react`.
 
 ## Related
 
 - [API stability](/docs/api/stability)
 - [Backup and upgrades](/docs/self-hosting/backup-upgrade)
+- [Upgrading to 1.1](/docs/self-hosting/upgrade-1-1)
 - [Release checklist](https://github.com/nightzeros/chatai/blob/main/docs/RELEASE.md)
