@@ -2,6 +2,21 @@
 
 All notable changes to ChatAI are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-07
+
+### Added
+
+- Voice in the embeddable widget: when an assistant enables Voice, `@nightzeros/chatai-widget` and `@nightzeros/chatai-react` show a voice button with a recording-consent prompt, live transcript, and control-health handling (`data-voice="off"` / `voice={false}` hides it)
+- `@nightzeros/chatai-widget-core`: Voice session, state, transcript, and control-health APIs
+- `@nightzeros/chatai-sdk`: Voice session request/response schemas and optional `history` on chat requests
+- Markdown rendering and new feedback icons in widget messages
+- Assistant scope enforcement and profile answers
+
+### Changed
+
+- Packages are licensed Apache-2.0 (previously MIT)
+- Repository moved to `github.com/nightzeros/chatai`
+
 ## [1.0.0] - 2026-08-25
 
 ### Added
