@@ -1,4 +1,13 @@
 {
   "title": "Self-hosting",
-  "pages": ["docker", "ollama", "backup-upgrade", "versioning", "env-reference"]
+  "pages": [
+    "docker",
+    "production-checklist",
+    "env-reference",
+    "billing-usage",
+    "ollama",
+    "backup-upgrade",
+    "upgrade-1-1",
+    "versioning"
+  ]
 }

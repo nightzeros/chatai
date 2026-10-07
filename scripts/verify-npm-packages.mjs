@@ -82,6 +82,12 @@ function verifyTarball(tarballPath, pkg) {
     throw new Error(`${pkg.name}: tarball missing dist/index.js or dist/index.d.ts`);
   }
 
+  for (const file of ["README.md", "LICENSE"]) {
+    if (!entries.some((entry) => entry === `package/${file}`)) {
+      throw new Error(`${pkg.name}: tarball missing ${file}`);
+    }
+  }
+
   if (pkg.name === "@nightzeros/chatai-widget") {
     const hasChatJs = entries.some((entry) => entry.endsWith("/dist/chat.js"));
     if (hasChatJs) {

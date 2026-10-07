@@ -2,7 +2,7 @@
 
 Public product roadmap for ChatAI, an open-source project maintained by [NightZeros](https://nightzeros.com). For discussion, use [GitHub Discussions](https://github.com/nightzeros/chatai/discussions). For bugs and features, open an [issue](https://github.com/nightzeros/chatai/issues).
 
-## Shipped (v1.0)
+## Shipped
 
 | Milestone | Highlights |
 | --- | --- |
@@ -15,16 +15,18 @@ Public product roadmap for ChatAI, an open-source project maintained by [NightZe
 | **v0.7** Self-hosting | Docker Compose, docs site, Ollama profile |
 | **v0.8** Security + privacy | Domain allowlist, rate limits, encryption, retention, audit log |
 | **v0.9–v1.0** Stabilization | API/schema freeze, semver guarantees, load tests, community infra |
+| **v1.1** Public preview | Voice (preview) in the widget, Purpose and scope enforcement, assistant Profile and Key facts, hosted usage metering and plans, Polar billing, npm packages under `@nightzeros`, Apache-2.0 |
 
-## Next (post-1.0)
+## Next
 
 Prioritized by expected demand. None of these break the v1 API contract without a major bump.
 
-1. **AI Actions / Tools** — function calling, webhooks, MCP
-2. **Human handoff** — escalate to Slack/email, then helpdesks
-3. **Leads** — optional in-chat contact capture
-4. **Teams / organizations** — multi-user ownership (additive schema)
-5. **Multi-language** — detect language, answer in the visitor’s language
+1. **Voice GA** — complete acceptance testing, then stabilize Voice configuration and remove the preview label
+2. **AI Actions / Tools** — function calling, webhooks, MCP
+3. **Human handoff** — escalate to Slack/email, then helpdesks
+4. **Leads** — optional in-chat contact capture
+5. **Teams / organizations** — multi-user ownership (additive schema)
+6. **Multi-language** — detect language, answer in the visitor’s language
 
 ## How we prioritize
 

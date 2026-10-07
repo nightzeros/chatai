@@ -1,6 +1,6 @@
 # Contributing to ChatAI
 
-Thanks for your interest in contributing. ChatAI is at **v1.0** — the public `/api/v1` API and schema migration path are stable. ChatAI is maintained by [NightZeros](https://nightzeros.com). Small, focused PRs are preferred.
+Thanks for your interest in contributing. ChatAI is at **v1.1 (public preview)**: the public `/api/v1` API, widget embed and schema migration path are stable within major version 1, while Voice is still a preview feature. ChatAI is maintained by [NightZeros](https://nightzeros.com). Small, focused PRs are preferred.
 
 Please read the [Code of Conduct](./CODE_OF_CONDUCT.md) and [Security Policy](./SECURITY.md).
 
@@ -33,13 +33,27 @@ The dashboard is at [http://localhost:3000](http://localhost:3000).
 
 ## Monorepo layout
 
-- `apps/web` — Next.js dashboard and APIs
-- `apps/docs` — Fumadocs documentation site
+- `apps/web` — Next.js dashboard and APIs, including Voice sessions (`src/lib/voice`) and hosted usage and billing (`src/lib/hosting`)
+- `apps/docs` — Fumadocs documentation site ([docs.nightzeros.com](https://docs.nightzeros.com))
 - `packages/database` — Drizzle schema and migrations
 - `packages/ai` — LLM / embedding wrappers
-- `packages/rag` — ingestion and retrieval pipelines
-- `packages/sdk` — OpenAPI + TypeScript client
-- `packages/widget` / `widget-core` / `react` — embeddable chat UI
+- `packages/rag` — ingestion, retrieval, and the answer pipeline (scope policy, output guard)
+- `packages/sdk` — OpenAPI + TypeScript client (published as `@nightzeros/chatai-sdk`)
+- `packages/widget-core` / `widget` / `react` — embeddable chat UI (published as `@nightzeros/chatai-widget-core`, `-widget`, `-react`)
+
+## Tests
+
+| Command                        | What it covers                                                                                                                           |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`                    | Unit and integration tests (Vitest) across the monorepo                                                                                  |
+| `pnpm typecheck` / `pnpm lint` | TypeScript and ESLint                                                                                                                    |
+| `pnpm test:migrations`         | Applies every migration to a fresh Postgres (needs `DATABASE_URL`)                                                                       |
+| `pnpm widget:check`            | Hosted widget bundle exists and stays within its 30 KB gzip budget (run after `pnpm build`)                                              |
+| `pnpm packages:verify`         | Packs the npm packages and audits the tarballs                                                                                           |
+| `pnpm e2e`                     | Playwright end-to-end tests (see `.env.e2e` in the [environment reference](https://docs.nightzeros.com/docs/self-hosting/env-reference)) |
+| `pnpm docs:build`              | Builds the documentation site                                                                                                            |
+
+Voice tests run against `VOICE_PROVIDER=mock` and never need provider credentials. Don't weaken or skip a test to make a change pass; fix the code or explain the behavior change in the PR.
 
 ## Coding standards
 
@@ -49,6 +63,9 @@ The dashboard is at [http://localhost:3000](http://localhost:3000).
 - Do not commit secrets (`.env`, API keys).
 - **API changes:** update OpenAPI in `@nightzeros/chatai-sdk` and regenerate the fingerprint (`pnpm --filter @nightzeros/chatai-sdk openapi:fingerprint`) when routes change. See [API stability](./apps/docs/content/docs/api/stability.mdx).
 - **Schema changes:** additive migrations for minor/patch; breaking DDL only in majors. See [versioning docs](./apps/docs/content/docs/self-hosting/versioning.mdx).
+- **New environment variables:** add them to `apps/web/src/lib/env.ts`, `.env.example`, and the [environment reference](./apps/docs/content/docs/self-hosting/env-reference.mdx).
+- **User-facing changes:** add an entry to [CHANGELOG.md](./CHANGELOG.md) under an `## [Unreleased]` heading at the top (create it if it isn't there).
+- **Voice and billing:** never expose plan, billing or usage details to widget visitors, and never send provider keys to the browser.
 
 ## Pull requests
 
@@ -62,6 +79,14 @@ Good first issues are labeled [`good first issue`](https://github.com/nightzeros
 ## Reporting bugs
 
 Use the Bug Report issue template and include steps to reproduce, expected vs actual behavior, and environment details. Security issues → [SECURITY.md](./SECURITY.md).
+
+## Releases
+
+Maintainers cut releases from a release branch through a PR to `main`, then push a `v*` tag. See [docs/RELEASE.md](./docs/RELEASE.md).
+
+## Getting help
+
+See [SUPPORT.md](./SUPPORT.md).
 
 ## Roadmap
 

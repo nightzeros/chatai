@@ -4,7 +4,7 @@ Use this **only** when npm Trusted Publishing (OIDC) is unavailable—for exampl
 
 **Default path:** [npm-publish.md](./npm-publish.md) and [`.github/workflows/publish-npm.yml`](../../.github/workflows/publish-npm.yml).
 
-Bootstrap **`@nightzeros/chatai-*@1.0.0`** is complete (manual CLI publish, September 2025). All routine releases must use OIDC.
+Bootstrap **`@nightzeros/chatai-*@1.0.0`** is complete (manual CLI publish, 2026-09-01). All routine releases, starting with 1.1.0, must use OIDC.
 
 ## When to use
 

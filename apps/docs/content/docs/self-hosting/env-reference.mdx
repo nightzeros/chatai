@@ -3,18 +3,23 @@ title: Environment reference
 description: Full environment variable reference for ChatAI self-hosting and development.
 ---
 
-Copy [`.env.example`](https://github.com/nightzeros/chatai/blob/main/.env.example) to `.env` and fill in values. Docker Compose loads `.env` for the `app` service and overrides `DATABASE_URL` / `BETTER_AUTH_URL` / `UPLOAD_DIR` as needed.
+Copy [`.env.example`](https://github.com/nightzeros/chatai/blob/main/.env.example) to `.env` and fill in values. Docker Compose loads `.env` for the `app` service and overrides `DATABASE_URL` / `BETTER_AUTH_URL` / `UPLOAD_DIR` as needed. For a production VPS start from [`.env.production.example`](https://github.com/nightzeros/chatai/blob/main/.env.production.example) and work through the [production checklist](/docs/self-hosting/production-checklist).
+
+Variables marked **secret** must never be committed, logged, or exposed through `NEXT_PUBLIC_*`. The app validates its environment at startup and refuses to boot when a value is malformed.
 
 ## Core
 
 | Variable | Required | Default / example | Purpose |
 | --- | --- | --- | --- |
-| `DATABASE_URL` | Yes (runtime) | `postgresql://chatai:chatai@localhost:5432/chatai` | Pooled or direct Postgres URL for the app |
+| `NODE_ENV` | No | `development` (Docker image: `production`) | Runtime mode |
+| `DATABASE_URL` | Yes (runtime) | `postgresql://chatai:chatai@localhost:5432/chatai` | Pooled or direct Postgres URL for the app. **Secret** (contains the password) |
 | `DATABASE_URL_UNPOOLED` | Neon migrations | — | Direct (non-pooler) URL of the **same** Neon endpoint as `DATABASE_URL`; used by migrations and the ingest/eval workers. Migrations refuse a different endpoint unless `ALLOW_DATABASE_URL_MISMATCH=1`. |
-| `BETTER_AUTH_SECRET` | Yes | — | Auth signing secret (min 16 chars) |
+| `BETTER_AUTH_SECRET` | Yes | — | Auth signing secret (min 16 chars; use `openssl rand -base64 32`). **Secret** |
 | `BETTER_AUTH_URL` | Yes | `http://localhost:3000` | Public origin browsers use for this instance |
 | `UPLOAD_DIR` | No | `./uploads` (Docker: `/app/uploads`) | File upload storage |
-| `SEED_DEMO_ON_START` | No | — | When `1`, Docker entrypoint seeds demo user after health (dev/demo only) |
+| `RUN_MIGRATIONS` | No | `1` | Docker entrypoint runs migrations before starting. `0` skips them (the VPS deploy script runs them as a separate step) |
+| `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_DOCS_URL` | No (build time) | `http://localhost:3000` / `http://localhost:3001` | Public app and docs origins baked into the image at build (`docker build --build-arg`). Never put secrets here |
+| `SEED_DEMO_ON_START` | No | — | When `1`, Docker entrypoint seeds demo user after health (dev/demo only; never in production) |
 | `SEED_DEMO_EMAIL` / `SEED_DEMO_PASSWORD` | No | `demo@chatai.local` / `DemoPass123!` | Overrides for demo seed |
 
 ## Auth (optional)
@@ -64,12 +69,45 @@ Changing embedding width on an existing database requires a full reprocess strat
 | `ASSISTANT_PROFILE` | `true` | Assistant Profile page (Purpose and owner-reviewed Key facts) and the background Key facts refresh worker. Requires migration `0020` |
 | `PROFILE_ANSWER_ROUTE` | `false` | Answer basic identity, contact and hours questions from published Key facts without retrieval. Keep off until its evaluation gate passes for your model |
 
+See [Scope and Profile](/docs/assistants#scope-and-profile).
+
+## Security and widget protection
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `ENCRYPTION_KEY` | When any assistant stores its own provider key | — | AES-256-GCM key (32 bytes) for per-assistant provider secrets. Generate with `openssl rand -base64 32` or `openssl rand -hex 32`; optional `base64:` / `hex:` prefix. **Secret.** Back it up: losing it makes stored provider keys unreadable |
+| `ENCRYPTION_KEY_VERSION` | No | `1` | Version label written into new ciphertext. Bump when rotating |
+| `ENCRYPTION_KEY_PREVIOUS` / `ENCRYPTION_KEY_PREVIOUS_VERSION` | During rotation | — | Prior key kept for decryption only until secrets are re-encrypted. **Secret** |
+| `WIDGET_RATE_LIMIT_PER_VISITOR_PER_MINUTE` | No | `20` | Public widget chat limit per visitor. Owners can override per assistant in **Settings → Security** |
+| `WIDGET_RATE_LIMIT_PER_ASSISTANT_PER_MINUTE` | No | `120` | Public widget chat limit per assistant |
+| `WIDGET_SIGNING_MAX_SKEW_SECONDS` | No | `300` | Allowed clock skew, in seconds, for signed widget requests when the assistant requires signing |
+
+## Hosted usage, billing and admin
+
+Details: [Billing and usage](/docs/self-hosting/billing-usage).
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `HOSTED_USAGE_ENFORCEMENT` | No | `shadow` | `shadow` meters without blocking, `enforce` applies plan limits, `off` disables metering writes |
+| `HOSTED_USAGE_DEFAULT_LIMIT_MICROS` | No | `1000000` | Fallback monthly provider-cost ceiling in micro-dollars ($1 = 1,000,000) when an account has no plan row |
+| `HOSTED_USAGE_MAX_OUTPUT_TOKENS` | No | `4096` | Output-token ceiling used to estimate hosted chat cost |
+| `HOSTED_USAGE_RECONCILE_STALE_MINUTES` | No | `15` | Age after which abandoned usage reservations are released |
+| `HOSTED_USAGE_EXEMPT_PLAYGROUND` | No | `false` | `true` skips hard-limit reservation for owner playground chat (still metered) |
+| `ADMIN_USER_IDS` | No | empty | Comma-separated user IDs allowed to call `/api/admin/*`. Empty means no admins (`403` for every signed-in user) |
+| `POLAR_ACCESS_TOKEN` | For paid plans | — | Polar organization token. Without it billing endpoints return `503`. **Secret** |
+| `POLAR_WEBHOOK_SECRET` | For paid plans | — | Verifies `/api/webhooks/polar`. **Secret** |
+| `POLAR_SERVER` | No | `sandbox` | `sandbox` or `production` |
+| `POLAR_PRODUCT_ID_STARTER` / `_PRO` / `_BUSINESS` | For paid plans | — | Allowlisted Polar Product IDs per plan |
+| `POLAR_PRODUCT_ID_TEAM` | No | — | Deprecated alias for Business, used only when `POLAR_PRODUCT_ID_BUSINESS` is unset |
+
 ## Voice (preview)
+
+Overview and owner settings: [Voice (preview)](/docs/voice).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `VOICE_PROVIDER` | `mock` | `gpt-live` for real Voice; `mock` runs without credentials (CI) |
-| `VOICE_OPENAI_API_KEY` | — | GPT-Live key, server-side only. Independent of the text chat provider |
+| `VOICE_PROVIDER` | `gpt-live` | `gpt-live` for real Voice; `mock` runs without credentials (tests and CI only) |
+| `VOICE_OPENAI_API_KEY` | — | GPT-Live key, server-side only. Independent of the text chat provider. Without it Voice is unavailable and text chat is unaffected. **Secret** |
 | `VOICE_OPENAI_BASE_URL` | `https://api.openai.com` | GPT-Live API origin |
 | `VOICE_QUOTA_EXEMPT_PLAYGROUND` | `true` | Owner playground Voice is always measured and reported; when `true` it is not counted toward the account's Voice-minute quota. Independent of `HOSTED_USAGE_EXEMPT_PLAYGROUND` (text chat) |
 | `VOICE_MAX_CONCURRENT_SESSIONS` | — | Instance-wide cap on concurrent Voice sessions, to stay under the provider organization's concurrency limit. Unset: only per-plan limits apply |
@@ -99,7 +137,7 @@ Recording needs S3-compatible object storage. Without a bucket and credentials, 
 | `OBJECT_STORAGE_REGION` | `auto` | Region (`auto` for R2; e.g. `us-east-1` for S3/MinIO) |
 | `OBJECT_STORAGE_ENDPOINT` | — | Custom endpoint for R2 (`https://<account-id>.r2.cloudflarestorage.com`) or MinIO (`http://minio:9000`). Omit for AWS S3 |
 | `OBJECT_STORAGE_ACCESS_KEY_ID` | — | Access key with put/get/head/delete on the bucket |
-| `OBJECT_STORAGE_SECRET_ACCESS_KEY` | — | Secret key |
+| `OBJECT_STORAGE_SECRET_ACCESS_KEY` | — | Secret key. **Secret** |
 | `OBJECT_STORAGE_FORCE_PATH_STYLE` | `false` | `true` for MinIO and most self-hosted S3 servers |
 | `VOICE_RECORDING_SPOOL_DIR` | `./.voice-recording-spool` (Docker: `/app/uploads/voice-spool`) | Local compressed spool for recordings in progress. Put it on persistent disk so a partial recording can be recovered after a crash or restart |
 | `VOICE_ALIGNMENT_DIAGNOSTICS` | off | `1`: log one numbers-only `[voice.alignment]` line per recorded call (clock offsets, transcript-vs-audio onset bias). Never logs audio or transcript content |
@@ -152,4 +190,6 @@ Do not commit `.env.e2e`.
 ## Related
 
 - [Docker](/docs/self-hosting/docker)
+- [Production checklist](/docs/self-hosting/production-checklist)
+- [Billing and usage](/docs/self-hosting/billing-usage)
 - [Providers](/docs/providers)

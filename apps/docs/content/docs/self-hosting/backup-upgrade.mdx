@@ -9,7 +9,8 @@ description: Back up Postgres and uploads, then upgrade ChatAI safely.
 | --- | --- | --- |
 | Database | Compose volume `chatai_pgdata` | Assistants, chunks, conversations, API keys |
 | Uploads | Compose volume `chatai_uploads` | Original files under `/app/uploads` |
-| Config | Your `.env` / secrets store | Not in the image |
+| Config | Your `.env` / secrets store | Not in the image. Keep `ENCRYPTION_KEY` with your backups: without it, restored per-assistant provider keys can't be decrypted |
+| Voice recordings | Your S3-compatible bucket | Only if recording is enabled; back up with your storage provider's tools |
 
 ## Database dump
 
@@ -41,7 +42,7 @@ Copy the named volume or bind-mount contents. Example with a temporary Alpine co
 
 ```bash
 docker run --rm \
-  -v chatai-v07-self-hosting-docs_chatai_uploads:/data \
+  -v chatai_chatai_uploads:/data \
   -v "$PWD:/backup" \
   alpine tar czf /backup/chatai-uploads-$(date +%Y%m%d).tgz -C /data .
 ```
@@ -49,6 +50,8 @@ docker run --rm \
 Adjust the volume name to match `docker volume ls` on your host (Compose prefixes the project name).
 
 ## Upgrade flow
+
+Upgrading from 1.0? Read [Upgrading to 1.1](/docs/self-hosting/upgrade-1-1) first.
 
 1. **Back up** Postgres and uploads
 2. **Pull / rebuild** the app image:

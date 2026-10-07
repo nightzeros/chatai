@@ -11,22 +11,24 @@ ChatAI publishes four client libraries to the public npm registry under the **`@
 
 **Default auth:** [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (GitHub Actions OIDC). The workflow [`.github/workflows/publish-npm.yml`](../../.github/workflows/publish-npm.yml) does **not** use `NPM_TOKEN` on the normal release path.
 
-Bootstrap **`1.0.0`** was published manually (September 2025). All future releases use OIDC through GitHub Actions.
+Bootstrap **`1.0.0`** was published manually on 2026-09-01. Every release from 1.1.0 on uses OIDC through GitHub Actions.
 
 Hosted zero-install embed remains unchanged: `https://app.nightzeros.com/widget/chat.js` (not published in npm tarballs).
 
 ## Normal release procedure
 
-1. Merge release-ready changes into `main`.
-2. Decide the next semantic version (e.g. `1.0.1`).
-3. Update root [`VERSION`](../../VERSION) and run `pnpm packages:sync-versions`.
-4. Commit the version change on `main`.
-5. Create an annotated tag: `git tag -a v$(cat VERSION) -m "ChatAI $(cat VERSION)"`.
-6. Push the tag: `git push origin v$(cat VERSION)`.
-7. GitHub Actions runs **`Publish npm packages`** (`validate` job).
-8. Approve the protected GitHub environment **`npm`** when the `publish` job waits.
-9. GitHub OIDC publishes all four packages with provenance.
-10. The `verify-registry` job confirms versions, dist-tags, dependencies, and registry install smoke.
+`main` is protected: changes land through pull requests, never direct pushes.
+
+1. On a `release/vX.Y.Z` branch, update root [`VERSION`](../../VERSION), run `pnpm packages:sync-versions`, and add the dated `CHANGELOG.md` section.
+2. Open a PR to `main`, wait for CI, and merge it.
+3. Update your local `main` and create an annotated tag on the merge commit: `git tag -a v$(cat VERSION) -m "ChatAI $(cat VERSION)"`.
+4. Push only the tag: `git push origin v$(cat VERSION)`.
+5. GitHub Actions runs **`Publish npm packages`** (`validate` job).
+6. Approve the protected GitHub environment **`npm`** when the `publish` job waits.
+7. GitHub OIDC publishes all four packages with provenance.
+8. The `verify-registry` job confirms versions, dist-tags, dependencies, and registry install smoke.
+
+The same tag also starts the **Release** and **Deploy Production** workflows; see [Release checklist](../RELEASE.md#what-a-v-tag-triggers).
 
 Alternatively, use **workflow_dispatch** on `publish-npm.yml` from `main` with explicit inputs (`publish`, `dry_run`).
 
@@ -53,9 +55,9 @@ Use the workflow **filename only** (`publish-npm.yml`), not the full `.github/wo
 
 ## GitHub repository setup
 
-1. **Settings → Environments → `npm`**
-   - Required reviewers (recommended)
-   - Deployment branches: restrict to `main` and/or `v*` tags
+1. **Settings → Environments → `npm`**: create it before the first OIDC release. If it doesn't exist, GitHub creates it automatically on the first run **without** protection, and the publish job runs without approval.
+   - Required reviewers: **required** (at least one maintainer)
+   - Deployment branches and tags: restrict to `main` and `v*` tags
 2. **No `NPM_TOKEN` secret** is required for the default OIDC workflow.
 
 ## Workflow behavior

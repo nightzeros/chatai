@@ -1,0 +1,103 @@
+---
+title: Upgrading to 1.1
+description: Upgrade a self-hosted ChatAI 1.0 instance to 1.1 (public preview), including migrations 0007 to 0020 and the new optional settings.
+---
+
+ChatAI 1.1 adds Voice (preview), assistant Purpose and scope enforcement, Assistant Profile and Key Facts, hosted plans and usage controls, and optional Polar billing. The `/api/v1` API stays backward compatible. See the [changelog](https://github.com/nightzeros/chatai/blob/main/CHANGELOG.md) for the full list.
+
+Every new feature is optional. An instance that sets no new environment variables keeps working as before, with usage metered in `shadow` mode (recorded, never blocking).
+
+## 1. Back up first
+
+Back up Postgres and the uploads volume before upgrading. There are no down migrations, so a backup is the only way to return the database to its 1.0 state. See [Backup and upgrades](/docs/self-hosting/backup-upgrade).
+
+## 2. Database migrations
+
+1.1 adds migrations `0007` to `0020`. They apply automatically:
+
+- **Docker Compose (`docker-compose.yml`)**: the container entrypoint runs `migrate.mjs` on every start unless `RUN_MIGRATIONS=0`.
+- **Production VPS (`scripts/deploy.sh`)**: the deploy script pulls the new image, runs `migrate.mjs` once in a one-off container, and only then replaces the running app. If migrations fail, the running container stays on the previous image.
+
+| Migration        | Change                                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0007` to `0012` | Hosting accounts, plan entitlements, usage events and balances, model pricing, billing events (Polar) and the plan ladder                    |
+| `0013` to `0018` | Voice sessions, events and recordings; Voice columns on `assistants` and `messages`; recording lifecycle; Voice minutes; Voice control plane |
+| `0014`, `0019`   | New `message_outcome` values: `conversational`, `answered_from_history`, `out_of_scope`                                                      |
+| `0020`           | `assistant_profiles` and `assistant_profile_jobs`                                                                                            |
+
+Changes to tables that existed in 1.0 are additive: new tables, new columns that are nullable or have defaults, new enum values and foreign keys. `0011` renames billing columns and `0012`/`0016` update plan and balance rows, but only in tables created earlier in this release. Existing assistants, documents, conversations and API keys are not rewritten.
+
+## 3. Update and restart
+
+```bash
+git fetch --tags
+git checkout v1.1.0
+docker compose build app
+docker compose up -d app
+curl -s http://localhost:3000/api/health
+# {"status":"ok","db":"ok"}
+```
+
+On the production Compose stack, deploy an immutable image tag built from `v1.1.0` instead (see [Production VPS](https://github.com/nightzeros/chatai/blob/main/docs/deployment/vps.md)):
+
+```bash
+CHATAI_IMAGE_TAG=v1.1.0 ./scripts/deploy.sh
+```
+
+## 4. Compose changes
+
+Set a stop grace period on the app service so live Voice calls can drain on shutdown. Both bundled Compose files already include it:
+
+```yaml
+services:
+  app:
+    stop_grace_period: 20s
+```
+
+The Docker image sets `NEXT_MANUAL_SIG_HANDLE=1` and stores the Voice recording spool on the uploads volume (`VOICE_RECORDING_SPOOL_DIR=/app/uploads/voice-spool`). Do not override them unless you know why.
+
+## 5. New optional settings
+
+All of these are documented in the [environment reference](/docs/self-hosting/env-reference).
+
+| Feature                     | Variables                                                                                                                 | Notes                                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Voice (preview)             | `VOICE_OPENAI_API_KEY`, optional `VOICE_MAX_CONCURRENT_SESSIONS`, `VOICE_IDLE_TIMEOUT_SECONDS`, `VOICE_SHUTDOWN_GRACE_MS` | Without a key, the Voice switch has no effect and the widget shows no microphone. Needs a long-lived Node.js server; run one web instance. See [Voice (preview)](/docs/voice) |
+| Voice recordings            | `OBJECT_STORAGE_*`                                                                                                        | S3-compatible storage (S3, R2, MinIO). Without it, recording stays disabled and Voice works normally                                                                          |
+| Per-assistant provider keys | `ENCRYPTION_KEY`, `ENCRYPTION_KEY_VERSION`                                                                                | Required only to store or use per-assistant provider API keys. Generate with `openssl rand -base64 32`                                                                        |
+| Admin endpoints             | `ADMIN_USER_IDS`                                                                                                          | Comma-separated user IDs allowed to call `/api/admin/*`. Empty means no admins                                                                                                |
+| Usage controls              | `HOSTED_USAGE_ENFORCEMENT`                                                                                                | `shadow` (default) records usage without blocking; `enforce` applies plan limits; `off` disables metering. See [Billing and usage](/docs/self-hosting/billing-usage)          |
+| Polar billing               | `POLAR_*`                                                                                                                 | Only for instances that sell paid plans                                                                                                                                       |
+| Scope and Profile           | `OUTPUT_SCOPE_CHECK`, `ASSISTANT_PROFILE`, `PROFILE_ANSWER_ROUTE`                                                         | The first two default to `true`; `PROFILE_ANSWER_ROUTE` defaults to `false` and should stay off                                                                               |
+
+If you set `HOSTED_USAGE_ENFORCEMENT=enforce` on a self-hosted instance, every account gets the Free plan limits unless you assign plans. Most self-hosters should keep `shadow` or use `off`.
+
+## 6. npm packages
+
+The 1.0.0 npm packages do not include Voice. Upgrade to 1.1.0 or later to get Voice (preview) and the new widget-core APIs:
+
+```bash
+pnpm add @nightzeros/chatai-react@^1.1.0
+# or @nightzeros/chatai-widget@^1.1.0, @nightzeros/chatai-sdk@^1.1.0
+```
+
+The hosted `/widget/chat.js` script always matches the deployed server, so script-tag embeds need no change.
+
+## 7. After upgrading
+
+- Sign in, open an assistant, and send a playground message.
+- Open the assistant's **Profile** page to review its Purpose and any suggested Key facts.
+- Check **Settings → Privacy** for the new Voice options if you plan to offer Voice (preview).
+- Watch the logs for `Invalid environment variables` and migration errors.
+
+## Rolling back
+
+- **App image**: you can redeploy the previous image tag (for example with `scripts/rollback.sh` on the VPS stack). The database stays on the 1.1 schema; the older app does not use the new tables, but it was not built for the new `message_outcome` values, so conversations created by 1.1 may display incompletely.
+- **Database**: to return fully to 1.0, stop the app and restore the backup you took in step 1. Data written after the upgrade is lost.
+- Do not hand-edit or delete migration rows in `drizzle.__drizzle_migrations`.
+
+## Related
+
+- [Production checklist](/docs/self-hosting/production-checklist)
+- [Versioning and migrations](/docs/self-hosting/versioning)
+- [Environment reference](/docs/self-hosting/env-reference)

@@ -1,8 +1,8 @@
 # npm package audit (client libraries)
 
-Audit for public npm packages under `@nightzeros/chatai-*`. Bootstrap **`1.0.0`** is live on npm (September 2025). Future releases use GitHub Actions OIDC Trusted Publishing.
+Audit for public npm packages under `@nightzeros/chatai-*`. Bootstrap **`1.0.0`** is live on npm (published 2026-09-01). Releases from 1.1.0 on use GitHub Actions OIDC Trusted Publishing.
 
-## Publishable (this change)
+## Publishable
 
 | Package | Directory | Role |
 | --- | --- | --- |
@@ -18,7 +18,11 @@ Audit for public npm packages under `@nightzeros/chatai-*`. Bootstrap **`1.0.0`*
 | `@chatai/web`, `@chatai/database`, `@chatai/rag`, `@chatai/ai`, `@chatai/evals` | Server/monorepo internals |
 | `apps/*`, `examples/*` | Applications and demos, not libraries |
 
-## Pre-change blockers (resolved in this branch)
+## Tarball contents
+
+Each tarball contains `dist/`, `package.json`, `README.md` and `LICENSE` (Apache-2.0). `pnpm packages:verify` fails if `README.md`, `LICENSE` or the `dist` entry points are missing, if the tarball contains `src/`, `.env` files or app/database internals, if any file mentions a legacy `@chatai/*` publish name, if `package.json` still has `workspace:` references, or if the hosted `chat.js` bundle is included.
+
+## Historical blockers (resolved before 1.0.0)
 
 - All four packages had `"private": true` and `"exports": "./src/index.ts"` (raw TypeScript, not npm-safe).
 - No `dist/` library build; only `@nightzeros/chatai-widget` built IIFE `dist/chat.js` for hosted embed.

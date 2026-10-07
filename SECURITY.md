@@ -4,8 +4,11 @@
 
 | Version | Supported |
 | --- | --- |
-| 1.x | Yes |
-| < 1.0 | No (pre-release; upgrade to 1.x) |
+| 1.1.x | Yes |
+| 1.0.x | Security fixes only; please upgrade to 1.1 |
+| < 1.0 | No (pre-release; upgrade to 1.1) |
+
+Voice is a **preview** feature in 1.1. Security reports about Voice are in scope and handled like any other report.
 
 ## Reporting a vulnerability
 
@@ -23,15 +26,18 @@ We aim to acknowledge reports within **72 hours** and provide a remediation time
 
 In scope for ChatAI:
 
-- Authentication / authorization bypass
-- Widget abuse (origin spoofing past allowlist, signature bypass)
-- Secret leakage (API keys, encryption keys, conversation data)
+- Authentication / authorization bypass, including the admin API
+- Widget abuse (origin spoofing past allowlist, signature bypass, rate-limit bypass)
+- Secret leakage (API keys, provider keys, encryption keys, conversation data)
+- Voice session abuse: minting sessions for an assistant you don't control, exceeding usage limits, accessing another owner's transcripts or recordings
+- Usage metering or billing bypass (for example avoiding enforced limits or forging Polar webhooks)
 - Injection against the dashboard or public API
 
 Out of scope:
 
 - Denial of service against a self-hosted instance you control
 - Issues in third-party LLM providers
+- Model answers that drift off-topic or ignore instructions without exposing data or bypassing a control (report these as bugs)
 - Social engineering
 
 ## Disclosure

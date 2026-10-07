@@ -5,7 +5,10 @@ contact_links:
     about: Ask questions, share ideas, and discuss roadmap items (not bugs).
   - name: Public roadmap
     url: https://github.com/nightzeros/chatai/blob/main/ROADMAP.md
-    about: See what shipped in v1.0 and what is planned next.
+    about: See what has shipped and what is planned next.
+  - name: Documentation
+    url: https://docs.nightzeros.com/docs
+    about: Setup, self-hosting, widget, Voice (preview), API and SDK guides.
   - name: Security vulnerability
     url: https://github.com/nightzeros/chatai/security/advisories/new
     about: Report a security issue privately (do not file a public bug).
