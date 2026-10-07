@@ -25,14 +25,14 @@
   },
   "dependencies": {
     "dotenv": "^16.4.7",
-    "drizzle-orm": "^0.40.1",
+    "drizzle-orm": "^0.45.3",
     "postgres": "^3.4.5"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
     "@electric-sql/pglite-pgvector": "0.0.9",
     "@types/node": "^20.19.43",
-    "drizzle-kit": "^0.30.5",
+    "drizzle-kit": "^0.31.11",
     "typescript": "^5.8.2",
     "vitest": "^4.1.10"
   }
