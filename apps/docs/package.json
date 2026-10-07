@@ -14,7 +14,7 @@
     "@nightzeros/chatai-sdk": "workspace:*",
     "@scalar/api-reference-react": "^0.9.65",
     "fumadocs-core": "15.6.0",
-    "fumadocs-mdx": "11.6.0",
+    "fumadocs-mdx": "15.4.6",
     "fumadocs-ui": "15.6.0",
     "next": "15.5.23",
     "react": "19.1.0",
