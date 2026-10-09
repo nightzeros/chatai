@@ -51,7 +51,7 @@ Low-level API: `mountChatWidget(element, options)` mounts the widget into any el
 
 ## Voice (preview)
 
-When the assistant owner turns on Voice and the ChatAI instance has a Voice provider configured, the widget shows a microphone button. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC; otherwise the widget explains why and text chat keeps working. Voice is a preview feature and may change in minor releases. It requires version 1.1.0 or later of this package.
+When the assistant owner turns on Voice and the ChatAI instance has a Voice provider configured, the widget shows a microphone button. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC; otherwise the widget explains why and text chat keeps working. Voice is a preview feature and may change in minor releases. It requires version 1.2.0 or later of this package; older versions get "Voice isn't available right now" from ChatAI 1.2.0 and later.
 
 ## Compatibility
 

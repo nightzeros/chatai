@@ -54,7 +54,7 @@ Other exports include `resolveApiUrl`, `createSseParser`, `clientHistory`, Voice
 
 ## Voice (preview)
 
-Voice APIs were added in 1.1.0 and are a preview: their shape may change in minor releases. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC, and a ChatAI server with a Voice provider configured.
+Voice APIs were added in 1.1.0 and are a preview: their shape may change in minor releases. ChatAI 1.2.0 and later start Voice only for clients that support the playback gate (1.2.0 or later of this package). Voice needs HTTPS (or `localhost`), microphone permission and WebRTC, and a ChatAI server with a Voice provider configured.
 
 ## Compatibility
 

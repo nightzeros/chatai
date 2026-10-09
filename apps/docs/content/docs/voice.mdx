@@ -112,7 +112,7 @@ Voice appears automatically when the assistant offers it. To hide it on a specif
 <ChatWidget assistantId="asst_your_public_id" apiUrl="https://app.nightzeros.com" voice={false} />
 ```
 
-Voice needs a widget that supports the playback gate: the hosted `chat.js` always does. npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.1.1 or later** (once released). ChatAI refuses Voice to older widgets, which show **Voice isn't available right now** and keep text chat working.
+Voice needs a widget that supports the playback gate: the hosted `chat.js` always does. npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.2.0 or later**. ChatAI refuses Voice to older widgets, which show **Voice isn't available right now** and keep text chat working.
 
 ## Browser requirements
 
@@ -125,7 +125,7 @@ Voice needs a widget that supports the playback gate: the hosted `chat.js` alway
 | Symptom                           | Likely cause                                                                                                                                                  |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No microphone button              | Voice not offered in **Settings → Privacy**; no `VOICE_OPENAI_API_KEY` on the server; `data-voice="off"` / `voice={false}`; or an npm widget older than 1.1.0 |
-| "Voice isn't available right now" | Minutes exhausted, concurrent-call limit reached, provider error, a serverless deployment, or an npm widget older than 1.1.1 (no playback gate)               |
+| "Voice isn't available right now" | Minutes exhausted, concurrent-call limit reached, provider error, a serverless deployment, or an npm widget older than 1.2.0 (no playback gate)               |
 | A short pause before replies      | Expected for anything other than small talk: the visitor hears ChatAI's answer, not the voice model's first guess                                            |
 | Microphone blocked                | Page not on HTTPS, permission denied, `Permissions-Policy` or iframe `allow` missing                                                                          |
 | Calls drop during deploys         | Expected: the call ends with "Voice disconnected. You can keep typing here." Set `stop_grace_period` so calls drain cleanly                                   |
