@@ -57,6 +57,13 @@ assert.match(
   /verify-npm-registry\.mjs/,
   "publish-npm.yml must run post-publish registry verification",
 );
+for (const name of ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL"]) {
+  assert.match(
+    publishWorkflow,
+    new RegExp(`^\\s+${name}:\\s*\\S`, "m"),
+    `publish-npm.yml validate job must set ${name} so \`pnpm build\` can collect page data`,
+  );
+}
 
 assert.match(
   fallbackWorkflow,
