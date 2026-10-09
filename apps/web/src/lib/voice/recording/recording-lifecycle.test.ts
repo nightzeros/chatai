@@ -261,7 +261,8 @@ describe("Voice recording lifecycle (PGlite + in-memory object storage)", () => 
     channel.simulateInputAudio(new Int16Array((RATE * 300) / 1000));
     channel.simulateInputAudio(tone(440, 600));
     channel.advanceTimeline(880);
-    channel.simulateInputTranscript(SECRET_PHRASE, 400);
+    // A social turn, so the turn gate lets the live "Noted." through as heard speech.
+    channel.simulateInputTranscript("Thank you", 400);
     channel.simulateInputAudio(new Int16Array((RATE * 1_300) / 1000));
     // Assistant transcript at 1280 ms leads its audio (1660 ms) by 380 ms.
     channel.simulateOutputTranscript("Noted.", 400);

@@ -32,6 +32,7 @@ vi.mock("@/lib/ids", () => ({ createId: () => `id_${++idSeq}` }));
 import { fakeVoiceRuntime } from "./__fixtures__/runtime";
 import { serializeVoiceDebug } from "./debug-snapshot";
 import {
+  ALREADY_ANSWERED_COMMENTARY,
   finalizeAnsweredTurns,
   isPreScopeEngagement,
   SCOPE_REMINDER_INSTRUCTIONS,
@@ -41,18 +42,22 @@ import {
   TIMEOUT_COMMENTARY,
   toSpeakableCommentary,
   waitForVoiceTurnsIdle,
+  WITHHELD_REPLY_INSTRUCTIONS,
   type VoiceOrchestratorDeps,
 } from "./delegation-orchestrator";
 import { terminateVoiceSession } from "./lifecycle";
 import type { VoiceRuntimeSession } from "./session-runtime";
 import { superviseSideband } from "./sideband-supervisor";
+import { endVoiceGate, subscribeVoiceGate } from "./turn-gate";
 
 /** GPT-Live-like channel: supersedes on delegation.created and gates appends. */
 class FakeLiveChannel implements VoiceControlChannel {
   readonly providerSessionId = "prov_1";
   readonly delegations = new DelegationTracker();
-  readonly commentary: Array<{ delegationId: string; content: string }> = [];
+  readonly commentary: Array<{ delegationId: string | null; content: string }> = [];
+  readonly instructions: Array<{ delegationId: string | null; content: string }> = [];
   readonly rejected: Array<{ delegationId: string; reason: string }> = [];
+  closed = false;
   private listeners = new Set<(event: VoiceControlEvent) => void>();
   private seq = 0;
 
@@ -74,7 +79,13 @@ class FakeLiveChannel implements VoiceControlChannel {
     this.delegations.create(id, offsetMs);
     this.emit({ type: "delegation.created", delegationId: id, offsetMs });
   }
-  async appendCommentary(delegationId: string, content: string): Promise<AppendResult> {
+  async appendCommentary(delegationId: string | null, content: string): Promise<AppendResult> {
+    if (delegationId === null) {
+      if (this.closed) return { ok: false, reason: "session_closed" };
+      this.seq += 1;
+      this.commentary.push({ delegationId, content });
+      return { ok: true, eventId: `evt_${this.seq}` };
+    }
     const gate = this.delegations.acceptAppend(delegationId);
     if (!gate.ok) {
       this.rejected.push({ delegationId, reason: gate.reason });
@@ -87,10 +98,12 @@ class FakeLiveChannel implements VoiceControlChannel {
   async appendThinking(): Promise<AppendResult> {
     return { ok: true };
   }
-  async appendInstructions(): Promise<AppendResult> {
+  async appendInstructions(content: string, delegationId: string | null = null): Promise<AppendResult> {
+    this.instructions.push({ delegationId, content });
     return { ok: true };
   }
   async close() {
+    this.closed = true;
     this.delegations.closeSession();
     return { ok: true as const, reason: "close_requested" as const, usageSeconds: 12 };
   }
@@ -130,11 +143,18 @@ function prepared(query: string, overrides: Partial<PreparedAnswer> = {}): Prepa
 
 type PrepareArgs = Parameters<VoiceOrchestratorDeps["prepareAnswer"]>[0];
 
+// Server-forced turns are timer-driven; a session left running would answer into the next test.
+const openSessions: VoiceRuntimeSession[] = [];
+afterEach(() => {
+  for (const session of openSessions.splice(0)) endVoiceGate(session);
+});
+
 function setup(options: {
   ephemeral?: boolean;
   prepare?: (args: PrepareArgs) => Promise<PreparedAnswer>;
   answer?: (prompt: string) => string;
   gateOk?: boolean;
+  modelsError?: Error;
   settings?: Partial<VoiceOrchestratorDeps["settings"]>;
 } = {}) {
   const logs: Array<{ event: string; fields: Record<string, unknown> }> = [];
@@ -158,11 +178,14 @@ function setup(options: {
   setVoiceOrchestratorDepsForTests({
     prepareAnswer: prepareAnswer as unknown as VoiceOrchestratorDeps["prepareAnswer"],
     generateChat: generateChat as unknown as VoiceOrchestratorDeps["generateChat"],
-    resolveAssistantModels: (async () => ({
-      chat: { provider: "anthropic", model: "claude", apiKey: "k", baseURL: "" },
-      embedding: { provider: "openai", model: "e", apiKey: "k", baseURL: "", dimensions: 1536 },
-      billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
-    })) as unknown as VoiceOrchestratorDeps["resolveAssistantModels"],
+    resolveAssistantModels: (async () => {
+      if (options.modelsError) throw options.modelsError;
+      return {
+        chat: { provider: "anthropic", model: "claude", apiKey: "k", baseURL: "" },
+        embedding: { provider: "openai", model: "e", apiKey: "k", baseURL: "", dimensions: 1536 },
+        billing: { chat: "hosted", embedding: "hosted", rerank: "hosted" },
+      };
+    }) as unknown as VoiceOrchestratorDeps["resolveAssistantModels"],
     beginChatUsageReservation: beginChatUsageReservation as unknown as VoiceOrchestratorDeps["beginChatUsageReservation"],
     finishChatUsageReservation,
     abortChatUsageReservation: vi.fn(async () => undefined),
@@ -179,6 +202,7 @@ function setup(options: {
     delegations: channel.delegations,
   });
   superviseSideband(session, channel);
+  openSessions.push(session);
   return { session, channel, prepareAnswer, generateChat, finishChatUsageReservation, beginChatUsageReservation, logs };
 }
 
@@ -638,6 +662,23 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     expect(session.turns[0]!.status).toBe("failed");
   });
 
+  it("model configuration failure: no reservation, spoken apology, turn failed", async () => {
+    const { session, channel, prepareAnswer, beginChatUsageReservation, logs } = setup({
+      modelsError: new Error("provider openai is not configured on this instance"),
+    });
+    channel.userSays("What is the Pro plan?", 1_000);
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+    expect(beginChatUsageReservation).not.toHaveBeenCalled();
+    expect(prepareAnswer).not.toHaveBeenCalled();
+    expect(channel.commentary[0]?.content).toMatch(/lookup failed/i);
+    expect(session.turns[0]).toMatchObject({
+      status: "failed",
+      error: "provider openai is not configured on this instance",
+    });
+    expect(logs.some((entry) => entry.event === "turn.failed")).toBe(true);
+  });
+
   it("keeps a turn GPT-Live answered itself out of the question and passes it as history", async () => {
     const { session, channel, prepareAnswer } = setup();
     channel.userSays(" Hi there, how are you doing today", 1_000, 2_200);
@@ -942,22 +983,36 @@ describe("Zenith knowledge (fictional, only answerable from the knowledge base)"
     ack(channel, session.turns[2]!, 21_400);
     channel.assistantSays(" The support code is N Z four eight two seven.", 21_400, 23_600);
 
-    // 4. "How much did you say it was again?" — GPT-Live answers from context, no delegation.
+    // 4. "How much did you say it was again?" — a repeat request is a backend turn. GPT-Live
+    // answers from context without delegating; that reply is withheld and the server forces a lookup.
     channel.userSays(" How much did you say it was again", 25_000, 26_600);
     channel.assistantSays(" Seventy-three dollars per month.", 26_800, 28_400);
-    expect(prepareAnswer).toHaveBeenCalledTimes(3);
+    expect(session.outputFragments.at(-1)).toMatchObject({ withheld: true });
+    await vi.waitFor(() => expect(session.turns[3]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
+    expect(prepareAnswer).toHaveBeenCalledTimes(4);
+    expect(session.turns[3]).toMatchObject({
+      id: "srv_1",
+      delegationId: null,
+      status: "answered",
+      userText: "How much did you say it was again",
+      withheldText: "Seventy-three dollars per month.",
+    });
+    expect(channel.instructions.map((entry) => entry.content)).toContain(WITHHELD_REPLY_INSTRUCTIONS);
+    expect(channel.commentary[3]).toEqual({ delegationId: null, content: "The Zenith plan costs $73 per month." });
 
-    // A later knowledge question is not glued to the context-answered follow-up.
+    // A later knowledge question is not glued to the repeated one.
     channel.userSays(" Does it include phone support", 30_000, 31_600);
     channel.delegate("del_phone", 31_600);
     await waitForVoiceTurnsIdle(session);
-    const phone = prepareAnswer.mock.calls[3]?.[0];
+    const phone = prepareAnswer.mock.calls[4]?.[0];
     expect(phone?.message).toBe("Does it include phone support");
-    // GPT-Live's own reply stays for context but is tagged: it is never grounded backend text.
+    // The withheld live reply never reaches history; the grounded backend answer does.
     expect(phone?.history?.slice(-2)).toEqual([
       { role: "user", content: "How much did you say it was again" },
-      { role: "assistant", content: "Seventy-three dollars per month.", liveReply: true },
+      { role: "assistant", content: "The Zenith plan costs $73 per month.", grounded: true },
     ]);
+    expect(JSON.stringify(phone?.history)).not.toContain("Seventy-three");
 
     // Every exchange is part of the conversation, in spoken order, whether or not RAG ran.
     expect(
@@ -967,12 +1022,11 @@ describe("Zenith knowledge (fictional, only answerable from the knowledge base)"
       ["delegated", "How much is the Zenith plan"],
       ["delegated", "How many team members does it support"],
       ["delegated", "What is its support code"],
-      ["live", "How much did you say it was again"],
+      ["delegated", "How much did you say it was again"],
       ["delegated", "Does it include phone support"],
     ]);
     expect(session.liveExchanges.map((exchange) => exchange.replyText)).toEqual([
       "Doing well, thanks! What can I help with?",
-      "Seventy-three dollars per month.",
     ]);
 
     await finalizeAnsweredTurns(session);
@@ -985,6 +1039,7 @@ describe("Zenith knowledge (fictional, only answerable from the knowledge base)"
       "del_price",
       "del_team",
       "del_code",
+      null,
       "del_phone",
     ]);
   });
@@ -1168,24 +1223,41 @@ describe("voice scope enforcement (shared ChatAI policy)", () => {
     expect(session.turns[0]!.metrics).toMatchObject({ scopeDecision: "in", plannerMs: 280, plannerWaitMs: 40 });
   });
 
-  it("audit only: a substantive live answer is logged as numbers and triggers one throttled reminder", async () => {
-    const { channel, logs } = setup();
+  it("a substantive answer GPT-Live gives itself is withheld, logged as numbers, and answered by the backend", async () => {
+    const { session, channel, logs, prepareAnswer } = setup();
     const reminders = vi.spyOn(channel, "appendInstructions");
     const longReply = ` ${"For gaming you want a strong graphics card and a fast screen. ".repeat(3)}`;
     channel.userSays(" What's the best laptop for gaming", 1_000, 2_000);
     channel.assistantSays(longReply, 2_200, 9_000);
+    expect(session.outputFragments.at(-1)).toMatchObject({ withheld: true });
+    await vi.waitFor(() => expect(session.turns[0]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
+
     channel.userSays(" And which mouse should I get", 10_000, 11_000);
     channel.assistantSays(longReply, 11_200, 18_000);
-    channel.userSays(" Okay", 19_000, 19_400);
+    expect(session.outputFragments.at(-1)).toMatchObject({ withheld: true });
+    await vi.waitFor(() => expect(session.turns[1]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
 
-    await vi.waitFor(() =>
-      expect(logs.filter((entry) => entry.event === "voice.live_substantive")).toHaveLength(2),
-    );
-    const flagged = logs.filter((entry) => entry.event === "voice.live_substantive").map((entry) => entry.fields);
-    expect(flagged[0]).toEqual({ sessionId: "vs_1", userWords: 6, replyWords: 36, reminded: true });
-    expect(flagged[1]).toMatchObject({ reminded: false });
-    expect(reminders).toHaveBeenCalledTimes(1);
-    expect((reminders.mock.calls[0] as unknown[] | undefined)?.[0]).toBe(SCOPE_REMINDER_INSTRUCTIONS);
+    expect(prepareAnswer.mock.calls.map((call) => call[0].message)).toEqual([
+      "What's the best laptop for gaming",
+      "And which mouse should I get",
+    ]);
+    expect(channel.commentary.map((entry) => entry.delegationId)).toEqual([null, null]);
+    const withheld = logs.filter((entry) => entry.event === "voice.live_withheld").map((entry) => entry.fields);
+    expect(withheld[0]).toEqual({
+      sessionId: "vs_1",
+      turnId: "srv_1",
+      origin: "server",
+      userWords: 6,
+      withheldWords: 36,
+      reminded: true,
+    });
+    expect(withheld[1]).toMatchObject({ turnId: "srv_2", reminded: false });
+    expect(reminders.mock.calls.filter((call) => call[0] === SCOPE_REMINDER_INSTRUCTIONS)).toHaveLength(1);
+    // Nothing unapproved was audible, so there is no live answer to flag.
+    expect(logs.some((entry) => entry.event === "voice.live_substantive")).toBe(false);
+    expect(session.liveExchanges).toEqual([]);
     expect(JSON.stringify(logs)).not.toMatch(/laptop|mouse|graphics/);
   });
 
@@ -1203,25 +1275,31 @@ describe("voice scope enforcement (shared ChatAI policy)", () => {
     expect(reminders).not.toHaveBeenCalled();
   });
 
-  it("a live reply that engages with an activity is a pre-scope engagement failure (numbers only)", async () => {
-    const { session, channel, logs } = setup();
+  it("a live reply that engages with an activity is withheld and flagged; the visitor hears the backend redirect", async () => {
+    const { session, channel, logs } = setup({ prepare: async (args) => outOfScope(args.message) });
     const reminders = vi.spyOn(channel, "appendInstructions");
     channel.userSays(" I want to cook today, can you help me", 1_000, 2_000);
     channel.assistantSays(" Sure! What would you like to cook?", 2_200, 3_500);
-    channel.userSays(" Okay", 5_000, 5_400);
+    expect(session.outputFragments.at(-1)).toMatchObject({ withheld: true });
+    await vi.waitFor(() => expect(session.turns[0]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
 
-    await vi.waitFor(() => expect(logs.some((entry) => entry.event === "voice.pre_scope_engagement")).toBe(true));
-    expect(logs.find((entry) => entry.event === "voice.live_nonsocial")?.fields).toMatchObject({ sessionId: "vs_1" });
-    expect(logs.find((entry) => entry.event === "voice.pre_scope_engagement")?.fields).toEqual({
-      sessionId: "vs_1",
-      stage: "live_reply",
-      replyWords: expect.any(Number),
+    expect(channel.commentary).toEqual([{ delegationId: null, content: REDIRECT }]);
+    expect(session.turns[0]).toMatchObject({
+      status: "answered",
+      outcome: "out_of_scope",
+      withheldText: "Sure! What would you like to cook?",
     });
-    expect(reminders).toHaveBeenCalledTimes(1);
+    expect(logs.find((entry) => entry.event === "voice.pre_scope_engagement")?.fields).toMatchObject({
+      sessionId: "vs_1",
+      stage: "before_backend_reply",
+      scopeDecision: "out",
+    });
+    expect(reminders.mock.calls.filter((call) => call[0] === SCOPE_REMINDER_INSTRUCTIONS)).toHaveLength(1);
 
     await terminateVoiceSession(session, { reason: "close_requested", requestProviderClose: false });
     const summary = logs.find((entry) => entry.event === "voice.delegation_latency");
-    expect(summary?.fields).toMatchObject({ answered: 0, liveNonsocial: 1, preScopeEngagement: 1 });
+    expect(summary?.fields).toMatchObject({ liveNonsocial: 0, preScopeEngagement: 1, liveWithheld: 1, forcedTurns: 1 });
     expect(JSON.stringify(logs)).not.toMatch(/cook/);
   });
 
@@ -1277,5 +1355,290 @@ describe("voice scope enforcement (shared ChatAI policy)", () => {
     expect(fields.byScope.in!.plannerMs).toEqual({ n: 1, p50: 250, p95: 250 });
     expect(fields.byScope.out!.plannerMs).toEqual({ n: 1, p50: 320, p95: 320 });
     expect(JSON.stringify(summaries)).not.toMatch(/Pro plan|laptop|dollars/);
+  });
+});
+
+describe("playback gate: ChatAI decides who answers each utterance", () => {
+  const REDIRECT = "I can help with appointments and opening hours. Is there something about the clinic I can help with?";
+  const outOfScope = (query: string) =>
+    prepared(query, {
+      outcome: "out_of_scope",
+      shouldGenerate: false,
+      fallbackText: REDIRECT,
+      retrieved: [],
+      turn: { kind: "knowledge", retrieval: "skipped" },
+      scope: { decision: "out", plannerMs: 300, plannerWaitMs: 0, redirectSource: "template" },
+    });
+
+  /** Gate decisions and accepted commentary, in the order they happened. */
+  function recordTimeline(session: VoiceRuntimeSession, channel: FakeLiveChannel) {
+    const timeline: string[] = [];
+    subscribeVoiceGate(session, (decision) =>
+      timeline.push(decision ? `gate:${decision.state}:${decision.reason}` : "gate:end"),
+    );
+    const append = channel.appendCommentary.bind(channel);
+    channel.appendCommentary = async (delegationId, content) => {
+      const result = await append(delegationId, content);
+      if (result.ok) timeline.push("commentary");
+      return result;
+    };
+    return timeline;
+  }
+
+  function expectNoOpenBeforeCommentary(timeline: string[]) {
+    const firstCommentary = timeline.indexOf("commentary");
+    expect(firstCommentary).toBeGreaterThanOrEqual(0);
+    expect(timeline.slice(0, firstCommentary).some((entry) => entry.startsWith("gate:open"))).toBe(false);
+  }
+
+  const waitForOpen = (session: VoiceRuntimeSession, reason: string) =>
+    vi.waitFor(() => expect(session.gate?.decision).toMatchObject({ state: "open", reason }));
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  beforeEach(() => {
+    insertValues.mockClear();
+    updateSet.mockClear();
+    idSeq = 0;
+  });
+  afterEach(() => {
+    setVoiceOrchestratorDepsForTests(null);
+  });
+
+  it.each(["I'm hungry", "Eating", "What do you mean?"])(
+    "%j without a hand-off: the live reply is withheld and the server forces a backend turn",
+    async (text) => {
+      const { session, channel, prepareAnswer } = setup();
+      const timeline = recordTimeline(session, channel);
+      channel.userSays(` ${text}`, 1_000, 1_800);
+      channel.assistantSays(" Oh, I see! Tell me more about that.", 2_000, 3_000);
+      expect(session.outputFragments.at(-1)).toMatchObject({ withheld: true });
+      expect(session.gate?.decision.state).toBe("closed");
+
+      await vi.waitFor(() => expect(session.turns[0]?.origin).toBe("server"));
+      await waitForVoiceTurnsIdle(session);
+      expect(prepareAnswer).toHaveBeenCalledTimes(1);
+      expect(prepareAnswer.mock.calls[0]?.[0].message).toBe(text);
+      expect(session.turns[0]).toMatchObject({
+        id: "srv_1",
+        delegationId: null,
+        status: "answered",
+        withheldText: "Oh, I see! Tell me more about that.",
+      });
+      expect(channel.instructions.map((entry) => entry.content)).toContain(WITHHELD_REPLY_INSTRUCTIONS);
+      expect(channel.commentary).toEqual([{ delegationId: null, content: `Answer to: ${text}` }]);
+
+      await waitForOpen(session, "backend_answer");
+      expectNoOpenBeforeCommentary(timeline);
+      // The withheld reply never becomes history.
+      expect(JSON.stringify(session.history)).not.toContain("Tell me more");
+    },
+  );
+
+  it("a cooking request with a hand-off: the engaging reply before the answer is withheld, then the redirect is approved", async () => {
+    const { session, channel } = setup({ prepare: async (args) => outOfScope(args.message) });
+    const timeline = recordTimeline(session, channel);
+    channel.userSays(" I want to cook pasta tonight, can you help", 1_000, 2_000);
+    channel.delegate("del_1", 2_000);
+    channel.assistantSays(" Sure, what would you like to cook?", 2_100, 2_900);
+    expect(session.outputFragments.at(-1)).toMatchObject({ withheld: true });
+    await waitForVoiceTurnsIdle(session);
+
+    expect(channel.commentary).toEqual([{ delegationId: "del_1", content: REDIRECT }]);
+    expect(session.turns[0]).toMatchObject({ status: "answered", outcome: "out_of_scope", withheldText: "Sure, what would you like to cook?" });
+    expect(channel.instructions.map((entry) => entry.content)).toContain(WITHHELD_REPLY_INSTRUCTIONS);
+    await waitForOpen(session, "backend_answer");
+    expectNoOpenBeforeCommentary(timeline);
+  });
+
+  it("a laptop request without a hand-off: a forced turn delivers the redirect", async () => {
+    const { session, channel, generateChat } = setup({ prepare: async (args) => outOfScope(args.message) });
+    const timeline = recordTimeline(session, channel);
+    channel.userSays(" What's the best laptop for gaming", 1_000, 2_000);
+    channel.assistantSays(" For gaming, look for a strong graphics card.", 2_200, 3_400);
+    await vi.waitFor(() => expect(session.turns[0]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
+
+    expect(generateChat).not.toHaveBeenCalled();
+    expect(channel.commentary).toEqual([{ delegationId: null, content: REDIRECT }]);
+    expect(session.turns[0]).toMatchObject({ outcome: "out_of_scope", withheldText: "For gaming, look for a strong graphics card." });
+    await waitForOpen(session, "backend_answer");
+    expectNoOpenBeforeCommentary(timeline);
+  });
+
+  it("an utterance GPT-Live neither delegates nor answers is still forced to the backend", async () => {
+    const { session, channel, prepareAnswer } = setup({ settings: { forceBackendAfterMs: 40 } });
+    channel.userSays(" I'm bored", 1_000, 1_600);
+    await vi.waitFor(() => expect(session.turns[0]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
+    expect(prepareAnswer.mock.calls[0]?.[0].message).toBe("I'm bored");
+    expect(channel.commentary).toEqual([{ delegationId: null, content: "Answer to: I'm bored" }]);
+  });
+
+  it.each(["Hey, what's up", "Thanks so much", "okay", "got it", "mhm", "Hi there, how are you doing today"])(
+    "small talk (%j) opens the gate as social and never calls the backend",
+    async (text) => {
+      const { session, channel, prepareAnswer } = setup({ settings: { forceBackendAfterMs: 40 } });
+      channel.userSays(` ${text}`, 1_000, 1_600);
+      expect(session.gate?.decision).toMatchObject({ state: "open", reason: "social", inputEndMs: 1_600 });
+      channel.assistantSays(" Happy to chat!", 1_800, 2_400);
+      expect(session.outputFragments.at(-1)?.withheld).toBeUndefined();
+
+      await sleep(120);
+      expect(prepareAnswer).not.toHaveBeenCalled();
+      expect(session.turns).toEqual([]);
+      expect(channel.commentary).toEqual([]);
+    },
+  );
+
+  it('"yes" right after an assistant question accepts an offer: it goes to the backend', async () => {
+    const { session, channel, prepareAnswer } = setup({ settings: { forceBackendAfterMs: 40 } });
+    channel.userSays(" Hi", 1_000, 1_400);
+    channel.assistantSays(" Hello! Would you like to hear about our plans?", 1_600, 3_400);
+    channel.userSays(" Yes", 4_000, 4_300);
+    expect(session.gate?.decision).toMatchObject({ state: "closed", reason: "user_speaking" });
+
+    await vi.waitFor(() => expect(session.turns[0]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
+    expect(prepareAnswer.mock.calls[0]?.[0]).toMatchObject({
+      message: "Yes",
+      history: [
+        { role: "user", content: "Hi" },
+        { role: "assistant", content: "Hello! Would you like to hear about our plans?", liveReply: true },
+      ],
+    });
+  });
+
+  it("a genuine interruption of the approved answer closes the gate at once and marks the turn interrupted", async () => {
+    const { session, channel } = setup();
+    channel.userSays("What is the Pro plan?", 1_000, 1_800);
+    channel.delegate("del_1", 1_800);
+    await waitForVoiceTurnsIdle(session);
+    await waitForOpen(session, "backend_answer");
+    channel.emit({ type: "append.acknowledged", kind: "commentary", clientEventId: "evt_1", startMs: 2_000, endMs: 2_050 });
+    channel.assistantSays(" The Pro plan costs", 2_000, 2_600);
+    expect(session.outputFragments.at(-1)?.withheld).toBeUndefined();
+
+    channel.userSays(" no wait", 2_700, 3_000);
+    expect(session.gate?.decision).toMatchObject({ state: "closed", reason: "user_speaking", inputEndMs: 3_000 });
+    channel.userSays(" what about shipping", 3_000, 3_600);
+    expect(session.turns[0]!.interrupted).toBe(true);
+    expect(session.interruptCount).toBe(1);
+  });
+
+  it("a genuine interruption during the lookup supersedes it; the gate never opens for the stale answer", async () => {
+    const slow = deferred<PreparedAnswer>();
+    let calls = 0;
+    const { session, channel } = setup({
+      prepare: async (args) => (++calls === 1 ? slow.promise : prepared(args.message)),
+    });
+    const timeline = recordTimeline(session, channel);
+    channel.userSays("What is the refund policy", 1_000, 1_800);
+    channel.delegate("del_1", 1_800);
+    await vi.waitFor(() => expect(session.turns[0]?.status).toBe("retrieving"));
+
+    channel.userSays(" no wait, what about shipping", 2_600, 3_400);
+    expect(session.turns[0]).toMatchObject({ status: "superseded", supersededBy: "barge_in" });
+    slow.resolve(prepared("refund policy"));
+    await waitForVoiceTurnsIdle(session);
+    expect(channel.commentary).toEqual([{ delegationId: "del_1", content: SUPERSEDED_COMMENTARY }]);
+    expect(timeline.some((entry) => entry.startsWith("gate:open"))).toBe(false);
+  });
+
+  it("a hand-off arriving after a forced turn started is adopted: one lookup, one reservation", async () => {
+    const slow = deferred<PreparedAnswer>();
+    const { session, channel, prepareAnswer, beginChatUsageReservation } = setup({
+      prepare: async () => slow.promise,
+      settings: { forceBackendAfterMs: 40 },
+    });
+    channel.userSays(" Do you ship to Canada", 1_000, 2_000);
+    await vi.waitFor(() => expect(session.turns[0]?.status).toBe("retrieving"));
+    expect(session.turns[0]).toMatchObject({ id: "srv_1", delegationId: null });
+
+    channel.delegate("del_late", 2_400);
+    slow.resolve(prepared("Do you ship to Canada"));
+    await waitForVoiceTurnsIdle(session);
+
+    expect(session.turns).toHaveLength(1);
+    expect(session.turns[0]).toMatchObject({ id: "srv_1", origin: "server", delegationId: "del_late", status: "answered" });
+    expect(prepareAnswer).toHaveBeenCalledTimes(1);
+    expect(beginChatUsageReservation).toHaveBeenCalledTimes(1);
+    expect(channel.commentary).toEqual([{ delegationId: "del_late", content: "Answer to: Do you ship to Canada" }]);
+    expect(channel.delegations.listActive()).toEqual([]);
+  });
+
+  it("a hand-off arriving after the forced answer is closed without a second lookup", async () => {
+    const { session, channel, prepareAnswer, beginChatUsageReservation } = setup({ settings: { forceBackendAfterMs: 40 } });
+    channel.userSays(" Do you ship to Canada", 1_000, 2_000);
+    await vi.waitFor(() => expect(session.turns[0]?.status).toBe("answered"));
+
+    channel.delegate("del_late", 2_400);
+    await waitForVoiceTurnsIdle(session);
+    expect(session.turns).toHaveLength(1);
+    expect(prepareAnswer).toHaveBeenCalledTimes(1);
+    expect(beginChatUsageReservation).toHaveBeenCalledTimes(1);
+    expect(channel.commentary).toEqual([
+      { delegationId: null, content: "Answer to: Do you ship to Canada" },
+      { delegationId: "del_late", content: ALREADY_ANSWERED_COMMENTARY },
+    ]);
+    expect(channel.delegations.listActive()).toEqual([]);
+  });
+
+  it.each(["strict", "balanced", "flexible"] as const)(
+    "hallucination mode %s reaches prepareAnswer unchanged on forced and delegated turns",
+    async (mode) => {
+      const { session, channel, prepareAnswer } = setup({ settings: { forceBackendAfterMs: 40 } });
+      session.assistant = { ...session.assistant!, hallucinationMode: mode };
+      channel.userSays(" I'm hungry", 1_000, 1_600);
+      await vi.waitFor(() => expect(session.turns[0]?.status).toBe("answered"));
+      channel.userSays(" What is the Pro plan", 4_000, 5_000);
+      channel.delegate("del_1", 5_000);
+      await waitForVoiceTurnsIdle(session);
+      expect(prepareAnswer.mock.calls.map((call) => call[0].mode)).toEqual([mode, mode]);
+    },
+  );
+
+  it("durable: a forced turn stores the backend answer and labels the withheld reply as not heard", async () => {
+    const { session, channel } = setup({ ephemeral: false });
+    channel.userSays(" I'm hungry", 1_000, 1_800);
+    channel.assistantSays(" Oh no! What would you like to eat?", 2_000, 3_000);
+    await vi.waitFor(() => expect(session.turns[0]?.status).toBe("answered"));
+    await waitForVoiceTurnsIdle(session);
+
+    const rows = messageInserts();
+    expect(rows.map((row) => [row.role, row.content])).toEqual([
+      ["user", "I'm hungry"],
+      ["assistant", "Answer to: I'm hungry"],
+    ]);
+    expect(rows[1]).toMatchObject({
+      debug: {
+        voice: expect.objectContaining({
+          turnId: "srv_1",
+          origin: "server",
+          delegationId: null,
+          withheldText: "Oh no! What would you like to eat?",
+        }),
+      },
+    });
+  });
+
+  it("a social reply that runs past the small-talk budget is cut off; the rest is stored as withheld", async () => {
+    const { session, channel, logs } = setup({ ephemeral: false, settings: { forceBackendAfterMs: 40 } });
+    channel.userSays(" Thanks so much", 1_000, 1_600);
+    channel.assistantSays(` ${"You are very welcome, it was a pleasure. ".repeat(3)}`, 1_800, 4_000);
+    channel.assistantSays(" Also, our Pro plan costs twenty dollars and includes many features for teams.", 4_000, 6_000);
+    expect(session.gate?.decision).toMatchObject({ state: "closed", reason: "reply_limit" });
+    channel.assistantSays(" Want to hear more?", 6_000, 6_600);
+    expect(session.outputFragments.at(-1)).toMatchObject({ withheld: true });
+    expect(logs.find((entry) => entry.event === "voice.social_reply_limit")?.fields).toEqual({
+      sessionId: "vs_1",
+      words: 37,
+    });
+
+    await terminateVoiceSession(session, { reason: "close_requested", requestProviderClose: true });
+    const rows = messageInserts();
+    expect(rows.map((row) => row.role)).toEqual(["user", "assistant"]);
+    expect(String(rows[1]!.content)).not.toContain("Want to hear more");
+    expect(JSON.stringify(rows[1]!.debug ?? rows[0]!.debug)).toContain("Want to hear more?");
   });
 });

@@ -91,8 +91,12 @@ const bodySchema = z.object({
   recordingConsent: z.boolean().optional(),
   /** Recent turns held by the client; used when the server has none stored. */
   history: clientHistorySchema.optional(),
-  /** `heartbeat`: the client sends control heartbeats and gets a `controlToken`. */
-  capabilities: z.array(z.enum(["heartbeat"])).max(4).optional(),
+  /**
+   * `heartbeat`: the client sends control heartbeats. `playback_gate` (required):
+   * the client plays assistant audio only when the gate stream approves it. Either
+   * one returns a `controlToken`.
+   */
+  capabilities: z.array(z.enum(["heartbeat", "playback_gate"])).max(4).optional(),
 });
 
 /** Bound on waiting for the provider's session.started (it normally arrives at attach). */
@@ -219,6 +223,12 @@ async function mintVoiceSession(request: Request) {
   const voiceResolved = resolveVoiceSettings(assistant.voiceSettings);
   if (!voiceResolved.enabled && source !== "playground") {
     return jsonWithCors({ error: "Voice is not enabled for this assistant." }, { status: 403 });
+  }
+  // Fail closed: a client that cannot hold back unapproved speech would let the
+  // Voice model answer out of scope before ChatAI's backend has decided.
+  if (!input.capabilities?.includes("playback_gate")) {
+    logVoiceEvent("mint.refused", { code: "playback_gate_missing", source });
+    return jsonWithCors(VOICE_UNAVAILABLE, { status: 403 });
   }
   if (!isSupportedVoiceProvider(assistant.voiceSettings)) {
     return jsonWithCors({ error: "Configured voice provider is not supported." }, { status: 503 });
@@ -464,16 +474,16 @@ async function mintVoiceSession(request: Request) {
     }
 
     // Heartbeats are opt-in: clients that never declared them are never ended for missing ones.
-    const controlToken = input.capabilities?.includes("heartbeat")
-      ? createVoiceControlToken({ sessionId, visitorId })
-      : null;
+    const heartbeatCapable = Boolean(input.capabilities?.includes("heartbeat"));
+    // Authorizes the gate stream (always) and heartbeats (when declared).
+    const controlToken = createVoiceControlToken({ sessionId, visitorId });
 
     // Same tick as registration: a drain that began during this mint never misses the session.
     assertVoiceNotDraining();
     registerVoiceRuntime(runtime);
     armVoiceRuntimeTtl(runtime);
     startVoiceMeter(runtime);
-    startVoiceSupervision(runtime, { heartbeatCapable: Boolean(controlToken) });
+    startVoiceSupervision(runtime, { heartbeatCapable });
 
     // Never include API keys or signing secrets.
     return jsonWithCors({
@@ -487,9 +497,9 @@ async function mintVoiceSession(request: Request) {
       conversationId,
       model: sessionConfig.model,
       voiceId: sessionConfig.voice,
-      ...(controlToken
-        ? { controlToken, heartbeatIntervalMs: voiceControlSettings().heartbeatIntervalMs }
-        : {}),
+      controlToken,
+      playbackGate: true,
+      ...(heartbeatCapable ? { heartbeatIntervalMs: voiceControlSettings().heartbeatIntervalMs } : {}),
     });
   } catch (err) {
     // Detach the supervisor first: the cleanup's session.closed must not run the

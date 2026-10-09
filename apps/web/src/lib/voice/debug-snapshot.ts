@@ -7,7 +7,10 @@ import type {
 } from "./session-runtime";
 
 export type VoiceDebugTurn = {
-  delegationId: string;
+  /** Stable turn id (the delegation id, or a server id for a server-forced turn). */
+  id: string;
+  origin: "delegation" | "server";
+  delegationId: string | null;
   status: string;
   /** Utterance ChatAI assembled from input transcript fragments. */
   userText: string;
@@ -78,7 +81,7 @@ function voiceExchanges(session: VoiceRuntimeSession): VoiceDebugExchange[] {
     if (turn.status === "answered") {
       return [
         {
-          id: turn.delegationId,
+          id: turn.id,
           kind: "delegated",
           startMs: turn.userStartMs,
           question: turn.userText,
@@ -91,7 +94,7 @@ function voiceExchanges(session: VoiceRuntimeSession): VoiceDebugExchange[] {
     if (turn.status === "superseded") {
       return [
         {
-          id: turn.delegationId,
+          id: turn.id,
           kind: "superseded",
           startMs: turn.userStartMs,
           question: turn.userText,
@@ -150,6 +153,8 @@ export function serializeVoiceDebug(session: VoiceRuntimeSession): VoiceDebugSna
         bargeInHoldMs: turn.metrics.bargeInHoldMs,
       };
       return {
+        id: turn.id,
+        origin: turn.origin,
         delegationId: turn.delegationId,
         status: turn.status,
         userText: turn.userText,

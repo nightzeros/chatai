@@ -71,6 +71,10 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/voice/sessions/{sessionId}/gate"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/voice/sessions/{sessionId}/heartbeat"
     },
     {
@@ -78,5 +82,5 @@
       "path": "/api/v1/widget/sign"
     }
   ],
-  "hash": "fa0db3397124f25411e5fd5f996835a9975de8a2879e8b3cb51703cb29b36192"
+  "hash": "30d7abc293bfafe11eadb409dc0ec52550a177a7ef14fd09edb5c237e6498f14"
 }

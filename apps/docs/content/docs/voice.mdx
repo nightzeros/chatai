@@ -11,8 +11,19 @@ Voice (preview) lets visitors speak to an assistant from the same widget they ty
 
 1. The visitor presses the microphone button. The widget asks ChatAI for a Voice session; ChatAI applies the same domain allowlist, rate limits, bot checks and widget signing as text chat, plus usage limits.
 2. The browser connects to the realtime voice model (GPT-Live) over WebRTC with a short-lived session. Provider keys never reach the browser.
-3. ChatAI supervises the call from the server over a separate control link. Small talk is handled by the voice model; factual questions are handed to ChatAI's text answer pipeline (Scope Router, retrieval, citations), and the voice model speaks that answer. The text answer is the canonical record.
+3. ChatAI supervises the call from the server over a separate control link and decides who answers each thing the visitor says (see below). The text answer is the canonical record.
 4. When the call ends, ChatAI settles the usage and, if enabled, saves the transcript and the recording.
+
+## Who answers each turn
+
+ChatAI's server, not the voice model, decides what the visitor hears:
+
+1. **ChatAI classifies every utterance.** Only greetings, thanks, goodbyes and short acknowledgements ("okay", "got it", "mhm") count as small talk. Everything else goes to ChatAI's backend, including statements ("I'm hungry"), single words, feelings, "What do you mean?", requests to repeat, and "yes" in answer to a question.
+2. **Small talk:** the voice model may answer it directly.
+3. **Everything else:** ChatAI's text answer pipeline answers it (Scope Router, Purpose, Profile, history, retrieval and the output guard), using the assistant's hallucination mode as in text chat. If the voice model doesn't hand the turn to ChatAI within a fraction of a second, or starts answering on its own, ChatAI runs the pipeline anyway and tells the model to say only that answer.
+4. **Playback gate:** the widget plays the voice model's audio, and shows its captions, only after ChatAI approves them. Anything the model says before ChatAI's answer is muted, kept out of the conversation history, and labelled **Withheld (not heard)** in Conversation Review. The gate closes again as soon as the visitor starts speaking, so interruptions work as before.
+
+The voice model's instructions repeat these rules, but they are a backup: the server-side gate is what enforces them.
 
 Voice runtime state lives in the web process, so Voice needs a long-lived Node.js server (the Docker image or `next start`) and a single web instance or sticky routing. Serverless hosting is not supported for Voice; text chat keeps working there. See [Voice in production](/docs/self-hosting/docker#voice-in-production).
 
@@ -101,7 +112,7 @@ Voice appears automatically when the assistant offers it. To hide it on a specif
 <ChatWidget assistantId="asst_your_public_id" apiUrl="https://app.nightzeros.com" voice={false} />
 ```
 
-npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.1.0 or later** to get Voice at all.
+Voice needs a widget that supports the playback gate: the hosted `chat.js` always does. npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.1.1 or later** (once released). ChatAI refuses Voice to older widgets, which show **Voice isn't available right now** and keep text chat working.
 
 ## Browser requirements
 
@@ -114,7 +125,8 @@ npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.1.0
 | Symptom                           | Likely cause                                                                                                                                                  |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No microphone button              | Voice not offered in **Settings → Privacy**; no `VOICE_OPENAI_API_KEY` on the server; `data-voice="off"` / `voice={false}`; or an npm widget older than 1.1.0 |
-| "Voice isn't available right now" | Minutes exhausted, concurrent-call limit reached, provider error, or a serverless deployment                                                                  |
+| "Voice isn't available right now" | Minutes exhausted, concurrent-call limit reached, provider error, a serverless deployment, or an npm widget older than 1.1.1 (no playback gate)               |
+| A short pause before replies      | Expected for anything other than small talk: the visitor hears ChatAI's answer, not the voice model's first guess                                            |
 | Microphone blocked                | Page not on HTTPS, permission denied, `Permissions-Policy` or iframe `allow` missing                                                                          |
 | Calls drop during deploys         | Expected: the call ends with "Voice disconnected. You can keep typing here." Set `stop_grace_period` so calls drain cleanly                                   |
 | `421` responses in logs           | A Voice request reached a different replica; use one instance or sticky routing                                                                               |
@@ -126,6 +138,11 @@ npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.1.0
 - Transcripts and recordings follow the assistant's privacy settings and retention.
 - Recording requires explicit visitor consent for every call.
 - Provider keys, plan details and usage figures are never sent to the browser.
+
+## Known limitations
+
+- The voice model's audio still reaches the browser; the widget mutes it until ChatAI approves. Modified client code could unmute withheld audio. Only relaying all audio through the server would remove that, and that is out of scope for the preview.
+- After ChatAI approves an answer, the voice model speaks it in its own words and could add to it. The stored answer is always ChatAI's text, and spoken additions never become grounded history.
 
 ## Related
 

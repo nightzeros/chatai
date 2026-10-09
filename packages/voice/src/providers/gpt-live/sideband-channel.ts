@@ -242,8 +242,18 @@ export class GptLiveSidebandChannel implements VoiceControlChannel {
     return () => this.audioListeners.delete(listener);
   }
 
-  async appendCommentary(delegationId: string, content: string): Promise<AppendResult> {
-    return this.appendDelegated("session.commentary.append", delegationId, content);
+  async appendCommentary(delegationId: string | null, content: string): Promise<AppendResult> {
+    if (delegationId !== null) {
+      return this.appendDelegated("session.commentary.append", delegationId, content);
+    }
+    if (this.closed) return { ok: false, reason: "session_closed" };
+    if (!content.trim()) return { ok: false, reason: "invalid_content" };
+    return this.sendCommand({
+      type: "session.commentary.append",
+      event_id: this.nextEventId(),
+      delegation_id: null,
+      content,
+    });
   }
 
   async appendThinking(delegationId: string, content: string): Promise<AppendResult> {

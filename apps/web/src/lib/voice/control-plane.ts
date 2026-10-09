@@ -3,6 +3,7 @@ import { ControlAttachError, type ControlDisconnectCause, type VoiceControlChann
 import { env } from "@/lib/env";
 
 import { voiceNow } from "./clock";
+import { approveVoiceSystemSpeech } from "./delegation-orchestrator";
 import { logVoiceEvent, logVoiceWarning } from "./observability";
 import { writeLifecycleVoiceEvent } from "./persist";
 import { voiceControlOf, type VoiceRuntimeSession, type VoiceTurn } from "./session-runtime";
@@ -240,13 +241,21 @@ export function handleControlReattached(session: VoiceRuntimeSession, gapMs: num
     void channel
       .appendCommentary(delegationId, CONTROL_INTERRUPTED_COMMENTARY)
       .then((result) => {
-        if (result.ok) session.delegations.complete(delegationId);
+        if (!result.ok) return;
+        if (delegationId) session.delegations.complete(delegationId);
+        approveVoiceSystemSpeech(session);
       })
       .catch(() => undefined);
   }
   if (control.possibleLoss && interrupted.length === 0) {
-    void channel.appendInstructions(CONTROL_GAP_INSTRUCTIONS, null).catch(() => undefined);
+    void sendSystemInstructions(session, CONTROL_GAP_INSTRUCTIONS);
   }
+}
+
+/** Server-initiated speech: steer the model, then approve what it says for it. */
+async function sendSystemInstructions(session: VoiceRuntimeSession, content: string): Promise<void> {
+  const result = await session.channel?.appendInstructions(content, null).catch(() => null);
+  if (result?.ok) approveVoiceSystemSpeech(session);
 }
 
 /** Arm idle / heartbeat / max-duration supervision for a freshly minted runtime. */
@@ -307,7 +316,7 @@ export async function tickVoiceSupervision(
     if (elapsed >= VOICE_RUNTIME_MAX_MS - settings.maxDurationWarningLeadMs) {
       supervision.maxDurationWarned = true;
       logVoiceEvent("max_duration.warning", { sessionId: session.sessionId, elapsedMs: elapsed });
-      void session.channel?.appendInstructions(MAX_DURATION_WARNING_INSTRUCTIONS, null).catch(() => undefined);
+      void sendSystemInstructions(session, MAX_DURATION_WARNING_INSTRUCTIONS);
     }
   }
 
@@ -321,7 +330,7 @@ export async function tickVoiceSupervision(
     if (nowMs - supervision.idleSince >= settings.idleWarningMs) {
       supervision.idleWarnedAt = nowMs;
       logVoiceEvent("idle.warning", { sessionId: session.sessionId, idleMs: nowMs - supervision.idleSince });
-      void session.channel?.appendInstructions(IDLE_CHECKIN_INSTRUCTIONS, null).catch(() => undefined);
+      void sendSystemInstructions(session, IDLE_CHECKIN_INSTRUCTIONS);
     }
     return;
   }

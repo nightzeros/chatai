@@ -326,8 +326,23 @@ export class MockControlChannel implements VoiceControlChannel {
     this.emit({ type: "error", code, message, retriable });
   }
 
-  async appendCommentary(delegationId: string, content: string): Promise<AppendResult> {
-    return this.append(delegationId, content);
+  /** Session-wide commentary appended without a delegation (server-forced turns). */
+  readonly undelegatedCommentary: string[] = [];
+
+  async appendCommentary(delegationId: string | null, content: string): Promise<AppendResult> {
+    if (delegationId !== null) return this.append(delegationId, content);
+    if (!content.trim()) {
+      return { ok: false, reason: "invalid_content", message: "content is empty" };
+    }
+    if (this.session.closed || !this.session.delegations.isSessionOpen()) {
+      return { ok: false, reason: "session_closed" };
+    }
+    if (!this.session.connected) {
+      return { ok: false, reason: "provider_error", message: "Sideband not connected" };
+    }
+    this.undelegatedCommentary.push(content);
+    this.simulateAssistantOutputStarted();
+    return { ok: true };
   }
 
   async appendThinking(delegationId: string, content: string): Promise<AppendResult> {

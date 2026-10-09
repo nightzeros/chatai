@@ -34,13 +34,28 @@ import type {
   VoiceRuntimeSession,
   VoiceTurn,
 } from "./session-runtime";
+import {
+  cancelPendingOpen,
+  classifyVoiceTurn,
+  setVoiceGate,
+  voiceGateOf,
+  type VoiceGateOpenReason,
+  type VoiceGateState,
+  type VoiceUtterance,
+} from "./turn-gate";
 
 /**
- * Voice delegation orchestration (Topology B, client delegation).
+ * Voice turn orchestration (Topology B, client delegation, server-authoritative).
  *
  * GPT-Live emits `session.delegation.created` without utterance text, so ChatAI
  * assembles the user turn from input transcript fragments, runs the existing
  * `prepareAnswer` pipeline, and returns the grounded answer via commentary.
+ *
+ * The backend, not the model's delegation choice, decides who answers: every
+ * utterance is classified (turn-gate.ts). Only small talk may be answered live;
+ * a non-social utterance GPT-Live does not delegate gets a server-forced turn
+ * through the same pipeline, answered with session-wide commentary. Speech the
+ * backend has not approved is withheld by the browser's playback gate.
  *
  * Stale-result protection: every await is followed by an abort check, and the
  * channel's DelegationTracker gate rejects appends for superseded ids. Superseded
@@ -80,19 +95,36 @@ export const VOICE_ORCHESTRATION_DEFAULTS = {
   /** Hard bound from delegation.created to the answer; then a neutral apology. */
   delegationDeadlineMs: 15_000,
   /**
-   * Audit only, never the enforcement boundary: a live (non-delegated) reply this
-   * long to a non-social utterance is logged as `voice.live_substantive`. Shorter
-   * unrelated live answers are still bypasses; prevention is the delegate-every-
-   * request Voice policy plus backend scope enforcement.
+   * Audit signal: an audible live (non-delegated) reply this long to a non-social
+   * utterance is logged as `voice.live_substantive`. The playback gate and
+   * server-forced turns are the enforcement; this only flags gaps in them.
    */
   liveSubstantiveMinWords: 25,
   /** At most one delegate-everything reminder per window after a flagged live answer. */
   scopeReminderIntervalMs: 60_000,
+  /**
+   * A non-social utterance GPT-Live has not delegated after this much transcript
+   * quiet gets a server-forced backend turn (sooner if GPT-Live starts replying).
+   */
+  forceBackendAfterMs: 400,
+  /** Words GPT-Live may speak in reply to small talk before the gate closes. */
+  socialReplyMaxWords: 30,
+  /** An approval waits until withheld speech has been quiet this long… */
+  withheldQuietMs: 300,
+  /** …or its own speech starts, or at most this long (backend and system speech). */
+  pendingOpenMaxMs: 3_000,
 };
+
+/** Precedes server-approved speech when GPT-Live already spoke an unapproved reply. */
+export const WITHHELD_REPLY_INSTRUCTIONS =
+  "Stop now. The user did not hear anything you said since their last message. Do not continue, repeat or refer to it. Say only the backend result that follows, keeping its facts exactly, and add nothing.";
+/** Closes a delegation GPT-Live opened for an utterance the server already answered. */
+export const ALREADY_ANSWERED_COMMENTARY =
+  "This request was already answered. Do not repeat the answer and do not add anything; wait for the user.";
 
 /** Re-states the delegation rule after GPT-Live engaged with or answered a request itself. */
 export const SCOPE_REMINDER_INSTRUCTIONS =
-  'Reminder: delegate every request for information, advice, help, recommendations, an activity, or a task to the backend immediately, including requests that seem unrelated or name no topic. Before the backend reply say only "One moment." or nothing: never agree, offer help, or ask about the request. Speak only the backend\'s reply, keep its facts exactly, and add nothing. Accepting an offer ("yes", "tell me more") is a request: delegate it. Handle yourself only greetings, thanks, goodbyes, plain acknowledgements, and saying your last reply again word for word.';
+  'Reminder: delegate everything to the backend immediately except greetings, thanks, goodbyes and short acknowledgements ("okay", "got it", "mhm"). That includes statements, single words, feelings, "what do you mean?", requests to repeat, topic changes, and accepting an offer ("yes", "tell me more"). Before the backend reply say only "One moment." or nothing: never agree, offer help, or ask about the request. Speak only the backend\'s reply, keep its facts exactly, and add nothing.';
 
 const ENGAGEMENT_PATTERN =
   /\b(sure|absolutely|of course|certainly|happy to|glad to|i can help|i could help|i'd love to|i would love to|i'd be happy|let's (do|get|start|plan|make)|great idea|what kind of|what type of|what sort of|which \w+( \w+)? (are|do|would) you)\b/i;
@@ -245,9 +277,12 @@ function isTurnInFlight(turn: VoiceTurn): boolean {
   return turn.status === "collecting" || turn.status === "retrieving" || turn.status === "generating";
 }
 
-function newTurn(delegationId: string, offsetMs: number): VoiceTurn {
+function newTurn(
+  input: { id: string; origin: VoiceTurn["origin"]; delegationId: string | null },
+  offsetMs: number,
+): VoiceTurn {
   return {
-    delegationId,
+    ...input,
     offsetMs,
     status: "collecting",
     userText: "",
@@ -276,6 +311,7 @@ function newTurn(delegationId: string, offsetMs: number): VoiceTurn {
     assistantMessageId: null,
     bargeInText: "",
     bargeInAt: null,
+    withheldText: "",
     abort: new AbortController(),
   };
 }
@@ -287,6 +323,8 @@ function sinceDelegation(turn: VoiceTurn): number {
 function metricFields(session: VoiceRuntimeSession, turn: VoiceTurn): Record<string, unknown> {
   return {
     sessionId: session.sessionId,
+    turnId: turn.id,
+    origin: turn.origin,
     delegationId: turn.delegationId,
     ephemeral: session.ephemeral,
     status: turn.status,
@@ -304,7 +342,7 @@ function supersedeTurn(
   turn.status = "superseded";
   turn.supersededBy = reason;
   turn.abort.abort();
-  session.delegations.supersede(turn.delegationId);
+  if (turn.delegationId) session.delegations.supersede(turn.delegationId);
   session.counters.superseded += 1;
   if (turn.userText) {
     session.history.push({ role: "user", content: turn.userText });
@@ -383,13 +421,16 @@ function liveExchangeFrom(
   const replyFrom = segment.at(-1)!.startMs;
   const replyTo = replyToMs ?? Number.POSITIVE_INFINITY;
   const reply = session.outputFragments.filter((f) => f.startMs > replyFrom && f.startMs < replyTo);
-  const replyText = joinFragments(reply);
+  const heard = reply.filter((f) => !f.withheld);
+  const replyText = joinFragments(heard);
+  const withheldText = joinFragments(reply.filter((f) => f.withheld));
   return {
     id: `live_${first.startMs}`,
     startMs: first.startMs,
     userText,
     replyText,
-    replyStartMs: replyText ? (reply[0]?.startMs ?? null) : null,
+    replyStartMs: replyText ? (heard[0]?.startMs ?? null) : null,
+    ...(withheldText ? { withheldText } : {}),
   };
 }
 
@@ -402,6 +443,15 @@ function recordLiveExchange(
   const exchange = liveExchangeFrom(session, segment, replyToMs);
   if (!exchange) return Promise.resolve();
   auditLiveExchange(session, exchange);
+  if (exchange.withheldText) {
+    const audit = scopeAudit(session);
+    audit.withheld = (audit.withheld ?? 0) + 1;
+    deps.log("voice.live_withheld", {
+      sessionId: session.sessionId,
+      userWords: wordCount(exchange.userText),
+      withheldWords: wordCount(exchange.withheldText),
+    });
+  }
   session.liveExchanges.push(exchange);
   session.history.push({ role: "user", content: exchange.userText });
   if (exchange.replyText) session.history.push({ role: "assistant", content: exchange.replyText, liveReply: true });
@@ -411,9 +461,10 @@ function recordLiveExchange(
 }
 
 /**
- * Observability for live answers GPT-Live gave without delegating. A heuristic
- * audit signal, not scope enforcement: logs word counts only (never text) and
- * sends a throttled reminder of the delegation rule.
+ * Observability for audible live answers GPT-Live gave without delegating. With
+ * the playback gate these should only be small talk; anything flagged here is a
+ * gap in enforcement. Logs word counts only (never text) and sends a throttled
+ * reminder of the delegation rule.
  */
 function auditLiveExchange(session: VoiceRuntimeSession, exchange: VoiceLiveExchange): void {
   if (!exchange.replyText || isConversationalMessage(exchange.userText)) return;
@@ -441,6 +492,24 @@ function auditLiveExchange(session: VoiceRuntimeSession, exchange: VoiceLiveExch
       reminded: remind,
     });
   }
+}
+
+/**
+ * GPT-Live answered a backend turn itself and the gate withheld it. Numbers only;
+ * a substantive reply also gets the throttled delegation reminder.
+ */
+function auditWithheldReply(session: VoiceRuntimeSession, turn: VoiceTurn): void {
+  const audit = scopeAudit(session);
+  audit.withheld = (audit.withheld ?? 0) + 1;
+  const withheldWords = wordCount(turn.withheldText);
+  deps.log("voice.live_withheld", {
+    sessionId: session.sessionId,
+    turnId: turn.id,
+    origin: turn.origin,
+    userWords: wordCount(turn.userText),
+    withheldWords,
+    reminded: withheldWords >= deps.settings.liveSubstantiveMinWords ? maybeRemind(session) : false,
+  });
 }
 
 function scopeAudit(session: VoiceRuntimeSession) {
@@ -526,6 +595,8 @@ export function logDelegationLatencySummary(session: VoiceRuntimeSession): void 
     liveExchanges: session.liveExchanges.length,
     liveNonsocial: session.scopeAudit?.liveNonsocial ?? 0,
     preScopeEngagement: session.scopeAudit?.preScopeEngagement ?? 0,
+    liveWithheld: session.scopeAudit?.withheld ?? 0,
+    forcedTurns: session.scopeAudit?.forced ?? 0,
     outputGuardReplaced: answered.filter((turn) => turn.metrics.outputGuardReplaced).length,
     byScope,
   });
@@ -602,8 +673,9 @@ function splitAtAssistantReplies(
   return segments;
 }
 
+/** Audible assistant speech between two visitor fragments; withheld speech was never heard, so it splits nothing. */
 function assistantSpokeBetween(session: VoiceRuntimeSession, fromMs: number, toMs: number): boolean {
-  const between = session.outputFragments.filter((f) => f.startMs > fromMs && f.startMs < toMs);
+  const between = session.outputFragments.filter((f) => !f.withheld && f.startMs > fromMs && f.startMs < toMs);
   if (between.length === 0) return false;
   const spanMs = Math.max(...between.map((f) => f.endMs)) - between[0]!.startMs;
   return spanMs >= deps.settings.assistantReplyMinMs;
@@ -630,15 +702,37 @@ async function holdForUnresolvedSpeech(turn: VoiceTurn): Promise<void> {
   turn.metrics.bargeInHoldMs = Date.now() - started;
 }
 
+/** Live speech the playback gate withheld since this turn's utterance began. */
+function withheldBefore(session: VoiceRuntimeSession, turn: VoiceTurn): string {
+  const from = turn.userStartMs ?? turn.offsetMs;
+  return joinFragments(session.outputFragments.filter((f) => f.withheld && f.startMs >= from));
+}
+
+/**
+ * Append a server-approved result for the turn (delegated, or session-wide for a
+ * server-forced turn) and approve its playback. When GPT-Live already spoke an
+ * unapproved reply, it is first told that nobody heard it.
+ */
 async function appendCommentary(
   session: VoiceRuntimeSession,
   turn: VoiceTurn,
   content: string,
+  approval: Exclude<VoiceGateOpenReason, "social">,
 ): Promise<AppendResult> {
   await holdForUnresolvedSpeech(turn);
-  if (!session.channel) return { ok: false, reason: "session_closed" };
+  const channel = session.channel;
+  if (!channel) return { ok: false, reason: "session_closed" };
   if (turn.abort.signal.aborted) return { ok: false, reason: "superseded" };
-  return session.channel.appendCommentary(turn.delegationId, content);
+  const withheld = withheldBefore(session, turn);
+  if (withheld) {
+    turn.withheldText = withheld;
+    auditWithheldReply(session, turn);
+    await channel.appendInstructions(WITHHELD_REPLY_INSTRUCTIONS, null).catch(() => undefined);
+    if (turn.abort.signal.aborted) return { ok: false, reason: "superseded" };
+  }
+  const result = await channel.appendCommentary(turn.delegationId, content);
+  if (result.ok) approveTurnSpeech(session, turn, approval);
+  return result;
 }
 
 async function sendFallbackCommentary(
@@ -646,13 +740,13 @@ async function sendFallbackCommentary(
   turn: VoiceTurn,
   content: string,
 ): Promise<void> {
-  const result = await appendCommentary(session, turn, content);
-  if (result.ok) {
+  const result = await appendCommentary(session, turn, content, "system");
+  if (result.ok && turn.delegationId) {
     session.delegations.complete(turn.delegationId);
   }
 }
 
-async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<void> {
+async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<void> {
   const assistant = session.assistant;
   if (!assistant) {
     turn.status = "failed";
@@ -838,7 +932,7 @@ async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Pro
 
     const outputIndex = session.outputFragments.length;
     auditPreResultOutput(session, turn, outputIndex);
-    const appended = await appendCommentary(session, turn, turn.answerText);
+    const appended = await appendCommentary(session, turn, turn.answerText, "backend_answer");
     if (!appended.ok) {
       turn.rejectReason = appended.reason;
       session.counters.appendRejected += 1;
@@ -856,7 +950,7 @@ async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Pro
       return;
     }
 
-    session.delegations.complete(turn.delegationId);
+    if (turn.delegationId) session.delegations.complete(turn.delegationId);
     turn.status = "answered";
     // Speech during the lookup that did not supersede it was backchannel, not a turn.
     session.consumedInputIndex = session.inputFragments.length;
@@ -878,7 +972,10 @@ async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Pro
       provider: models.chat.provider,
       voice: {
         delegationId: turn.delegationId,
+        turnId: turn.id,
+        origin: turn.origin,
         rewrittenQuery: turn.rewrittenQuery,
+        ...(turn.withheldText ? { withheldText: turn.withheldText } : {}),
         metrics: { ...turn.metrics, delegationReceivedAt: undefined },
       },
     }).catch(() => undefined);
@@ -908,24 +1005,31 @@ async function runDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Pro
       discardLateResult(session, turn, "after_error");
       return;
     }
-    turn.status = "failed";
-    turn.error = error instanceof Error ? error.message.slice(0, 200) : "rag_failed";
-    session.counters.ragFailures += 1;
-    deps.log("turn.failed", { ...metricFields(session, turn), error: turn.error });
-    await sendFallbackCommentary(session, turn, FAILURE_COMMENTARY);
+    await failTurn(session, turn, error);
   }
 }
 
+/** The lookup threw: fail the turn and give the live model the neutral apology. */
+async function failTurn(session: VoiceRuntimeSession, turn: VoiceTurn, error: unknown): Promise<void> {
+  if (turn.abort.signal.aborted || !isTurnInFlight(turn)) return;
+  turn.status = "failed";
+  turn.error = error instanceof Error ? error.message.slice(0, 200) : "rag_failed";
+  session.counters.ragFailures += 1;
+  deps.log("turn.failed", { ...metricFields(session, turn), error: turn.error });
+  await sendFallbackCommentary(session, turn, FAILURE_COMMENTARY);
+}
+
 /**
- * Output spoken for this turn's answer: from the commentary insertion point (ack
- * timeline when known) until the user next speaks. GPT-Live can answer follow-ups
- * from its own context without delegating; that speech belongs to no ChatAI turn.
+ * Output the visitor heard for this turn's answer: from the commentary insertion
+ * point (ack timeline when known) until the user next speaks. GPT-Live can answer
+ * follow-ups from its own context without delegating; that speech belongs to no
+ * ChatAI turn. Withheld speech was never played, so it is never "spoken".
  */
 function spokenAnswerFragments(session: VoiceRuntimeSession, turn: VoiceTurn, end: number) {
   const ackStart = turn.commentaryAckStartMs;
   const candidates = session.outputFragments
     .slice(turn.outputIndexAtCommentary ?? end, end)
-    .filter((fragment) => ackStart === null || fragment.startMs >= ackStart);
+    .filter((fragment) => !fragment.withheld && (ackStart === null || fragment.startMs >= ackStart));
   const first = candidates[0];
   if (!first) return [];
   const userResumedAt = session.inputFragments.find(
@@ -973,6 +1077,23 @@ export async function finalizeAnsweredTurns(
   }
 }
 
+function isSessionLive(session: VoiceRuntimeSession): boolean {
+  return (
+    !session.terminating &&
+    session.status !== "ending" &&
+    session.status !== "ended" &&
+    session.status !== "failed"
+  );
+}
+
+/** Mock adapters keep their own tracker; keep ours in sync for gating/metrics. */
+function trackDelegation(session: VoiceRuntimeSession, event: { delegationId: string; offsetMs: number }): void {
+  if (!session.delegations.get(event.delegationId) && session.delegations.isSessionOpen()) {
+    session.delegations.supersedeAllActive(event.offsetMs);
+    session.delegations.create(event.delegationId, event.offsetMs);
+  }
+}
+
 function handleDelegationCreated(
   session: VoiceRuntimeSession,
   event: { delegationId: string; offsetMs: number },
@@ -981,19 +1102,18 @@ function handleDelegationCreated(
     return;
   }
   if (session.turns.some((turn) => turn.delegationId === event.delegationId)) return;
+  if (adoptLateDelegation(session, event)) return;
 
   void finalizeAnsweredTurns(session);
   for (const turn of session.turns) {
     supersedeTurn(session, turn, "new_delegation");
   }
+  trackDelegation(session, event);
 
-  // Mock adapters keep their own tracker; keep ours in sync for gating/metrics.
-  if (!session.delegations.get(event.delegationId) && session.delegations.isSessionOpen()) {
-    session.delegations.supersedeAllActive(event.offsetMs);
-    session.delegations.create(event.delegationId, event.offsetMs);
-  }
-
-  const turn = newTurn(event.delegationId, event.offsetMs);
+  const turn = newTurn(
+    { id: event.delegationId, origin: "delegation", delegationId: event.delegationId },
+    event.offsetMs,
+  );
   session.turns.push(turn);
   session.counters.delegations += 1;
   deps.log("delegation.created", {
@@ -1002,20 +1122,86 @@ function handleDelegationCreated(
     offsetMs: turn.offsetMs,
   });
 
+  // GPT-Live judged this a backend request: nothing it says is approved until the answer.
+  const gate = session.gate;
+  if (gate) {
+    clearForceTimer(gate);
+    if (gate.utterance && !gate.utterance.turn) gate.utterance.turn = turn;
+    setVoiceGate(session, "closed", "pending_backend");
+  }
+  startTurn(session, turn);
+}
+
+function startTurn(session: VoiceRuntimeSession, turn: VoiceTurn): void {
   const deadline = setTimeout(() => {
     track(session, expireDelegation(session, turn));
   }, deps.settings.delegationDeadlineMs);
   deadline.unref?.();
   track(
     session,
-    runDelegation(session, turn).finally(() => clearTimeout(deadline)),
+    runTurn(session, turn)
+      // Errors before the reservation (model config, usage gate) end up here.
+      .catch((error: unknown) => failTurn(session, turn, error))
+      .catch(() => undefined)
+      .finally(() => clearTimeout(deadline)),
   );
 }
 
 /**
- * Delegation deadline: a lookup still running is failed and aborted (a late result
- * is discarded; its incurred usage is still finished by runDelegation), and the
- * live model gets a neutral apology so it never waits indefinitely.
+ * GPT-Live delegated an utterance the server already forced a turn for. The
+ * in-flight forced turn takes the delegation (one lookup, one reservation); an
+ * already-answered one closes it without a second answer. A delegation placed
+ * after the forced answer was heard belongs to newer speech and starts normally.
+ */
+function adoptLateDelegation(
+  session: VoiceRuntimeSession,
+  event: { delegationId: string; offsetMs: number },
+): boolean {
+  const forced = session.gate?.utterance?.turn;
+  if (!forced || forced.origin !== "server" || forced.delegationId !== null) return false;
+  const heardAnswerBefore =
+    forced.outputIndexAtCommentary !== null &&
+    session.outputFragments
+      .slice(forced.outputIndexAtCommentary)
+      .some((fragment) => !fragment.withheld && fragment.startMs < event.offsetMs);
+  if (heardAnswerBefore) return false;
+
+  if (isTurnInFlight(forced)) {
+    trackDelegation(session, event);
+    forced.delegationId = event.delegationId;
+    session.counters.delegations += 1;
+    deps.log("delegation.adopted", { ...metricFields(session, forced), offsetMs: event.offsetMs });
+    return true;
+  }
+  if (forced.status !== "answered") return false;
+
+  trackDelegation(session, event);
+  session.counters.delegations += 1;
+  const channel = session.channel;
+  if (channel) {
+    track(
+      session,
+      channel
+        .appendCommentary(event.delegationId, ALREADY_ANSWERED_COMMENTARY)
+        .then((result) => {
+          if (result.ok) session.delegations.complete(event.delegationId);
+          deps.log("delegation.closed", {
+            sessionId: session.sessionId,
+            delegationId: event.delegationId,
+            reason: "already_answered",
+            ok: result.ok,
+          });
+        })
+        .catch(() => undefined),
+    );
+  }
+  return true;
+}
+
+/**
+ * Turn deadline: a lookup still running is failed and aborted (a late result is
+ * discarded; its incurred usage is still finished by runTurn), and the live model
+ * gets a neutral apology so it never waits indefinitely.
  */
 async function expireDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<void> {
   if (!isTurnInFlight(turn) || session.terminating) return;
@@ -1027,11 +1213,14 @@ async function expireDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): 
   void writeLifecycleVoiceEvent(session, "error", {
     code: "delegation_timeout",
     delegationId: turn.delegationId,
+    turnId: turn.id,
   }).catch(() => undefined);
   const result = session.channel
     ? await session.channel.appendCommentary(turn.delegationId, TIMEOUT_COMMENTARY).catch(() => null)
     : null;
-  if (result?.ok) session.delegations.complete(turn.delegationId);
+  if (!result?.ok) return;
+  if (turn.delegationId) session.delegations.complete(turn.delegationId);
+  approveTurnSpeech(session, turn, "system");
 }
 
 /**
@@ -1041,7 +1230,10 @@ async function expireDelegation(session: VoiceRuntimeSession, turn: VoiceTurn): 
  */
 function registerRagBargeIn(session: VoiceRuntimeSession, turn: VoiceTurn): void {
   if (!isTurnInFlight(turn)) return;
-  const closing = session.channel?.appendCommentary(turn.delegationId, SUPERSEDED_COMMENTARY);
+  // A server-forced turn has no delegation for GPT-Live to wait on.
+  const closing = turn.delegationId
+    ? session.channel?.appendCommentary(turn.delegationId, SUPERSEDED_COMMENTARY)
+    : undefined;
   supersedeTurn(session, turn, "barge_in");
   if (closing) {
     track(
@@ -1086,8 +1278,9 @@ function handleInputDelta(
 
   // Barge-in while the assistant is speaking the answer: GPT-Live stops natively;
   // ChatAI records the interruption so the persisted turn reflects it.
-  if (current.status === "answered" && !current.interrupted && current.outputIndexAtCommentary !== null) {
-    const spoken = session.outputFragments.slice(current.outputIndexAtCommentary);
+  const speaking = speakingTurn(session, current);
+  if (speaking && !speaking.interrupted && speaking.outputIndexAtCommentary !== null) {
+    const spoken = session.outputFragments.slice(speaking.outputIndexAtCommentary);
     const firstSpoken = spoken[0];
     const lastEnd = lastOutputEndMs(session);
     if (
@@ -1096,19 +1289,30 @@ function handleInputDelta(
       fragment.startMs > firstSpoken.startMs &&
       fragment.startMs <= lastEnd + speakingWindowMs
     ) {
-      current.bargeInText += fragment.text;
-      if (wordCount(current.bargeInText) >= bargeInMinWords) {
-        current.interrupted = true;
+      speaking.bargeInText += fragment.text;
+      if (wordCount(speaking.bargeInText) >= bargeInMinWords) {
+        speaking.interrupted = true;
         session.interruptCount += 1;
         session.counters.bargeIns += 1;
-        deps.log("barge_in", { sessionId: session.sessionId, delegationId: current.delegationId, stage: "speech" });
+        deps.log("barge_in", { sessionId: session.sessionId, delegationId: speaking.delegationId, stage: "speech" });
         void writeLifecycleVoiceEvent(session, "assistant.interrupted", {
-          delegationId: current.delegationId,
+          delegationId: speaking.delegationId,
           stage: "speech",
         }).catch(() => undefined);
       }
     }
   }
+}
+
+/**
+ * The answered turn new speech may interrupt. A turn forced for that very speech
+ * already sits after it, so look past a server turn that has not answered yet.
+ */
+function speakingTurn(session: VoiceRuntimeSession, current: VoiceTurn): VoiceTurn | null {
+  if (current.status === "answered") return current;
+  if (current.origin !== "server" || !isTurnInFlight(current)) return null;
+  const previous = session.turns.at(-2);
+  return previous?.status === "answered" ? previous : null;
 }
 
 function handleOutputDelta(session: VoiceRuntimeSession): void {
@@ -1125,6 +1329,270 @@ function handleOutputDelta(session: VoiceRuntimeSession): void {
   }
 }
 
+// ── Playback gate: who may answer each utterance ─────────────────────────────
+
+function clearForceTimer(gate: VoiceGateState): void {
+  if (gate.forceTimer) clearTimeout(gate.forceTimer);
+  gate.forceTimer = null;
+  gate.forceDueAt = null;
+}
+
+/** Latest assistant words before `beforeMs` (heard or not): does the visitor answer a question? */
+function recentAssistantText(session: VoiceRuntimeSession, beforeMs: number): string | null {
+  const prior = session.outputFragments.filter((fragment) => fragment.startMs < beforeMs).slice(-12);
+  if (prior.length > 0) return joinFragments(prior);
+  for (let index = session.history.length - 1; index >= 0; index -= 1) {
+    const message = session.history[index]!;
+    if (message.role === "assistant") return message.content;
+  }
+  return null;
+}
+
+/** A turn still collecting will claim speech that started within its tail grace. */
+function collectingTurnFor(session: VoiceRuntimeSession, fragment: TranscriptFragment): VoiceTurn | null {
+  for (let index = session.turns.length - 1; index >= 0; index -= 1) {
+    const turn = session.turns[index]!;
+    if (turn.status === "collecting" && fragment.startMs <= turn.offsetMs + deps.settings.utteranceTailGraceMs) {
+      return turn;
+    }
+  }
+  return null;
+}
+
+function continuesUtterance(
+  session: VoiceRuntimeSession,
+  utterance: VoiceUtterance,
+  fragment: TranscriptFragment,
+): boolean {
+  if (assistantSpokeBetween(session, utterance.lastStartMs, fragment.startMs)) return false;
+  const turn = utterance.turn;
+  if (!turn || turn.status === "collecting") return true;
+  // Transcript of the same breath that lagged past the turn's claim: not a new request.
+  return fragment.startMs < turn.offsetMs + deps.settings.bargeInGraceMs;
+}
+
+/**
+ * Reclassify the visitor's current utterance on every input fragment. New speech
+ * closes the gate unless it is small talk; a non-social utterance without a turn
+ * is forced to the backend if GPT-Live does not delegate it.
+ */
+function trackUtterance(session: VoiceRuntimeSession, fragment: TranscriptFragment): void {
+  const gate = voiceGateOf(session);
+  if (gate.ended || !isSessionLive(session)) return;
+  const index = session.inputFragments.length - 1;
+  let utterance = gate.utterance;
+  const continuing = utterance !== null && continuesUtterance(session, utterance, fragment);
+  if (utterance && continuing) {
+    utterance.lastIndex = index;
+    utterance.lastStartMs = fragment.startMs;
+    utterance.lastEndMs = fragment.endMs;
+    utterance.lastInputAt = Date.now();
+  } else {
+    utterance = {
+      startIndex: index,
+      lastIndex: index,
+      firstStartMs: fragment.startMs,
+      lastStartMs: fragment.startMs,
+      lastEndMs: fragment.endMs,
+      lastInputAt: Date.now(),
+      kind: "backend",
+      turn: collectingTurnFor(session, fragment),
+      socialReplyWords: 0,
+    };
+    gate.utterance = utterance;
+  }
+
+  const text = joinFragments(session.inputFragments.slice(utterance.startIndex, utterance.lastIndex + 1));
+  utterance.kind = classifyVoiceTurn(text, recentAssistantText(session, utterance.firstStartMs));
+  clearForceTimer(gate);
+  if (utterance.kind === "social") {
+    utterance.socialReplyWords = 0;
+    const latest = session.turns.at(-1);
+    if (latest && isTurnInFlight(latest) && utterance.turn !== latest) {
+      // A backchannel while the backend works: that turn's answer opens the gate.
+      setVoiceGate(session, "closed", "pending_backend");
+      return;
+    }
+    openVoiceGate(session, "social", null);
+    return;
+  }
+  const interrupting = !continuing && (gate.decision.state === "open" || gate.pendingOpen !== null);
+  setVoiceGate(session, "closed", interrupting ? "user_speaking" : "pending_backend");
+  if (!utterance.turn) armForceTimer(session, utterance);
+}
+
+/** Force the utterance to the backend after `delayMs`, unless a sooner force is already due. */
+function armForceTimer(
+  session: VoiceRuntimeSession,
+  utterance: VoiceUtterance,
+  trigger: "no_delegation" | "live_output" = "no_delegation",
+  delayMs: number = deps.settings.forceBackendAfterMs,
+): void {
+  const gate = voiceGateOf(session);
+  const dueAt = Date.now() + delayMs;
+  if (gate.forceTimer && gate.forceDueAt !== null && gate.forceDueAt <= dueAt) return;
+  clearForceTimer(gate);
+  const timer = setTimeout(() => {
+    gate.forceTimer = null;
+    gate.forceDueAt = null;
+    if (gate.utterance !== utterance || utterance.turn || utterance.kind !== "backend") return;
+    // A delegated turn still collecting may claim this speech; decide once it has.
+    if (session.turns.some((turn) => turn.status === "collecting")) {
+      armForceTimer(session, utterance, trigger);
+      return;
+    }
+    forceBackendTurn(session, utterance, trigger);
+  }, delayMs);
+  timer.unref?.();
+  gate.forceTimer = timer;
+  gate.forceDueAt = dueAt;
+}
+
+/**
+ * GPT-Live did not delegate a non-social utterance: run the backend for it anyway.
+ * The answer goes out as session-wide commentary (no delegation id); a delegation
+ * that arrives later for the same speech is adopted, never answered twice.
+ */
+function forceBackendTurn(
+  session: VoiceRuntimeSession,
+  utterance: VoiceUtterance,
+  trigger: "no_delegation" | "live_output",
+): void {
+  const gate = voiceGateOf(session);
+  clearForceTimer(gate);
+  if (utterance.turn || gate.ended || !isSessionLive(session)) return;
+  // Already claimed by a delegated turn's collect.
+  if (session.consumedInputIndex > utterance.lastIndex) return;
+
+  void finalizeAnsweredTurns(session);
+  for (const turn of session.turns) {
+    if (isTurnInFlight(turn)) registerRagBargeIn(session, turn);
+  }
+  gate.serverTurnSeq += 1;
+  const turn = newTurn(
+    { id: `srv_${gate.serverTurnSeq}`, origin: "server", delegationId: null },
+    utterance.lastEndMs,
+  );
+  utterance.turn = turn;
+  session.turns.push(turn);
+  const audit = scopeAudit(session);
+  audit.forced = (audit.forced ?? 0) + 1;
+  deps.log("turn.forced", {
+    sessionId: session.sessionId,
+    turnId: turn.id,
+    trigger,
+    offsetMs: turn.offsetMs,
+  });
+  startTurn(session, turn);
+}
+
+function withheldSpeechActive(gate: VoiceGateState): boolean {
+  return gate.lastWithheldOutputAt !== null && Date.now() - gate.lastWithheldOutputAt < deps.settings.withheldQuietMs;
+}
+
+/**
+ * Approve speech from now on. If unapproved speech is still playing, opening now
+ * would let its tail through, so the approval waits until that speech stops or the
+ * approved speech itself starts (commentary ack); backend and system approvals
+ * wait at most `pendingOpenMaxMs`.
+ */
+function openVoiceGate(session: VoiceRuntimeSession, reason: VoiceGateOpenReason, turn: VoiceTurn | null): void {
+  const gate = voiceGateOf(session);
+  if (gate.ended) return;
+  cancelPendingOpen(gate);
+  if (!withheldSpeechActive(gate)) {
+    setVoiceGate(session, "open", reason);
+    return;
+  }
+  const pending: NonNullable<VoiceGateState["pendingOpen"]> = { reason, turn, timer: null, startedAt: Date.now() };
+  gate.pendingOpen = pending;
+  const timer = setInterval(() => {
+    if (gate.pendingOpen !== pending) {
+      clearInterval(timer);
+      return;
+    }
+    const expired = reason !== "social" && Date.now() - pending.startedAt >= deps.settings.pendingOpenMaxMs;
+    if (!withheldSpeechActive(gate) || expired) {
+      cancelPendingOpen(gate);
+      setVoiceGate(session, "open", reason);
+    }
+  }, 50);
+  timer.unref?.();
+  pending.timer = timer;
+  deps.log("gate.open_deferred", { sessionId: session.sessionId, reason, turnId: turn?.id ?? null });
+}
+
+/**
+ * Approve a turn's server-authored speech unless the visitor has moved on to a
+ * new request (small talk during the lookup does not count as moving on).
+ */
+function approveTurnSpeech(
+  session: VoiceRuntimeSession,
+  turn: VoiceTurn,
+  reason: Exclude<VoiceGateOpenReason, "social">,
+): void {
+  const utterance = session.gate?.utterance;
+  const current =
+    !utterance ||
+    utterance.turn === turn ||
+    (utterance.kind === "social" && !utterance.turn && session.turns.at(-1) === turn);
+  if (!current) {
+    deps.log("gate.approval_skipped", { sessionId: session.sessionId, turnId: turn.id, reason });
+    return;
+  }
+  openVoiceGate(session, reason, turn);
+}
+
+/**
+ * Server-initiated speech (idle check-in, limit and duration warnings, control
+ * recovery). Never approved over a backend utterance that is still waiting for
+ * its answer: that would make the model's unapproved reply audible.
+ */
+export function approveVoiceSystemSpeech(session: VoiceRuntimeSession): boolean {
+  const gate = session.gate;
+  if (!gate || gate.ended) return false;
+  const utterance = gate.utterance;
+  if (utterance && utterance.kind === "backend" && (!utterance.turn || isTurnInFlight(utterance.turn))) {
+    deps.log("gate.system_withheld", { sessionId: session.sessionId });
+    return false;
+  }
+  openVoiceGate(session, "system", null);
+  return true;
+}
+
+function gateOnOutput(session: VoiceRuntimeSession): void {
+  const gate = session.gate;
+  const fragment = session.outputFragments.at(-1);
+  if (!gate || gate.ended || !fragment) return;
+
+  const pending = gate.pendingOpen;
+  const ackStartMs = pending?.turn?.commentaryAckStartMs ?? null;
+  if (pending && fragment.withheld && ackStartMs !== null && fragment.startMs >= ackStartMs) {
+    // The approved commentary is what is playing now.
+    delete fragment.withheld;
+    cancelPendingOpen(gate);
+    setVoiceGate(session, "open", pending.reason);
+    return;
+  }
+
+  const utterance = gate.utterance;
+  if (fragment.withheld) {
+    if (utterance && utterance.kind === "backend" && !utterance.turn && fragment.startMs >= utterance.firstStartMs) {
+      // GPT-Live is replying itself instead of delegating: force as soon as the visitor is quiet.
+      const quietForMs = Date.now() - utterance.lastInputAt;
+      armForceTimer(session, utterance, "live_output", Math.max(0, deps.settings.utteranceQuietMs - quietForMs));
+    }
+    return;
+  }
+  if (utterance && gate.decision.state === "open" && gate.decision.reason === "social") {
+    utterance.socialReplyWords += wordCount(fragment.text);
+    if (utterance.socialReplyWords > deps.settings.socialReplyMaxWords) {
+      setVoiceGate(session, "closed", "reply_limit");
+      deps.log("voice.social_reply_limit", { sessionId: session.sessionId, words: utterance.socialReplyWords });
+    }
+  }
+}
+
 /**
  * Entry point from the sideband supervisor. Runs after applyControlEvent has updated
  * transcript buffers for the same event.
@@ -1135,9 +1603,11 @@ export function handleVoiceControlEvent(session: VoiceRuntimeSession, event: Voi
       handleDelegationCreated(session, event);
       break;
     case "transcript.input.delta":
+      if (session.gate) trackUtterance(session, event);
       handleInputDelta(session, event);
       break;
     case "transcript.output.delta":
+      gateOnOutput(session);
       handleOutputDelta(session);
       break;
     case "append.acknowledged": {

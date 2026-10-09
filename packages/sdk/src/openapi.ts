@@ -19,6 +19,8 @@ import {
   voiceSessionCreateResponseSchema,
   voiceSessionEndRequestSchema,
   voiceSessionEndResponseSchema,
+  voiceSessionGateEventSchema,
+  voiceSessionGateRequestSchema,
   voiceSessionHeartbeatRequestSchema,
   voiceSessionHeartbeatResponseSchema,
   voiceSessionRefusalSchema,
@@ -337,7 +339,7 @@ registry.registerPath({
   path: "/api/v1/voice/sessions",
   summary: "Mint a realtime voice session (WebRTC SDP exchange)",
   description:
-    "Server exchanges the browser SDP offer with the configured realtime provider (GPT-Live). Permanent provider credentials never leave the server. Widget clients are gated by the same SecurityPolicy as chat (domain allowlist, rate limits, bot heuristics, optional HMAC). API keys require the dedicated `voice` scope (not implied by `chat`). When conversation storage is enabled, `conversationId` identifies the durable conversation that voice turns are written to (continue it via text chat); it is null for ephemeral (no-store) sessions. `transcriptSaved` is false when Voice turns are not saved as text (no-store, or Voice transcripts off); such turns are used only during the live session. Client `history` is used only for ephemeral sessions; stored conversations use stored turns. `recording` is true when session audio is recorded for owner-only playback; this happens only with conversation storage on, the assistant's audio recording setting on and object storage configured, and requires `recordingConsent: true` (always for widget/playground; for API keys when the assistant requires consent); a missing required consent is rejected with 400. Voice usage is admitted before any provider session is created: when the account's Voice minutes for the period are used up the mint is refused with 402 (`reason: voice_minutes_exhausted`), and when too many Voice sessions are active it is refused with 429 (`reason: voice_concurrency_limit`). Widget callers instead receive one neutral refusal for both cases, 403 with `reason: voice_unavailable`, which never reveals plan, usage or quota details. A new widget mint for the same visitor ends that visitor's previous session. The browser data channel cannot send control events to the provider session; if the provider does not confirm that restriction the mint fails with 502 `reason: voice_unavailable`. Clients that declare `capabilities: [\"heartbeat\"]` receive a session-scoped `controlToken` and `heartbeatIntervalMs` for the heartbeat endpoint; ChatAI ends such a session when heartbeats stop for 45 seconds. Clients that never declare the capability are never ended for missing heartbeats.",
+    "Server exchanges the browser SDP offer with the configured realtime provider (GPT-Live). Permanent provider credentials never leave the server. Widget clients are gated by the same SecurityPolicy as chat (domain allowlist, rate limits, bot heuristics, optional HMAC). API keys require the dedicated `voice` scope (not implied by `chat`). When conversation storage is enabled, `conversationId` identifies the durable conversation that voice turns are written to (continue it via text chat); it is null for ephemeral (no-store) sessions. `transcriptSaved` is false when Voice turns are not saved as text (no-store, or Voice transcripts off); such turns are used only during the live session. Client `history` is used only for ephemeral sessions; stored conversations use stored turns. `recording` is true when session audio is recorded for owner-only playback; this happens only with conversation storage on, the assistant's audio recording setting on and object storage configured, and requires `recordingConsent: true` (always for widget/playground; for API keys when the assistant requires consent); a missing required consent is rejected with 400. Voice usage is admitted before any provider session is created: when the account's Voice minutes for the period are used up the mint is refused with 402 (`reason: voice_minutes_exhausted`), and when too many Voice sessions are active it is refused with 429 (`reason: voice_concurrency_limit`). Widget callers instead receive one neutral refusal for both cases, 403 with `reason: voice_unavailable`, which never reveals plan, usage or quota details. A new widget mint for the same visitor ends that visitor's previous session. The browser data channel cannot send control events to the provider session; if the provider does not confirm that restriction the mint fails with 502 `reason: voice_unavailable`. Clients must declare `capabilities: [\"playback_gate\"]`: ChatAI's backend, not the Voice model, decides which assistant speech the visitor may hear, and the client must keep assistant audio and captions muted unless the gate stream (`/gate`) approves them. A mint without it is refused with 403 `reason: voice_unavailable`. Gated sessions receive a session-scoped `controlToken` and `playbackGate: true`. Clients that also declare `heartbeat` receive `heartbeatIntervalMs` for the heartbeat endpoint; ChatAI ends such a session when heartbeats stop for 45 seconds. Clients that never declare heartbeats are never ended for missing ones.",
   tags: ["Voice"],
   security: [{ bearerAuth: [] }, {}],
   request: {
@@ -351,7 +353,7 @@ registry.registerPath({
     400: json(errorSchema, "Invalid body or missing consent"),
     403: json(
       voiceSessionRefusalSchema,
-      "Voice disabled, policy violation, or neutral widget refusal (`reason: voice_unavailable`)",
+      "Voice disabled, policy violation, missing `playback_gate` capability, or neutral widget refusal (`reason: voice_unavailable`)",
     ),
     402: json(voiceSessionRefusalSchema, "Voice minutes for the period are used up"),
     404: json(errorSchema, "Assistant not found"),
@@ -386,6 +388,31 @@ registry.registerPath({
     404: json(errorSchema, "Unknown session or invalid token"),
     421: json(errorSchema, "Misrouted: the call runs on another server"),
     429: json(errorSchema, "More than one heartbeat per second"),
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/v1/voice/sessions/{sessionId}/gate",
+  summary: "Voice playback gate stream",
+  description:
+    "Server-authoritative playback decisions for a live Voice call, authorized only by the mint's `controlToken`. The response is NDJSON (`application/x-ndjson`), one event per line: the current decision first, then each new decision (`{\"type\":\"gate\",\"seq\",\"state\":\"open\"|\"closed\",\"reason\",\"inputEndMs\"}`), `{\"type\":\"keepalive\"}` every 10 seconds, and `{\"type\":\"end\"}` when the call ends. The client plays assistant audio and shows assistant captions only while the latest decision is `open`, closes locally as soon as visitor speech starts after the open decision's `inputEndMs`, and stays muted while the stream is down (reconnect with backoff). Decisions carry no conversation content. 421 means the request reached a different server than the one running the call.",
+  tags: ["Voice"],
+  security: [{}],
+  request: {
+    params: z.object({ sessionId: voiceSessionId }),
+    body: {
+      content: { "application/json": { schema: voiceSessionGateRequestSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: "NDJSON stream of gate events",
+      content: { "application/x-ndjson": { schema: voiceSessionGateEventSchema } },
+    },
+    404: json(errorSchema, "Unknown or ended session, or invalid token"),
+    421: json(errorSchema, "Misrouted: the call runs on another server"),
+    429: json(errorSchema, "Too many concurrent gate streams for the session"),
   },
 });
 

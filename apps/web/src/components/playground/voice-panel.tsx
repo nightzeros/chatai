@@ -52,7 +52,9 @@ export type ClientHistoryMessage = { role: "user" | "assistant"; content: string
 type Caption = { id: string; role: "user" | "assistant" | "system"; text: string };
 
 type DebugTurn = {
-  delegationId: string;
+  id: string;
+  origin: "delegation" | "server";
+  delegationId: string | null;
   status: string;
   userText: string;
   historySupplied: number | null;
@@ -342,9 +344,9 @@ export function VoicePanel({
     snapshotRef.current = next;
     setSnapshot(next);
     for (const turn of next.turns) {
-      if (!IN_FLIGHT.has(turn.status)) pendingDelegations.current.delete(turn.delegationId);
+      if (!IN_FLIGHT.has(turn.status) && turn.delegationId) pendingDelegations.current.delete(turn.delegationId);
     }
-    const knownIds = new Set(next.turns.map((turn) => turn.delegationId));
+    const knownIds = new Set(next.turns.flatMap((turn) => (turn.delegationId ? [turn.delegationId] : [])));
     signals.current.delegationActive =
       next.turns.some((turn) => IN_FLIGHT.has(turn.status)) ||
       [...pendingDelegations.current.keys()].some((id) => !knownIds.has(id));
@@ -785,7 +787,7 @@ export function VoicePanel({
               .slice()
               .reverse()
               .map((turn) => (
-                <div key={turn.delegationId} className="border-t border-border py-1.5 first:border-t-0">
+                <div key={turn.id} className="border-t border-border py-1.5 first:border-t-0">
                   <p>
                     <span className="font-medium">{turn.status}</span>
                     {turn.supersededBy ? ` (by ${turn.supersededBy})` : null}
@@ -793,7 +795,11 @@ export function VoicePanel({
                     {turn.lateResultDiscarded ? " · late result discarded" : null}
                     {turn.outcome ? ` · ${turn.outcome}` : null}
                   </p>
-                  <p className="font-mono text-[10px] text-muted-foreground">{turn.delegationId}</p>
+                  <p className="font-mono text-[10px] text-muted-foreground">
+                    {turn.origin === "server"
+                      ? `${turn.id} · server-forced${turn.delegationId ? ` · adopted ${turn.delegationId}` : ""}`
+                      : turn.delegationId}
+                  </p>
                   <p>
                     <span className="text-muted-foreground">Heard: </span>
                     {turn.userText || "(no transcript)"}
@@ -855,7 +861,8 @@ export function VoicePanel({
                     utterance {ms(turn.metrics.utteranceReadyMs)} · RAG start {ms(turn.metrics.ragStartMs)} · RAG{" "}
                     {ms(turn.metrics.ragDurationMs)} · generate {ms(turn.metrics.generateDurationMs)} · commentary{" "}
                     {ms(turn.metrics.firstCommentaryMs)} · ack {ms(turn.metrics.commentaryAckMs)} · answer speech{" "}
-                    {ms(turn.metrics.firstSpeechMs)} · browser first audio {ms(browserFirstAudio[turn.delegationId])}
+                    {ms(turn.metrics.firstSpeechMs)} · browser first audio{" "}
+                    {ms(turn.delegationId ? browserFirstAudio[turn.delegationId] : undefined)}
                   </p>
                 </div>
               ))}

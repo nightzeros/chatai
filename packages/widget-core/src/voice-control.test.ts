@@ -93,7 +93,7 @@ describe("Widget Voice control health", () => {
     const t = setup();
     await t.connect();
     const mint = t.calls.find((call) => call.url.endsWith("/api/v1/voice/sessions"))!;
-    expect(mint.body.capabilities).toEqual(["heartbeat"]);
+    expect(mint.body.capabilities).toEqual(["heartbeat", "playback_gate"]);
 
     await vi.advanceTimersByTimeAsync(30_000);
     expect(t.heartbeats()).toBe(6);

@@ -13,7 +13,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-/** Owner-only summary of how a Voice answer was produced. */
+/** Owner-only summary of how a Voice answer was produced, and of speech the visitor never heard. */
 export function VoiceTurnDetailsPanel({
   details,
   sourceCount,
@@ -21,7 +21,7 @@ export function VoiceTurnDetailsPanel({
   details: VoiceTurnDetails;
   sourceCount: number;
 }) {
-  if (!details.answeredBy) return null;
+  if (!details.answeredBy && !details.withheldText) return null;
   const knowledge = details.answeredBy === "knowledge";
 
   return (
@@ -30,12 +30,22 @@ export function VoiceTurnDetailsPanel({
         <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>
           ▸
         </span>
-        Lookup details
+        {details.answeredBy ? "Lookup details" : "Withheld reply"}
       </summary>
       <dl className="mt-2 flex flex-col gap-1.5 text-xs">
-        <Row label="Answered using">
-          {knowledge ? "ChatAI Knowledge" : "Voice model (no knowledge lookup)"}
-        </Row>
+        {details.answeredBy ? (
+          <Row label="Answered using">
+            {knowledge ? "ChatAI Knowledge" : "Voice model (no knowledge lookup)"}
+          </Row>
+        ) : null}
+        {details.serverForced ? (
+          <Row label="Routing">ChatAI answered; the Voice model did not hand this turn off.</Row>
+        ) : null}
+        {details.withheldText ? (
+          <Row label="Withheld (not heard)">
+            <span className="text-muted-foreground">“{details.withheldText}”</span>
+          </Row>
+        ) : null}
         {details.searchQuery ? <Row label="Knowledge search">“{details.searchQuery}”</Row> : null}
         {details.matchedDocuments.length > 0 ? (
           <Row label="Matched documents">{details.matchedDocuments.join(", ")}</Row>

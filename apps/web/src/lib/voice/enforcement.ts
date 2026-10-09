@@ -1,5 +1,6 @@
 import type { VoiceMeteringMode } from "@chatai/database";
 
+import { approveVoiceSystemSpeech } from "./delegation-orchestrator";
 import {
   CHECKPOINT_MAX_INTERVAL_MS,
   CHECKPOINT_MIN_ADVANCE_SECONDS,
@@ -141,6 +142,9 @@ function sendLimitWarning(session: VoiceRuntimeSession): void {
   // Instructions only: never a delegation, never RAG, never awaited.
   void session.channel
     ?.appendInstructions(VOICE_LIMIT_WARNING_INSTRUCTIONS, null)
+    .then((result) => {
+      if (result.ok) approveVoiceSystemSpeech(session);
+    })
     .catch(() => undefined);
 }
 

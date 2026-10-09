@@ -102,7 +102,11 @@ export async function insertVoiceUserMessage(
   turn.userMessageId = id;
 }
 
-/** A turn GPT-Live answered itself; stored like any other voice turn, without RAG metadata. */
+/**
+ * A turn GPT-Live answered itself; stored like any other voice turn, without RAG
+ * metadata. Only the reply the visitor heard becomes an assistant message; a reply
+ * the playback gate withheld is kept as owner-only debug, never as conversation.
+ */
 export async function insertVoiceLiveExchange(
   session: VoiceRuntimeSession,
   exchange: VoiceLiveExchange,
@@ -111,11 +115,13 @@ export async function insertVoiceLiveExchange(
   const voiceSessionId = session.durableRowInserted ? session.sessionId : null;
   const userAt = nextVoiceRowAt(session);
   const replyAt = exchange.replyText ? nextVoiceRowAt(session) : null;
+  const withheld = exchange.withheldText ? { withheldText: exchange.withheldText } : null;
   await db().insert(messages).values({
     id: createId(),
     conversationId: session.conversationId!,
     role: "user",
     content: exchange.userText,
+    ...(withheld && !exchange.replyText ? { debug: { voice: withheld } } : {}),
     modality: "voice",
     voiceSessionId,
     audioOffsetMs: voiceTurnOffsetMs(session, "user", exchange.startMs),
@@ -129,7 +135,7 @@ export async function insertVoiceLiveExchange(
     content: exchange.replyText,
     sources: [],
     outcome: null,
-    debug: { voice: { delegated: false, answeredBy: "realtime_model" } },
+    debug: { voice: { delegated: false, answeredBy: "realtime_model", ...withheld } },
     modality: "voice",
     voiceSessionId,
     audioOffsetMs: voiceTurnOffsetMs(session, "assistant", exchange.replyStartMs),

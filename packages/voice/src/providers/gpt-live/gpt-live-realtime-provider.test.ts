@@ -555,6 +555,29 @@ describe("GptLiveRealtimeProvider", () => {
     expect(await channel.appendCommentary("d2", "fresh")).toMatchObject({ ok: true });
   });
 
+  it("sends session-wide commentary with a null delegation id, bypassing the delegation gate", async () => {
+    const bag = { sockets: [] as FakeWebSocket[] };
+    const provider = new GptLiveRealtimeProvider({
+      apiKey: "sk-test",
+      fetch: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch,
+      connectWebSocket: fakeConnector(bag),
+      closeTimeoutMs: 20,
+    });
+    const channel = await provider.attachControlChannel("sess_null");
+    const ws = bag.sockets[0]!;
+
+    expect(await channel.appendCommentary(null, "I can only help with orders.")).toMatchObject({ ok: true });
+    const sent = ws.sent.map((raw) => JSON.parse(raw) as Record<string, unknown>);
+    expect(sent.find((command) => command.type === "session.commentary.append")).toMatchObject({
+      delegation_id: null,
+      content: "I can only help with orders.",
+    });
+    expect(await channel.appendCommentary(null, "   ")).toMatchObject({ ok: false, reason: "invalid_content" });
+
+    await channel.close();
+    expect(await channel.appendCommentary(null, "late")).toEqual({ ok: false, reason: "session_closed" });
+  });
+
   it("reports incomplete usage finalization when sideband dies early", async () => {
     const bag = { sockets: [] as FakeWebSocket[] };
     const provider = new GptLiveRealtimeProvider({

@@ -31,7 +31,13 @@ export type VoiceRuntimeStatus =
 /** Same semantics as text-chat history (see lib/conversation-history). */
 export type VoiceHistoryTurn = ChatHistoryMessage;
 
-export type TranscriptFragment = { text: string; startMs: number; endMs: number };
+export type TranscriptFragment = {
+  text: string;
+  startMs: number;
+  endMs: number;
+  /** Output spoken while the playback gate was closed: the visitor never heard it. */
+  withheld?: boolean;
+};
 
 /**
  * A user utterance GPT-Live answered itself (no delegation). It is part of the
@@ -43,9 +49,12 @@ export type VoiceLiveExchange = {
   id: string;
   startMs: number;
   userText: string;
+  /** What the visitor heard (approved by the playback gate). */
   replyText: string;
   /** Provider timeline start of the reply; null when GPT-Live did not answer. */
   replyStartMs: number | null;
+  /** Live reply the playback gate withheld; never history, never shown as heard. */
+  withheldText?: string;
 };
 
 export type VoiceTurnStatus =
@@ -84,11 +93,16 @@ export type VoiceTurnMetrics = {
 };
 
 /**
- * One client delegation handled by ChatAI. Content fields live in memory only;
- * no-store sessions never write them to Postgres.
+ * One backend turn handled by ChatAI: a client delegation, or a turn the server
+ * forced because GPT-Live did not delegate a non-social utterance. Content fields
+ * live in memory only; no-store sessions never write them to Postgres.
  */
 export type VoiceTurn = {
-  delegationId: string;
+  /** Stable id: the delegation id, or a server id for forced turns. */
+  id: string;
+  origin: "delegation" | "server";
+  /** Null for a server-forced turn until GPT-Live delegates the same utterance. */
+  delegationId: string | null;
   offsetMs: number;
   status: VoiceTurnStatus;
   userText: string;
@@ -125,6 +139,8 @@ export type VoiceTurn = {
   bargeInText: string;
   /** Wall clock of the latest post-offset user fragment (barge-in candidate). */
   bargeInAt: number | null;
+  /** Live speech the playback gate withheld before this turn's answer (owner review only). */
+  withheldText: string;
   abort: AbortController;
 };
 
@@ -159,8 +175,11 @@ export type VoiceControlState = {
   lastGapMs: number | null;
   /** The last gap outlived the provider's replay backlog: events may be missing. */
   possibleLoss: boolean;
-  /** In-flight delegations aborted by the loss; each gets a fallback on recovery. */
-  interruptedDelegations: string[];
+  /**
+   * In-flight turns aborted by the loss; each gets a fallback on recovery (null:
+   * a server-forced turn, answered with session-wide commentary).
+   */
+  interruptedDelegations: Array<string | null>;
 };
 
 /** Server-side supervision clocks (idle, heartbeat, max-duration warning). */
@@ -263,12 +282,14 @@ export type VoiceRuntimeSession = {
   /** Sideband health; absent until the control plane first needs it. */
   control?: VoiceControlState;
   supervision?: VoiceSupervisionState;
-  /** Last delegate-everything reminder sent after a substantive live answer (audit only). */
+  /** Last delegate-everything reminder sent after a substantive undelegated answer (audit only). */
   scopeReminderAt?: number | null;
   /** The per-session delegation latency summary was logged. */
   latencySummaryLogged?: boolean;
-  /** Voice scope audit counters (numbers only; never enforcement). */
-  scopeAudit?: { liveNonsocial: number; preScopeEngagement: number };
+  /** Voice scope audit counters (numbers only). */
+  scopeAudit?: { liveNonsocial: number; preScopeEngagement: number; withheld?: number; forced?: number };
+  /** Playback gate: which assistant speech the visitor may hear. */
+  gate?: import("./turn-gate").VoiceGateState;
 };
 
 export type VoiceEndReason =
@@ -410,10 +431,18 @@ export function applyControlEvent(
         session.supervision.idleWarnedAt = null;
       }
       break;
-    case "transcript.output.delta":
+    case "transcript.output.delta": {
       session.outputTranscript += event.text;
-      session.outputFragments.push({ text: event.text, startMs: event.startMs, endMs: event.endMs });
+      const withheld = session.gate ? session.gate.decision.state !== "open" : false;
+      session.outputFragments.push({
+        text: event.text,
+        startMs: event.startMs,
+        endMs: event.endMs,
+        ...(withheld ? { withheld: true } : {}),
+      });
+      if (withheld && session.gate) session.gate.lastWithheldOutputAt = Date.now();
       break;
+    }
     case "assistant.interrupted":
       session.interruptCount += 1;
       break;

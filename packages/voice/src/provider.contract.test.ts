@@ -239,6 +239,26 @@ describe("delegation race: interrupt / supersede / late reject", () => {
     });
   });
 
+  it("accepts session-wide (null delegation) commentary without touching active delegations", async () => {
+    const provider = new MockRealtimeVoiceProvider();
+    const { providerSessionId } = await provider.createWebRtcSession({
+      sdpOffer: minimalOffer,
+      sessionConfig: resolveVoiceSessionConfig(),
+    });
+    await provider.attachControlChannel(providerSessionId);
+    const channel = provider.getChannel(providerSessionId)!;
+
+    const del = channel.simulateDelegationCreated();
+    expect(await channel.appendCommentary(null, "Server answer.")).toEqual({ ok: true });
+    expect(channel.undelegatedCommentary).toEqual(["Server answer."]);
+    expect(await channel.appendCommentary(null, " ")).toMatchObject({ ok: false, reason: "invalid_content" });
+    // The open delegation is unaffected and still accepts its own result.
+    expect(await channel.appendCommentary(del, "Delegated answer.")).toEqual({ ok: true });
+
+    await channel.close();
+    expect(await channel.appendCommentary(null, "late")).toEqual({ ok: false, reason: "session_closed" });
+  });
+
   it("allows thinking appends without completing the delegation, then still supersedes on interrupt", async () => {
     const provider = new MockRealtimeVoiceProvider();
     const { providerSessionId } = await provider.createWebRtcSession({
