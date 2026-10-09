@@ -25,6 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # `next build` imports the auth module, which requires these at page-data
+    # collection. Placeholders only; validate never connects to a database.
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://chatai:chatai@127.0.0.1:5432/chatai
+      BETTER_AUTH_SECRET: ci-build-secret-at-least-32-chars-long
+      BETTER_AUTH_URL: http://127.0.0.1:3000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
