@@ -10,7 +10,7 @@
     "@nightzeros/chatai-sdk": "workspace:*"
   },
   "devDependencies": {
-    "tsx": "^4.20.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.2"
   }
 }
