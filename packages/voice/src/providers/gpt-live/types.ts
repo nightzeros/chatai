@@ -160,7 +160,8 @@ export type GptLiveClientCommand =
   | {
       type: "session.commentary.append";
       event_id: string;
-      delegation_id: string;
+      /** null: session-wide context the model speaks, not tied to a delegation. */
+      delegation_id: string | null;
       content: string;
     }
   | {

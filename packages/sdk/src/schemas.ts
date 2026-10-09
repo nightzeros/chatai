@@ -121,8 +121,12 @@ export const voiceSessionCreateRequestSchema = z.object({
   source: z.enum(["playground", "widget", "api"]).optional(),
   recordingConsent: z.boolean().optional(),
   history: conversationHistorySchema.optional(),
-  /** `heartbeat`: the client sends control heartbeats and receives a `controlToken`. */
-  capabilities: z.array(z.enum(["heartbeat"])).max(4).optional(),
+  /**
+   * `heartbeat`: the client sends control heartbeats. `playback_gate` (required for
+   * Voice): the client plays assistant audio only while the gate stream approves it.
+   * Either one returns a `controlToken`.
+   */
+  capabilities: z.array(z.enum(["heartbeat", "playback_gate"])).max(4).optional(),
 });
 
 export const voiceSessionCreateResponseSchema = z.object({
@@ -138,10 +142,39 @@ export const voiceSessionCreateResponseSchema = z.object({
   conversationId: z.string().nullable(),
   model: z.string(),
   voiceId: z.string(),
-  /** Session-scoped heartbeat authorization (not a provider credential); only with the `heartbeat` capability. */
+  /** Session-scoped authorization for the heartbeat and gate endpoints (not a provider credential). */
   controlToken: z.string().optional(),
+  /** Only with the `heartbeat` capability. */
   heartbeatIntervalMs: z.number().int().positive().optional(),
+  /** The client must hold assistant audio and captions until the gate stream opens. */
+  playbackGate: z.boolean().optional(),
 });
+
+export const voiceSessionGateRequestSchema = z.object({
+  token: z.string().min(1).max(1_024),
+});
+
+/** One NDJSON line of the gate stream. */
+export const voiceSessionGateEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("gate"),
+    seq: z.number().int().nonnegative(),
+    state: z.enum(["open", "closed"]),
+    reason: z.enum([
+      "start",
+      "social",
+      "backend_answer",
+      "system",
+      "user_speaking",
+      "pending_backend",
+      "reply_limit",
+    ]),
+    /** Provider-timeline end of the latest visitor speech when decided; later speech closes the gate locally. */
+    inputEndMs: z.number().nullable(),
+  }),
+  z.object({ type: z.literal("keepalive") }),
+  z.object({ type: z.literal("end") }),
+]);
 
 export const voiceSessionHeartbeatRequestSchema = z.object({
   token: z.string().min(1).max(1_024),

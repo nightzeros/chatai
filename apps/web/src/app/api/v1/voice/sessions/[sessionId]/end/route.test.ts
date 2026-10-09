@@ -165,7 +165,7 @@ async function mint(body: Record<string, unknown> = { source: "playground" }) {
     new Request("http://localhost:3000/api/v1/voice/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ assistantId: "asst_public", sdpOffer: "offer", ...body }),
+      body: JSON.stringify({ assistantId: "asst_public", sdpOffer: "offer", capabilities: ["playback_gate"], ...body }),
     }),
   );
   expect(response.status).toBe(200);
@@ -347,7 +347,7 @@ describe("POST /api/v1/voice/sessions/:sessionId/end", () => {
     const { sessionId, controlToken } = await mint({
       source: "widget",
       visitorId: "visitor01",
-      capabilities: ["heartbeat"],
+      capabilities: ["heartbeat", "playback_gate"],
     });
     expect(controlToken).toEqual(expect.any(String));
     vi.useFakeTimers();

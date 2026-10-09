@@ -293,6 +293,46 @@ describe("voiceTurnDetails", () => {
       answerReadyMs: 2_140,
       lookupMs: 820,
       interrupted: true,
+      serverForced: false,
+      withheldText: null,
+    });
+  });
+
+  it("marks server-forced lookups and keeps withheld live replies apart from heard speech", () => {
+    const forced = voiceTurnDetails(
+      {
+        role: "assistant",
+        modality: "voice",
+        debug: {
+          ...knowledgeDebug,
+          voice: {
+            ...knowledgeDebug.voice,
+            delegationId: null,
+            turnId: "srv_1",
+            origin: "server",
+            withheldText: "Food is great!",
+          },
+        },
+        wasInterrupted: false,
+      },
+      "I'm hungry",
+    );
+    expect(forced).toMatchObject({ answeredBy: "knowledge", serverForced: true, withheldText: "Food is great!" });
+
+    expect(
+      voiceTurnDetails(
+        { role: "user", modality: "voice", debug: { voice: { withheldText: "  Let me tell you about pasta.  " } }, wasInterrupted: false },
+        null,
+      ),
+    ).toEqual({
+      answeredBy: null,
+      searchQuery: null,
+      matchedDocuments: [],
+      answerReadyMs: null,
+      lookupMs: null,
+      interrupted: false,
+      serverForced: false,
+      withheldText: "Let me tell you about pasta.",
     });
   });
 

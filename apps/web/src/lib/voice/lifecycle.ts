@@ -16,6 +16,7 @@ import {
   type VoiceRuntimeSession,
 } from "./session-runtime";
 import { endProviderSession } from "./termination";
+import { endVoiceGate } from "./turn-gate";
 
 /** Hard cap for an in-memory voice runtime (client vanished without end/close). */
 export const VOICE_RUNTIME_MAX_MS = 60 * 60 * 1000;
@@ -202,6 +203,8 @@ export async function terminateVoiceSession(
     // Yield first so `session.terminating` is set before any work: closing the
     // provider emits session.closed synchronously, which re-enters this function.
     await Promise.resolve();
+    // Nothing the model says while the call is ending is approved.
+    endVoiceGate(session);
     if (session.ttlTimer) {
       clearTimeout(session.ttlTimer);
       session.ttlTimer = null;

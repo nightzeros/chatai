@@ -7,6 +7,7 @@ import { terminateVoiceSession } from "./lifecycle";
 import { markVoiceSessionConnected, writeLifecycleVoiceEvent } from "./persist";
 import { applyControlEvent, type VoiceRuntimeSession } from "./session-runtime";
 import { endProviderSession } from "./termination";
+import { voiceGateOf } from "./turn-gate";
 
 /**
  * Sideband supervisor: wire provider control events into the runtime session.
@@ -20,6 +21,8 @@ export function superviseSideband(
   channel: VoiceControlChannel,
 ): void {
   session.channel = channel;
+  // Closed from the first event: nothing the model says is audible until approved.
+  voiceGateOf(session);
 
   const onEvent = (event: VoiceControlEvent) => {
     applyControlEvent(session, event);

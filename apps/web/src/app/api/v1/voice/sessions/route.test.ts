@@ -164,7 +164,12 @@ function mintRequest(body: Record<string, unknown>, headers: Record<string, stri
   return new Request("http://localhost:3000/api/v1/voice/sessions", {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify({ assistantId: "asst_public", sdpOffer: "v=0\r\noffer", ...body }),
+    body: JSON.stringify({
+      assistantId: "asst_public",
+      sdpOffer: "v=0\r\noffer",
+      capabilities: ["playback_gate"],
+      ...body,
+    }),
   });
 }
 
@@ -855,18 +860,24 @@ describe("POST /api/v1/voice/sessions", () => {
     });
   });
 
-  describe("control heartbeat capability", () => {
+  describe("control heartbeat and playback gate capabilities", () => {
     it("a client that declares heartbeats gets a session-bound control token", async () => {
       const { POST } = await import("./route");
       const response = await POST(
         mintRequest(
-          { visitorId: "visitor01", source: "widget", capabilities: ["heartbeat"] },
+          { visitorId: "visitor01", source: "widget", capabilities: ["heartbeat", "playback_gate"] },
           { Origin: "https://example.com" },
         ),
       );
-      const body = (await response.json()) as { sessionId: string; controlToken: string; heartbeatIntervalMs: number };
+      const body = (await response.json()) as {
+        sessionId: string;
+        controlToken: string;
+        heartbeatIntervalMs: number;
+        playbackGate: boolean;
+      };
       expect(response.status).toBe(200);
       expect(body.heartbeatIntervalMs).toBe(5_000);
+      expect(body.playbackGate).toBe(true);
       const { verifyVoiceControlToken, getVoiceRuntime } = await import("@/lib/voice");
       expect(verifyVoiceControlToken(body.controlToken, body.sessionId)).toEqual({ ok: true, visitorId: "visitor01" });
       expect(verifyVoiceControlToken(body.controlToken, "voice_sess_other")).toEqual({ ok: false });
@@ -874,14 +885,41 @@ describe("POST /api/v1/voice/sessions", () => {
       expect(JSON.stringify(body)).not.toContain("test-auth-secret-not-real");
     });
 
-    it("clients without the capability get no token and are never ended for missing heartbeats", async () => {
+    it("gated clients without heartbeats get a gate token but are never ended for missing heartbeats", async () => {
       const { POST } = await import("./route");
       const response = await POST(mintRequest({ source: "playground" }));
       const body = (await response.json()) as Record<string, unknown>;
-      expect(body.controlToken).toBeUndefined();
+      expect(response.status).toBe(200);
+      expect(body.controlToken).toEqual(expect.any(String));
+      expect(body.playbackGate).toBe(true);
       expect(body.heartbeatIntervalMs).toBeUndefined();
-      const { getVoiceRuntime } = await import("@/lib/voice");
-      expect(getVoiceRuntime(String(body.sessionId))!.supervision?.heartbeatCapable).toBe(false);
+      const { getVoiceRuntime, voiceGateOf } = await import("@/lib/voice");
+      const runtime = getVoiceRuntime(String(body.sessionId))!;
+      expect(runtime.supervision?.heartbeatCapable).toBe(false);
+      // Nothing is audible until the server approves it.
+      expect(voiceGateOf(runtime).decision).toMatchObject({ state: "closed", reason: "start" });
+    });
+
+    it.each([
+      ["no capabilities", {}],
+      ["heartbeat only (a 1.1.0 widget)", { capabilities: ["heartbeat"] }],
+    ])("fails closed without playback_gate (%s): neutral refusal, no provider session", async (_label, extra) => {
+      const { MockRealtimeVoiceProvider } = await import("@chatai/voice/mock");
+      const { setVoiceProviderForTests, listVoiceRuntimes } = await import("@/lib/voice");
+      const provider = new MockRealtimeVoiceProvider();
+      const create = vi.spyOn(provider, "createWebRtcSession");
+      setVoiceProviderForTests(provider);
+      const { POST } = await import("./route");
+      for (const source of ["widget", "playground"] as const) {
+        const response = await POST(
+          mintRequest({ visitorId: "visitor01", source, capabilities: undefined, ...extra }, { Origin: "https://example.com" }),
+        );
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({ error: "Voice isn't available right now.", reason: "voice_unavailable" });
+      }
+      expect(create).not.toHaveBeenCalled();
+      expect(admitVoiceSession).not.toHaveBeenCalled();
+      expect(listVoiceRuntimes()).toHaveLength(0);
     });
 
     it("rejects unknown capabilities", async () => {
@@ -927,7 +965,10 @@ describe("POST /api/v1/voice/sessions", () => {
 
       const { POST } = await import("./route");
       const response = await POST(
-        mintRequest({ visitorId: "visitor01", source: "widget", capabilities: ["heartbeat"] }, { Origin: "https://example.com" }),
+        mintRequest(
+          { visitorId: "visitor01", source: "widget", capabilities: ["heartbeat", "playback_gate"] },
+          { Origin: "https://example.com" },
+        ),
       );
 
       expect(response.status).toBe(503);

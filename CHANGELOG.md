@@ -2,6 +2,22 @@
 
 All notable changes to ChatAI are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Voice (preview) playback gate: ChatAI's server decides who answers each utterance. Only greetings, thanks, goodbyes and short acknowledgements may be answered by the voice model; everything else goes through the text answer pipeline (Scope Router, Purpose, Profile, history, retrieval, output guard), and the widget plays the model's audio and captions only after ChatAI approves them. New `POST /api/v1/voice/sessions/:sessionId/gate` NDJSON stream, authorized by the session's control token.
+- Server-forced Voice turns: when the voice model does not hand a non-social turn to ChatAI, or starts answering it itself, ChatAI runs the answer pipeline anyway and has the model speak only that answer. A late hand-off for the same turn is adopted, never answered or billed twice.
+- Conversation Review labels voice-model replies the visitor never heard as **Withheld (not heard)**, and marks server-forced lookups.
+- `@nightzeros/chatai-widget-core`: playback-gate client (`playback_gate` capability, gate stream with reconnects, local close on new visitor speech).
+- `@nightzeros/chatai-sdk`: `playback_gate` capability, `playbackGate` in the mint response, and gate stream schemas.
+
+### Changed
+
+- **Breaking for Voice on older widgets:** minting a Voice session now requires the `playback_gate` capability. npm `@nightzeros/chatai-widget` / `@nightzeros/chatai-react` 1.1.0 get the neutral "Voice isn't available right now" refusal (text chat is unaffected); the hosted `chat.js` updates with the server. Publish the 1.1.1 widget packages together with the server release.
+- The voice model's instructions now list only the four small-talk cases it may handle and explicitly hand off statements, single words, feelings, clarifications, repeats and topic changes. They are a backup to the server-side gate, not the boundary.
+- Voice stays a preview.
+
 ## [1.1.0] - 2026-10-07
 
 First public preview release. The `/api/v1` contract stays backward compatible: every API change below is additive.

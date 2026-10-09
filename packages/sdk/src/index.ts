@@ -9,6 +9,8 @@ export {
   voiceSessionCreateResponseSchema,
   voiceSessionEndRequestSchema,
   voiceSessionEndResponseSchema,
+  voiceSessionGateEventSchema,
+  voiceSessionGateRequestSchema,
   voiceSessionHeartbeatRequestSchema,
   voiceSessionHeartbeatResponseSchema,
   voiceSessionRefusalSchema,

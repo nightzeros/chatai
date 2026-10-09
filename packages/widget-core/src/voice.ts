@@ -7,6 +7,7 @@ import {
   type ControlHealthState,
   type HeartbeatOutcome,
 } from "./control-health";
+import { createPlaybackGate, type PlaybackGate, type PlaybackGateSettings } from "./voice-gate";
 import {
   deriveVoicePhase,
   detectInterruption,
@@ -128,6 +129,8 @@ export type VoiceSessionOptions = {
   now?: () => number;
   /** Control-health timing overrides (tests). */
   controlHealth?: Partial<ControlHealthSettings> & { now?: () => number };
+  /** Playback-gate stream timing overrides (tests). */
+  playbackGate?: Partial<PlaybackGateSettings>;
 };
 
 export type VoiceEndReason = "close_requested" | "remote_hangup" | "connection_lost" | "error";
@@ -284,6 +287,9 @@ export function createVoiceSession(options: VoiceSessionOptions) {
   let tick: ReturnType<typeof setInterval> | null = null;
   let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let health: ControlHealthMonitor | null = null;
+  /** Set when the server gates playback: assistant audio and captions only while open. */
+  let gate: PlaybackGate | null = null;
+  let controlMuted = false;
   let processingSince = 0;
   let userWasActive = false;
   const levels = { input: 0, output: 0 };
@@ -301,6 +307,11 @@ export function createVoiceSession(options: VoiceSessionOptions) {
     turns: transcript.turns(),
   });
   const emit = () => options.onChange(snapshot());
+
+  const gateClosed = () => gate !== null && !gate.isOpen();
+  const applyAudioMute = () => {
+    if (audio) audio.muted = controlMuted || gateClosed();
+  };
 
   const refreshPhase = (force = false) => {
     signals.now = now();
@@ -325,7 +336,8 @@ export function createVoiceSession(options: VoiceSessionOptions) {
       return;
     }
     levels.input = rms(micAnalyser);
-    levels.output = rms(remoteAnalyser);
+    // Withheld speech is neither shown as the assistant talking nor interruptible.
+    levels.output = gateClosed() ? 0 : rms(remoteAnalyser);
     if (levels.input > MIC_RMS_THRESHOLD) signals.userVoiceAt = at;
     if (levels.output > REMOTE_RMS_THRESHOLD) signals.assistantVoiceAt = at;
     if (signals.processing && at - processingSince > PROCESSING_TIMEOUT_MS) signals.processing = false;
@@ -347,6 +359,8 @@ export function createVoiceSession(options: VoiceSessionOptions) {
   const teardownMedia = () => {
     health?.stop();
     health = null;
+    gate?.stop();
+    gate = null;
     if (tick) clearInterval(tick);
     tick = null;
     if (disconnectTimer) clearTimeout(disconnectTimer);
@@ -417,7 +431,28 @@ export function createVoiceSession(options: VoiceSessionOptions) {
     mic?.getTracks().forEach((track) => {
       track.enabled = !muted;
     });
-    if (audio) audio.muted = muted;
+    controlMuted = muted;
+    applyAudioMute();
+  };
+
+  const startPlaybackGate = (id: string, token: string) => {
+    gate = createPlaybackGate({
+      connect: (signal) =>
+        fetcher(`${options.apiUrl}/api/v1/voice/sessions/${encodeURIComponent(id)}/gate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+          signal,
+        }),
+      onChange: () => {
+        if (stopped) return;
+        applyAudioMute();
+        refreshPhase();
+      },
+      ...(options.playbackGate ? { settings: options.playbackGate } : {}),
+    });
+    applyAudioMute();
+    gate.start();
   };
 
   /** ChatAI ended the call, or control stayed lost past the grace: end Voice, keep text. */
@@ -497,13 +532,24 @@ export function createVoiceSession(options: VoiceSessionOptions) {
         if (signals.connection === "connecting") setConnection("connected");
         return;
       case "session.input_transcript.delta":
+        gate?.noteInput(event.start_ms);
         signals.userVoiceAt = at;
         transcript.input(event.delta ?? "", event.start_ms ?? at);
         refreshPhase(true);
         return;
       case "session.output_transcript.delta":
+        if (gateClosed()) {
+          // Not approved by ChatAI: no caption, and the visitor sees it is still working.
+          if (!signals.processing) {
+            signals.processing = true;
+            processingSince = at;
+          }
+          refreshPhase(true);
+          return;
+        }
         signals.assistantVoiceAt = at;
-        if (signals.processing && at - processingSince >= FILLER_WINDOW_MS) signals.processing = false;
+        // Approved speech is the answer itself, never a filler.
+        if (gate || (signals.processing && at - processingSince >= FILLER_WINDOW_MS)) signals.processing = false;
         transcript.output(event.delta ?? "", event.end_ms ?? at);
         refreshPhase(true);
         return;
@@ -557,6 +603,7 @@ export function createVoiceSession(options: VoiceSessionOptions) {
         conversationId?: string | null;
         controlToken?: string;
         heartbeatIntervalMs?: number;
+        playbackGate?: boolean;
       };
       try {
         const peer = options.media.createPeerConnection();
@@ -566,6 +613,7 @@ export function createVoiceSession(options: VoiceSessionOptions) {
           const [remote] = event.streams;
           if (!remote || pc !== peer) return;
           if (audio) {
+            applyAudioMute();
             audio.srcObject = remote;
             void audio.play?.().catch(() => undefined);
           }
@@ -617,7 +665,7 @@ export function createVoiceSession(options: VoiceSessionOptions) {
             ...(options.conversationId ? { conversationId: options.conversationId } : {}),
             ...(options.history.length ? { history: options.history } : {}),
             ...(options.recordingConsent ? { recordingConsent: true } : {}),
-            capabilities: ["heartbeat"],
+            capabilities: ["heartbeat", "playback_gate"],
           }),
         });
         if (!response.ok) {
@@ -639,6 +687,8 @@ export function createVoiceSession(options: VoiceSessionOptions) {
         conversationId = answer.conversationId ?? null;
         recording = Boolean(answer.recording);
         mock = answer.sdpAnswer.includes(MOCK_SDP_MARKER);
+        // Before any remote audio can play: the gate starts closed.
+        if (answer.playbackGate && answer.controlToken) startPlaybackGate(sessionId, answer.controlToken);
         if (!mock) await peer.setRemoteDescription({ type: "answer", sdp: answer.sdpAnswer });
       } catch (caught) {
         const offline = caught instanceof TypeError;

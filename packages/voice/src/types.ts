@@ -179,8 +179,11 @@ export type VoiceControlChannel = {
    * never reach event logs. Optional: adapters without reflection omit it.
    */
   subscribeAudio?(listener: (frame: ReflectedAudioFrame) => void): () => void;
-  /** Speakable result for an active client delegation. */
-  appendCommentary(delegationId: string, content: string): Promise<AppendResult>;
+  /**
+   * Speakable result for an active client delegation, or (null) a server-initiated
+   * result the model speaks without any delegation being open.
+   */
+  appendCommentary(delegationId: string | null, content: string): Promise<AppendResult>;
   /** Quiet context for an active client delegation. */
   appendThinking(delegationId: string, content: string): Promise<AppendResult>;
   /** Session-wide or delegation-scoped steering (may interrupt speech). */

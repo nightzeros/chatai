@@ -56,6 +56,10 @@ export type VoiceTurnDetails = {
   /** Knowledge search duration. */
   lookupMs: number | null;
   interrupted: boolean;
+  /** ChatAI answered although the Voice model did not hand the turn off. */
+  serverForced: boolean;
+  /** Voice model speech the playback gate kept from the visitor (never heard, never history). */
+  withheldText: string | null;
 };
 
 export type TimelineMessage = {
@@ -100,6 +104,18 @@ export type TimelineEntry =
 
 const MAX_MATCHED_DOCUMENTS = 5;
 const MAX_QUERY_CHARS = 300;
+const MAX_WITHHELD_CHARS = 600;
+
+const EMPTY_DETAILS: VoiceTurnDetails = {
+  answeredBy: null,
+  searchQuery: null,
+  matchedDocuments: [],
+  answerReadyMs: null,
+  lookupMs: null,
+  interrupted: false,
+  serverForced: false,
+  withheldText: null,
+};
 
 const CALL_SOURCE_LABEL: Record<ConversationSource, string> = {
   playground: "Playground",
@@ -167,13 +183,21 @@ export function voiceTurnDetails(
   row: Pick<ReviewMessageRecord, "role" | "modality" | "debug" | "wasInterrupted">,
   previousUserText: string | null,
 ): VoiceTurnDetails | null {
-  if (row.role !== "assistant" || row.modality !== "voice") return null;
+  if (row.modality !== "voice") return null;
   const debug = isRecord(row.debug) ? row.debug : null;
   const voice = debug && isRecord(debug.voice) ? debug.voice : null;
+  const withheldText =
+    typeof voice?.withheldText === "string" && voice.withheldText.trim()
+      ? voice.withheldText.trim().slice(0, MAX_WITHHELD_CHARS)
+      : null;
+  if (row.role !== "assistant") {
+    // A visitor turn whose only reply was withheld.
+    return withheldText ? { ...EMPTY_DETAILS, interrupted: row.wasInterrupted, withheldText } : null;
+  }
   const answeredBy =
     voice && (voice.delegated === false || voice.answeredBy === "realtime_model")
       ? "voice_model"
-      : voice && typeof voice.delegationId === "string"
+      : voice && (typeof voice.delegationId === "string" || typeof voice.turnId === "string")
         ? "knowledge"
         : null;
 
@@ -206,6 +230,8 @@ export function voiceTurnDetails(
     answerReadyMs: durationValue(metrics?.firstCommentaryMs),
     lookupMs: durationValue(metrics?.ragDurationMs),
     interrupted: row.wasInterrupted,
+    serverForced: answeredBy === "knowledge" && voice?.origin === "server",
+    withheldText,
   };
 }
 

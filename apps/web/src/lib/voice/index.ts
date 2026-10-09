@@ -95,6 +95,13 @@ export {
 } from "./persist";
 export { cleanupFailedMint, superviseSideband } from "./sideband-supervisor";
 export {
+  classifyVoiceTurn,
+  subscribeVoiceGate,
+  voiceGateOf,
+  type VoiceGateDecision,
+  type VoiceGateReason,
+} from "./turn-gate";
+export {
   finishVoiceRecording,
   recordingApplies,
   recordingConsentRequired,

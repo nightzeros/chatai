@@ -93,7 +93,25 @@ describe("getOpenApiDocument", () => {
     expect(mint.requestBody.content["application/json"]?.schema.properties).toHaveProperty("capabilities");
     const created = mint.responses["200"]?.content["application/json"]?.schema;
     expect(created?.properties).toHaveProperty("controlToken");
+    expect(created?.properties).toHaveProperty("playbackGate");
     expect(created?.required ?? []).not.toContain("controlToken");
+    expect(created?.required ?? []).not.toContain("playbackGate");
+  });
+
+  it("documents the Voice playback gate stream and capability", () => {
+    const paths = (doc.paths ?? {}) as Record<string, Record<string, unknown>>;
+    const gate = paths["/api/v1/voice/sessions/{sessionId}/gate"]?.post as {
+      responses: Record<string, { content?: Record<string, { schema: unknown }> }>;
+    };
+    expect(Object.keys(gate.responses)).toEqual(expect.arrayContaining(["200", "404", "421", "429"]));
+    const stream = JSON.stringify(gate.responses["200"]?.content?.["application/x-ndjson"]?.schema);
+    expect(stream).toContain("backend_answer");
+    expect(stream).toContain("keepalive");
+
+    const mint = paths["/api/v1/voice/sessions"]?.post as {
+      requestBody: { content: Record<string, { schema: unknown }> };
+    };
+    expect(JSON.stringify(mint.requestBody.content["application/json"]?.schema)).toContain("playback_gate");
   });
 
   it("registers bearer auth", () => {
