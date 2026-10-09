@@ -38,7 +38,7 @@ jobs:
       AI_API_KEY: ${{ secrets.AI_API_KEY }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

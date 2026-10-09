@@ -38,7 +38,7 @@ jobs:
       git_sha: ${{ steps.meta.outputs.git_sha }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.ref }}
 
