@@ -46,7 +46,7 @@ instance.destroy();
 
 ## Voice (preview)
 
-When the assistant offers Voice and the server has a Voice provider configured, the widget adds a microphone button with a live transcript and, when recording is enabled, a consent prompt before the microphone turns on. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC. It is a preview feature and requires version 1.1.0 or later.
+When the assistant offers Voice and the server has a Voice provider configured, the widget adds a microphone button with a live transcript and, when recording is enabled, a consent prompt before the microphone turns on. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC. It is a preview feature and requires version 1.2.0 or later; older versions get "Voice isn't available right now" from ChatAI 1.2.0 and later.
 
 ## Compatibility
 

@@ -123,7 +123,7 @@ Replace `https://app.nightzeros.com` with your own origin when self-hosting. The
 | [`@nightzeros/chatai-widget-core`](https://www.npmjs.com/package/@nightzeros/chatai-widget-core) | Browser chat and Voice (preview) client used by the widget |
 | [`@nightzeros/chatai-sdk`](https://www.npmjs.com/package/@nightzeros/chatai-sdk) | Node.js REST + streaming client and OpenAPI schemas |
 
-Voice (preview) requires version 1.1.0 or later of the widget packages.
+Voice (preview) requires version 1.2.0 or later of the widget packages; ChatAI refuses Voice to older widgets.
 
 <details>
 <summary>Repository layout</summary>

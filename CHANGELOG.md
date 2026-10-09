@@ -2,7 +2,9 @@
 
 All notable changes to ChatAI are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.0] - 2026-10-09
+
+ChatAI's server, not the voice model, now decides what Voice (preview) says. The `/api/v1` contract stays backward compatible for text chat and the REST API; Voice minting needs the 1.2.0 widget packages (see Changed).
 
 ### Added
 
@@ -14,9 +16,13 @@ All notable changes to ChatAI are documented here. The format follows [Keep a Ch
 
 ### Changed
 
-- **Breaking for Voice on older widgets:** minting a Voice session now requires the `playback_gate` capability. npm `@nightzeros/chatai-widget` / `@nightzeros/chatai-react` 1.1.0 get the neutral "Voice isn't available right now" refusal (text chat is unaffected); the hosted `chat.js` updates with the server. Publish the 1.1.1 widget packages together with the server release.
+- **Breaking for Voice on older widgets:** minting a Voice session now requires the `playback_gate` capability. npm `@nightzeros/chatai-widget` / `@nightzeros/chatai-react` 1.1.0 get the neutral "Voice isn't available right now" refusal (text chat is unaffected); upgrade them to 1.2.0. The hosted `chat.js` updates with the server.
 - The voice model's instructions now list only the four small-talk cases it may handle and explicitly hand off statements, single words, feelings, clarifications, repeats and topic changes. They are a backup to the server-side gate, not the boundary.
 - Voice stays a preview.
+
+### Fixed
+
+- A Voice turn that failed before its usage reservation (for example, an assistant whose model provider isn't configured) now ends with a spoken apology instead of silence.
 
 ## [1.1.0] - 2026-10-07
 
@@ -113,4 +119,5 @@ Read [Upgrading to 1.1](https://docs.nightzeros.com/docs/self-hosting/upgrade-1-
 
 Security, privacy, and UI refresh work landed on the `feat/v0.8-*` branches before the 1.0 freeze.
 
+[1.2.0]: https://github.com/nightzeros/chatai/releases/tag/v1.2.0
 [1.1.0]: https://github.com/nightzeros/chatai/releases/tag/v1.1.0

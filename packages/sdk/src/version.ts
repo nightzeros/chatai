@@ -1,2 +1,2 @@
 /** Product + OpenAPI semver — keep in sync with root VERSION file. */
-export const API_VERSION = "1.1.0";
+export const API_VERSION = "1.2.0";
