@@ -16,6 +16,12 @@ LICENSE
 *.log
 .DS_Store
 coverage
+**/.turbo
+test-results
+playwright-report
+playwright
+.vercel
+**/.vercel
 dist
 # Package builds are produced inside the image (web prebuild); host copies may be stale.
 **/dist
