@@ -30,10 +30,13 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
     {
       name: "chromium",
+      dependencies: ["setup"],
       use: {
         ...devices["Desktop Chrome"],
+        storageState: "playwright/.auth/user.json",
         // Voice e2e: a synthetic microphone, granted without a prompt.
         permissions: ["microphone"],
         launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] },
