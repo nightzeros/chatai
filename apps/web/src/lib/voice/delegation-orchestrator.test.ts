@@ -1432,6 +1432,15 @@ describe("playback gate: ChatAI decides who answers each utterance", () => {
       expectNoOpenBeforeCommentary(timeline);
       // The withheld reply never becomes history.
       expect(JSON.stringify(session.history)).not.toContain("Tell me more");
+      // The owner Playground sees it as withheld, never as the answer.
+      expect(serializeVoiceDebug(session).exchanges).toEqual([
+        expect.objectContaining({
+          kind: "delegated",
+          question: text,
+          answer: `Answer to: ${text}`,
+          withheld: "Oh, I see! Tell me more about that.",
+        }),
+      ]);
     },
   );
 

@@ -76,6 +76,7 @@ describe("getOpenApiDocument", () => {
 
     const widgetRefusal = JSON.stringify(mint.responses["403"]?.content["application/json"]?.schema);
     expect(widgetRefusal).toContain("voice_unavailable");
+    expect(widgetRefusal).toContain("client_update_required");
   });
 
   it("documents the Voice control heartbeat additively", () => {

@@ -123,4 +123,7 @@ jobs:
           pnpm widget:check -- /tmp/widget-chat.js
 
       - name: Chromium browser tests
+        env:
+          # Voice e2e exercises the real control plane with no paid realtime provider.
+          VOICE_PROVIDER: mock
         run: pnpm e2e

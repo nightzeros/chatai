@@ -7,7 +7,13 @@ import {
   type ControlHealthState,
   type HeartbeatOutcome,
 } from "./control-health";
-import { createPlaybackGate, type PlaybackGate, type PlaybackGateSettings } from "./voice-gate";
+import {
+  connectPlaybackGate,
+  createPlaybackGate,
+  VOICE_CLIENT_CAPABILITIES,
+  type PlaybackGate,
+  type PlaybackGateSettings,
+} from "./voice-gate";
 import {
   deriveVoicePhase,
   detectInterruption,
@@ -438,12 +444,7 @@ export function createVoiceSession(options: VoiceSessionOptions) {
   const startPlaybackGate = (id: string, token: string) => {
     gate = createPlaybackGate({
       connect: (signal) =>
-        fetcher(`${options.apiUrl}/api/v1/voice/sessions/${encodeURIComponent(id)}/gate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-          signal,
-        }),
+        connectPlaybackGate({ apiUrl: options.apiUrl, sessionId: id, token, signal, fetch: fetcher }),
       onChange: () => {
         if (stopped) return;
         applyAudioMute();
@@ -665,7 +666,7 @@ export function createVoiceSession(options: VoiceSessionOptions) {
             ...(options.conversationId ? { conversationId: options.conversationId } : {}),
             ...(options.history.length ? { history: options.history } : {}),
             ...(options.recordingConsent ? { recordingConsent: true } : {}),
-            capabilities: ["heartbeat", "playback_gate"],
+            capabilities: VOICE_CLIENT_CAPABILITIES,
           }),
         });
         if (!response.ok) {

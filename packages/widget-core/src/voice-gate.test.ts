@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMedia, REAL_SDP_ANSWER } from "./__fixtures__/fake-media";
 import { createVoiceSession, type VoiceSession } from "./voice";
-import { parseGateLine } from "./voice-gate";
+import * as widgetCore from "./index";
+import {
+  connectPlaybackGate,
+  createPlaybackGate,
+  parseGateLine,
+  VOICE_CLIENT_CAPABILITIES,
+} from "./voice-gate";
 
 type Call = { url: string; body: Record<string, unknown> };
 
@@ -264,6 +270,13 @@ describe("Voice playback gate (widget)", () => {
     expect(t.gateCalls()).toHaveLength(0);
   });
 
+  it("the widget declares exactly the shared client capabilities", async () => {
+    const t = setup();
+    await t.connect();
+    const mint = t.calls.find((call) => call.url.endsWith("/api/v1/voice/sessions"))!;
+    expect(mint.body.capabilities).toEqual([...VOICE_CLIENT_CAPABILITIES]);
+  });
+
   it("ignores malformed stream lines", () => {
     expect(parseGateLine("not json")).toBeNull();
     expect(parseGateLine(JSON.stringify({ type: "gate", seq: "1", state: "open" }))).toBeNull();
@@ -273,5 +286,47 @@ describe("Voice playback gate (widget)", () => {
       type: "gate",
       decision: { seq: 2, state: "open", inputEndMs: 900 },
     });
+  });
+});
+
+describe("shared Voice client contract (exported for every mint caller)", () => {
+  it("is exported from the package entry", () => {
+    expect(widgetCore.VOICE_CLIENT_CAPABILITIES).toEqual(["heartbeat", "playback_gate"]);
+    expect(widgetCore.createPlaybackGate).toBe(createPlaybackGate);
+    expect(widgetCore.connectPlaybackGate).toBe(connectPlaybackGate);
+  });
+
+  it("connectPlaybackGate posts only the control token to the session's gate route", async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 404 }));
+    const controller = new AbortController();
+    await connectPlaybackGate({ apiUrl: "", sessionId: "vs/1", token: "ct_secret", signal: controller.signal, fetch: fetcher });
+    expect(fetcher).toHaveBeenCalledWith("/api/v1/voice/sessions/vs%2F1/gate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "ct_secret" }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  });
+
+  it("a standalone gate is closed until approved and closes locally on new input", async () => {
+    const stream = gateStream();
+    const changes: boolean[] = [];
+    const gate = createPlaybackGate({
+      connect: async () => stream.response,
+      onChange: (open) => changes.push(open),
+      settings: { reconnectMinMs: 5, reconnectMaxMs: 20 },
+    });
+    gate.start();
+    expect(gate.isOpen()).toBe(false);
+
+    stream.gate(1, "open", 1_000);
+    await vi.waitFor(() => expect(gate.isOpen()).toBe(true));
+    gate.noteInput(500);
+    expect(gate.isOpen()).toBe(true);
+    gate.noteInput(1_200);
+    expect(gate.isOpen()).toBe(false);
+    expect(changes).toEqual([true, false]);
+    gate.stop();
   });
 });

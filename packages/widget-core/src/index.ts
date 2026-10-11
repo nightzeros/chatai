@@ -41,6 +41,16 @@ export {
   type VoiceSessionSnapshot,
 } from "./voice";
 export {
+  connectPlaybackGate,
+  createPlaybackGate,
+  parseGateLine,
+  PLAYBACK_GATE_DEFAULTS,
+  VOICE_CLIENT_CAPABILITIES,
+  type PlaybackGate,
+  type PlaybackGateSettings,
+  type VoiceClientCapability,
+} from "./voice-gate";
+export {
   deriveVoicePhase,
   isVoiceActive,
   VOICE_PHASE_LABELS,

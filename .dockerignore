@@ -17,3 +17,5 @@ LICENSE
 .DS_Store
 coverage
 dist
+# Package builds are produced inside the image (web prebuild); host copies may be stale.
+**/dist

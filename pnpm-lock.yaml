@@ -129,6 +129,9 @@ importers:
       '@nightzeros/chatai-widget':
         specifier: workspace:*
         version: link:../../packages/widget
+      '@nightzeros/chatai-widget-core':
+        specifier: workspace:*
+        version: link:../../packages/widget-core
       '@polar-sh/nextjs':
         specifier: ^0.9.6
         version: 0.9.6(next@15.5.23(@opentelemetry/api@1.9.0)(@playwright/test@1.62.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))

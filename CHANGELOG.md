@@ -2,6 +2,31 @@
 
 All notable changes to ChatAI are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - Unreleased
+
+Voice (preview) rollout fixes: every ChatAI Voice client now shares one client contract, so the Playground works again and an outdated widget gets a clear message. The `/api/v1` contract stays backward compatible.
+
+### Fixed
+
+- **Playground Voice was refused on 1.2.0** ("Voice isn't available right now", shown as "Connection problem"): the Playground did not declare the `playback_gate` capability. It now mints with the same capabilities as the widget and honours the playback gate: assistant audio and captions stay muted until ChatAI approves them, new speech closes the gate at once, and withheld speech shows as **Looking it up** rather than **Assistant speaking**.
+- A refused Playground start shows **Voice · Not available** with the server's reason and a **Start voice** button, instead of "Connection problem" and **Reconnect**.
+- Database connections are recycled before an upstream idle cut and fail within 10 seconds when the database is unreachable, instead of hanging requests for 30 seconds (`ECONNRESET` / `CONNECT_TIMEOUT`).
+- The web build (and the Docker image) now builds every workspace package it uses, instead of reusing whatever package builds were left in the build context.
+
+### Added
+
+- `@nightzeros/chatai-widget-core`: the shared Voice client contract, `VOICE_CLIENT_CAPABILITIES`, `connectPlaybackGate`, `createPlaybackGate`, `parseGateLine` and `PLAYBACK_GATE_DEFAULTS`.
+- Every Voice mint refusal is logged as `[voice] mint.refused` with a code (`hosting_access`, `voice_disabled`, `playback_gate_missing`, `provider_unsupported`, `provider_unconfigured`, `provider_init_failed`, `admission`).
+- `scripts/compose.sh` for running `docker compose` on the VPS with the deployed image tag.
+- Browser tests for Voice in the Playground and the hosted widget (mock provider), and a test that fails if any Voice client mints without the shared capabilities.
+
+### Changed
+
+- A mint without `playback_gate` is refused with `403` and `reason: "client_update_required"`, and visitors see "Voice needs an updated chat widget. Reload the page, or ask the site owner to update it." instead of the generic refusal.
+- The hosted `chat.js` is cached for 5 minutes instead of 1 hour, so a deploy reaches visitors sooner.
+- Production deploys run one at a time across tag and manual triggers; the npm registry check retries for registry propagation.
+- Voice stays a preview.
+
 ## [1.2.0] - 2026-10-09
 
 ChatAI's server, not the voice model, now decides what Voice (preview) says. The `/api/v1` contract stays backward compatible for text chat and the REST API; Voice minting needs the 1.2.0 widget packages (see Changed).

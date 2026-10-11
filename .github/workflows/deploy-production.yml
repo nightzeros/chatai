@@ -14,8 +14,9 @@ on:
         description: "Immutable GHCR tag (defaults to git ref for tags, or git SHA for dispatch)"
         required: false
 
+# One production target: a tag deploy and a manual deploy must queue, never overlap.
 concurrency:
-  group: deploy-production-${{ github.ref }}
+  group: deploy-production
   cancel-in-progress: false
 
 permissions:
