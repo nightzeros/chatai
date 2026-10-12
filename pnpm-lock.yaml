@@ -540,8 +540,8 @@ importers:
         specifier: workspace:*
         version: link:../widget-core
       preact:
-        specifier: ^10.27.2
-        version: 10.29.8
+        specifier: ^11.0.1
+        version: 11.0.1
     devDependencies:
       '@types/node':
         specifier: ^20.19.43
@@ -5865,10 +5865,10 @@ packages:
     resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
     engines: {node: '>=12'}
 
-  preact@10.29.8:
-    resolution: {integrity: sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==}
+  preact@11.0.1:
+    resolution: {integrity: sha512-TNNwEq++jYNHy747LziCjPRVgEwnLSOIOAw/oYcjI3Tdnubx2EXtt76I0an8PATvUWtx/DX1kFIg1eFN+O/fkw==}
     peerDependencies:
-      preact-render-to-string: '>=5'
+      preact-render-to-string: '>=6.7.0'
     peerDependenciesMeta:
       preact-render-to-string:
         optional: true
@@ -12733,7 +12733,7 @@ snapshots:
 
   postgres@3.4.9: {}
 
-  preact@10.29.8: {}
+  preact@11.0.1: {}
 
   prelude-ls@1.2.1: {}
 
