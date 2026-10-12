@@ -29,6 +29,13 @@ for (const pkg of NPM_PUBLIC_PACKAGES) {
     continue;
   }
 
+  // A rewrite bumps the manifest mtime, which makes every parallel `pnpm run` re-verify
+  // deps and race on node_modules/.pnpm-workspace-state-v1.json.
+  if (manifest.version === version) {
+    console.log(`[sync-package-versions] ${pkg.name} already ${version}`);
+    continue;
+  }
+
   manifest.version = version;
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`[sync-package-versions] ${pkg.name} → ${version}`);

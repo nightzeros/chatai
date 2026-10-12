@@ -12,8 +12,8 @@ import { NPM_PUBLIC_PACKAGES } from "./npm-public-packages.mjs";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const version = readFileSync(path.join(root, "VERSION"), "utf8").trim();
 
-/** A fresh publish can take a minute or two to reach every registry read replica. */
-const ATTEMPTS = Number(process.env.NPM_VERIFY_ATTEMPTS ?? 12);
+/** A fresh publish can take several minutes to reach every registry read replica (v1.3.0: about 4). */
+const ATTEMPTS = Number(process.env.NPM_VERIFY_ATTEMPTS ?? 60);
 const DELAY_MS = Number(process.env.NPM_VERIFY_DELAY_MS ?? 10_000);
 
 const EXPECTED_DEPENDENCIES = {
