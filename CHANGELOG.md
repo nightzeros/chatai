@@ -2,7 +2,7 @@
 
 All notable changes to ChatAI are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.3.0] - Unreleased
+## [1.3.0] - 2026-10-11
 
 Voice (preview) rollout fixes: every ChatAI Voice client now shares one client contract, so the Playground works again and an outdated widget gets a clear message. The `/api/v1` contract stays backward compatible.
 
@@ -144,5 +144,6 @@ Read [Upgrading to 1.1](https://docs.nightzeros.com/docs/self-hosting/upgrade-1-
 
 Security, privacy, and UI refresh work landed on the `feat/v0.8-*` branches before the 1.0 freeze.
 
+[1.3.0]: https://github.com/nightzeros/chatai/releases/tag/v1.3.0
 [1.2.0]: https://github.com/nightzeros/chatai/releases/tag/v1.2.0
 [1.1.0]: https://github.com/nightzeros/chatai/releases/tag/v1.1.0
