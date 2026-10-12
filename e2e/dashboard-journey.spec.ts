@@ -1,10 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import { assistantId, signIn } from "./fixtures";
+import { assistantId } from "./fixtures";
 
 test("dashboard journey covers Overview through Configure", async ({ page }) => {
-  await signIn(page);
-
   await page.goto(`/dashboard/assistants/${assistantId}`);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByText("Setup checklist")).toBeVisible();
@@ -40,7 +38,6 @@ test("dashboard journey covers Overview through Configure", async ({ page }) => 
 });
 
 test("account theme controls render", async ({ page }) => {
-  await signIn(page);
   await page.goto("/dashboard/account");
   await expect(page.getByRole("heading", { name: "Account" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Theme" })).toBeVisible();

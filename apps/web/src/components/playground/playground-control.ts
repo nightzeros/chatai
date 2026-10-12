@@ -5,7 +5,7 @@ import {
   type ControlHealthSettings,
   type ControlHealthState,
   type HeartbeatOutcome,
-} from "./control-health";
+} from "@nightzeros/chatai-widget-core";
 import {
   CONTROL_GRACE_EXPIRED_NOTICE,
   CONTROL_SESSION_LOST_NOTICE,

@@ -6,11 +6,11 @@ import { describe, expect, it } from "vitest";
 import { WIDGET_ASSET_PATH, widgetAssetHeaders } from "./widget-delivery";
 
 describe("widget delivery headers", () => {
-  it("serves the stable widget URL with revalidation instead of immutable caching", () => {
+  it("serves the stable widget URL with a short revalidated cache, so deploys reach visitors within minutes", () => {
     expect(WIDGET_ASSET_PATH).toBe("/widget/chat.js");
     expect(widgetAssetHeaders).toEqual(
       expect.arrayContaining([
-        { key: "Cache-Control", value: "public, max-age=3600, must-revalidate" },
+        { key: "Cache-Control", value: "public, max-age=300, must-revalidate" },
         { key: "X-Content-Type-Options", value: "nosniff" },
       ]),
     );

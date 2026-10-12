@@ -95,6 +95,7 @@ cd /opt/chatai
 #   docker-compose.prod.yml
 #   deploy/Caddyfile
 #   scripts/deploy.sh
+#   scripts/compose.sh
 #   scripts/health-check.sh
 #   scripts/rollback.sh
 #   scripts/backup-uploads.sh
@@ -161,6 +162,8 @@ Workflow: [.github/workflows/deploy-production.yml](../../.github/workflows/depl
 | `workflow_dispatch` | Input `image_tag` or git SHA |
 
 A `v*` tag also triggers npm publishing and the GitHub Release; see [Release checklist](../RELEASE.md#what-a-v-tag-triggers).
+
+Production deploys share one concurrency group: a tag deploy and a manual dispatch queue behind each other and never run at the same time.
 
 Requires GitHub **Environment** `production` with **required reviewers** and secrets. The deploy job waits for approval only when reviewers are configured; without them, every `v*` tag and dispatch deploys straight to production. Treat a missing reviewer rule as a release blocker.
 
@@ -259,14 +262,26 @@ Copy `.tgz` + `.sha256` off-VPS for disaster recovery.
 
 ## Logs and monitoring
 
+`docker-compose.prod.yml` requires `CHATAI_IMAGE_TAG`, so a plain `docker compose` command fails with `CHATAI_IMAGE_TAG is required`. Use `scripts/compose.sh`, which reads the deployed tag (`current_tag`) from `.deploy-state`:
+
 ```bash
-docker compose -f docker-compose.prod.yml logs -f chatai
-docker compose -f docker-compose.prod.yml logs -f caddy
+cd /opt/chatai
+./scripts/compose.sh logs -f chatai
+./scripts/compose.sh logs -f caddy
+./scripts/compose.sh ps
 docker stats
 df -h
 free -h
 uptime
 ```
+
+Voice refusals are logged as `[voice] mint.refused` with a `code` (for example `playback_gate_missing`, `voice_disabled`, `admission`, `provider_unconfigured`):
+
+```bash
+./scripts/compose.sh logs --since 1h chatai | grep 'mint.refused'
+```
+
+The app reads `/opt/chatai/.env.production` (not `.env`). After editing it, recreate the container so the change applies: `./scripts/compose.sh up -d chatai`.
 
 External uptime: monitor `https://app.nightzeros.com/api/health` (UptimeRobot, Better Stack, etc.).
 

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveVoicePhase, detectInterruption, voiceEndNotice, type VoiceSignals } from "./voice-state";
+import {
+  deriveVoicePhase,
+  detectInterruption,
+  isPlaygroundVoiceActive,
+  VOICE_PHASE_LABELS,
+  voiceEndNotice,
+  type VoiceSignals,
+} from "./voice-state";
 
 const base: VoiceSignals = {
   connection: "connected",
@@ -18,6 +25,23 @@ describe("deriveVoicePhase", () => {
     expect(deriveVoicePhase({ ...base, connection: "reconnecting" })).toBe("reconnecting");
     expect(deriveVoicePhase({ ...base, connection: "failed" })).toBe("error");
     expect(deriveVoicePhase({ ...base, connection: "ended" })).toBe("ended");
+  });
+
+  it("labels a refused start as unavailable, not a connection problem", () => {
+    expect(deriveVoicePhase({ ...base, connection: "refused" })).toBe("unavailable");
+    expect(VOICE_PHASE_LABELS.unavailable).toBe("Not available");
+    expect(isPlaygroundVoiceActive("refused")).toBe(false);
+  });
+
+  it("shows speech withheld by the playback gate as looking it up, not assistant speech", () => {
+    expect(deriveVoicePhase({ ...base, withheldAt: 9_900 })).toBe("delegating");
+    expect(deriveVoicePhase({ ...base, withheldAt: 9_900, userVoiceAt: 9_900 })).toBe("user_speaking");
+    expect(deriveVoicePhase({ ...base, withheldAt: 8_000 })).toBe("listening");
+  });
+
+  it("shows approved speech as the assistant speaking as soon as it is newer than withheld speech", () => {
+    expect(deriveVoicePhase({ ...base, withheldAt: 9_800, assistantVoiceAt: 9_900 })).toBe("assistant_speaking");
+    expect(deriveVoicePhase({ ...base, withheldAt: 9_900, assistantVoiceAt: 9_800 })).toBe("delegating");
   });
 
   it("is listening when connected and quiet", () => {

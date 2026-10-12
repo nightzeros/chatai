@@ -7,6 +7,8 @@ export type VoiceConnection =
   /** ChatAI control unreachable: mic and assistant muted until control returns or the grace ends. */
   | "degraded"
   | "failed"
+  /** ChatAI declined to start the call (mint refused); nothing to reconnect. */
+  | "refused"
   | "ended";
 
 export type VoicePhase =
@@ -20,6 +22,7 @@ export type VoicePhase =
   | "reconnecting"
   | "control_lost"
   | "error"
+  | "unavailable"
   | "ended";
 
 export type VoiceSignals = {
@@ -32,6 +35,8 @@ export type VoiceSignals = {
   /** A delegation is in flight on the ChatAI side (collecting/retrieving/generating). */
   delegationActive: boolean;
   interruptedAt: number | null;
+  /** Last time the voice model spoke while ChatAI's playback gate was closed (muted, not heard). */
+  withheldAt?: number | null;
 };
 
 export const VOICE_ACTIVITY_HOLD_MS = 450;
@@ -48,6 +53,7 @@ export const VOICE_PHASE_LABELS: Record<VoicePhase, string> = {
   reconnecting: "Reconnecting",
   control_lost: "ChatAI control unavailable · muted",
   error: "Connection problem",
+  unavailable: "Not available",
   ended: "Ended",
 };
 
@@ -80,6 +86,8 @@ export function deriveVoicePhase(signals: VoiceSignals): VoicePhase {
       return "control_lost";
     case "failed":
       return "error";
+    case "refused":
+      return "unavailable";
     case "ended":
       return "ended";
     case "connected":
@@ -88,6 +96,16 @@ export function deriveVoicePhase(signals: VoiceSignals): VoicePhase {
   if (recent(signals.interruptedAt, signals.now, VOICE_INTERRUPTED_HOLD_MS)) return "interrupted";
   if (isUserActive(signals)) return "user_speaking";
   if (signals.delegationActive) return "delegating";
+  // Muted speech ChatAI has not approved: the visitor hears nothing while ChatAI decides.
+  // Once approved speech is newer, the assistant is speaking.
+  const withheldAt = signals.withheldAt ?? null;
+  if (
+    withheldAt !== null &&
+    recent(withheldAt, signals.now, VOICE_ACTIVITY_HOLD_MS) &&
+    (signals.assistantVoiceAt === null || withheldAt > signals.assistantVoiceAt)
+  ) {
+    return "delegating";
+  }
   if (isAssistantActive(signals)) return "assistant_speaking";
   return "listening";
 }

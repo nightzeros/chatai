@@ -48,6 +48,8 @@ export type VoiceDebugExchange = {
   startMs: number;
   question: string;
   answer: string;
+  /** What the voice model said that the playback gate kept from the visitor ("" when nothing). */
+  withheld: string;
   interrupted: boolean;
   settled: boolean;
 };
@@ -86,6 +88,7 @@ function voiceExchanges(session: VoiceRuntimeSession): VoiceDebugExchange[] {
           startMs: turn.userStartMs,
           question: turn.userText,
           answer: spokenAnswerText(session, turn) || turn.answerText || "",
+          withheld: turn.withheldText,
           interrupted: turn.interrupted,
           settled: true,
         },
@@ -99,6 +102,7 @@ function voiceExchanges(session: VoiceRuntimeSession): VoiceDebugExchange[] {
           startMs: turn.userStartMs,
           question: turn.userText,
           answer: "",
+          withheld: turn.withheldText,
           interrupted: false,
           settled: true,
         },
@@ -115,6 +119,7 @@ function voiceExchanges(session: VoiceRuntimeSession): VoiceDebugExchange[] {
     startMs: exchange.startMs,
     question: exchange.userText,
     answer: exchange.replyText,
+    withheld: exchange.withheldText ?? "",
     interrupted: false,
     settled,
   }));

@@ -7,6 +7,33 @@
  * while that stream is down the gate is closed.
  */
 
+/**
+ * What every ChatAI Voice client declares when it mints a session. ChatAI 1.2.0 and
+ * later refuse clients without `playback_gate`, so all mint callers share this list.
+ */
+export const VOICE_CLIENT_CAPABILITIES = ["heartbeat", "playback_gate"] as const;
+
+export type VoiceClientCapability = (typeof VOICE_CLIENT_CAPABILITIES)[number];
+
+/** Opens the session's gate decision stream, authorized by its control token. */
+export function connectPlaybackGate(options: {
+  /** ChatAI origin; empty for same-origin callers. */
+  apiUrl: string;
+  sessionId: string;
+  token: string;
+  signal: AbortSignal;
+  fetch?: typeof fetch;
+}): Promise<Response> {
+  const fetcher = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
+  return fetcher(`${options.apiUrl}/api/v1/voice/sessions/${encodeURIComponent(options.sessionId)}/gate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: options.token }),
+    cache: "no-store",
+    signal: options.signal,
+  });
+}
+
 export const PLAYBACK_GATE_DEFAULTS = {
   reconnectMinMs: 250,
   reconnectMaxMs: 4_000,

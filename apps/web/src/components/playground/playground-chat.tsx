@@ -28,6 +28,8 @@ type ChatTurn = {
   voice?: {
     interrupted: boolean;
     kind: CompletedVoiceTurn["kind"];
+    /** Voice-model speech the playback gate kept from the visitor (owner review only). */
+    withheld: string;
     /** False when the server keeps no copy (no-store or transcripts off). */
     stored: boolean;
   };
@@ -86,7 +88,7 @@ export function PlaygroundChat({
           question: turn.question || "(voice)",
           answer: turn.answer,
           streaming: false,
-          voice: { interrupted: turn.interrupted, kind: turn.kind, stored: voiceStored },
+          voice: { interrupted: turn.interrupted, kind: turn.kind, withheld: turn.withheld, stored: voiceStored },
         })),
       ]);
     },
@@ -296,6 +298,11 @@ export function PlaygroundChat({
                 {turn.voice?.kind === "live" && turn.answer ? (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Answered by the voice model without a knowledge lookup.
+                  </p>
+                ) : null}
+                {turn.voice?.withheld ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Withheld (not heard): “{turn.voice.withheld}”
                   </p>
                 ) : null}
                 {turn.meta ? (

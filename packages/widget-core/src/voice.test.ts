@@ -207,6 +207,13 @@ describe("createVoiceSession", () => {
     expect(t.peer().closed).toBe(true);
   });
 
+  it("tells the visitor to reload when the server requires an updated client", async () => {
+    const message = "Voice needs an updated chat widget. Reload the page, or ask the site owner to update it.";
+    const t = setup({ mint: () => Response.json({ error: message, reason: "client_update_required" }, { status: 403 }) });
+    await t.session.start();
+    expect(t.session.snapshot()).toMatchObject({ connection: "failed", error: { code: "server", message } });
+  });
+
   it("reports an offline network as a network error", async () => {
     const t = setup({
       mint: () => {

@@ -3,7 +3,8 @@
  *
  *   node scripts/seed-e2e.mjs
  *
- * Creates e2e@chatai.local / E2ePass123! with a ready refund-policy assistant.
+ * Creates e2e@chatai.local / E2ePass123! with a ready refund-policy assistant
+ * (public Voice enabled for the mock-provider Voice e2e).
  * Fixtures read the env file (they must not parse this script's console output).
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -40,6 +41,8 @@ const E2E_PASSWORD = process.env.E2E_PASSWORD ?? "E2ePass123!";
 const E2E_ASSISTANT_ID = process.env.E2E_ASSISTANT_ID ?? "asst_e2e_v02";
 const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 const E2E_NAME = "E2E User";
+/** Public Voice on, no audio recording (no consent step); e2e runs the server with VOICE_PROVIDER=mock. */
+const E2E_VOICE_SETTINGS = { enabled: true, saveAudioRecordings: false };
 
 if (!DATABASE_URL) {
   console.error("DATABASE_URL is required.");
@@ -217,7 +220,7 @@ const existingAssistant = await sql`
 if (!existingAssistant[0]?.id) {
   await sql`
     insert into assistants (
-      id, public_id, user_id, name, welcome_message, instructions, hallucination_mode, settings
+      id, public_id, user_id, name, welcome_message, instructions, hallucination_mode, settings, voice_settings
     ) values (
       ${assistantId},
       ${publicId},
@@ -226,7 +229,8 @@ if (!existingAssistant[0]?.id) {
       'Hi! How can I help you today?',
       'Answer using the knowledge base. Cite sources with [1] markers. Do not invent policies. When asked about refunds, mention the 30-day money-back guarantee.',
       'balanced',
-      '{}'::jsonb
+      '{}'::jsonb,
+      ${sql.json(E2E_VOICE_SETTINGS)}
     )
   `;
 } else {
@@ -237,6 +241,7 @@ if (!existingAssistant[0]?.id) {
       name = 'E2E Support Bot',
       public_id = ${publicId},
       instructions = 'Answer using the knowledge base. Cite sources with [1] markers. Do not invent policies. When asked about refunds, mention the 30-day money-back guarantee.',
+      voice_settings = ${sql.json(E2E_VOICE_SETTINGS)},
       updated_at = now()
     where id = ${assistantId}
   `;

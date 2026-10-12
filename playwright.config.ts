@@ -30,13 +30,23 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "playwright/.auth/user.json",
+        // Voice e2e: a synthetic microphone, granted without a prompt.
+        permissions: ["microphone"],
+        launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] },
+      },
     },
   ],
   webServer: {
     command: "pnpm --filter @chatai/web start",
+    // Browser tests never reach a paid realtime provider.
+    env: { VOICE_PROVIDER: process.env.VOICE_PROVIDER ?? "mock" },
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

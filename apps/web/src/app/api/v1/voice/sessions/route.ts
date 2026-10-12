@@ -104,6 +104,12 @@ const BROWSER_LOCK_CONFIRM_TIMEOUT_MS = 3_000;
 
 const VOICE_UNAVAILABLE = { error: "Voice isn't available right now.", reason: "voice_unavailable" } as const;
 
+/** The client predates the playback gate (a cached or outdated widget); a reload fixes it. */
+const CLIENT_UPDATE_REQUIRED = {
+  error: "Voice needs an updated chat widget. Reload the page, or ask the site owner to update it.",
+  reason: "client_update_required",
+} as const;
+
 /** The provider did not confirm the browser command lock: the session must not run. */
 class BrowserCommandLockError extends Error {
   constructor() {
@@ -212,6 +218,7 @@ async function mintVoiceSession(request: Request) {
   const hostingAccount = await resolveBillableAccountForAssistant(assistant);
   const hostingAccess = checkHostingAccountAccess(hostingAccount);
   if (!hostingAccess.ok) {
+    logVoiceEvent("mint.refused", { code: "hosting_access", reason: hostingAccess.reason, source });
     return visitor
       ? jsonWithCors(VOICE_UNAVAILABLE, { status: 403 })
       : jsonWithCors({ error: hostingAccess.error }, { status: hostingAccess.status });
@@ -222,15 +229,17 @@ async function mintVoiceSession(request: Request) {
   // prototype in the playground.
   const voiceResolved = resolveVoiceSettings(assistant.voiceSettings);
   if (!voiceResolved.enabled && source !== "playground") {
+    logVoiceEvent("mint.refused", { code: "voice_disabled", source });
     return jsonWithCors({ error: "Voice is not enabled for this assistant." }, { status: 403 });
   }
   // Fail closed: a client that cannot hold back unapproved speech would let the
   // Voice model answer out of scope before ChatAI's backend has decided.
   if (!input.capabilities?.includes("playback_gate")) {
     logVoiceEvent("mint.refused", { code: "playback_gate_missing", source });
-    return jsonWithCors(VOICE_UNAVAILABLE, { status: 403 });
+    return jsonWithCors(CLIENT_UPDATE_REQUIRED, { status: 403 });
   }
   if (!isSupportedVoiceProvider(assistant.voiceSettings)) {
+    logVoiceWarning("mint.refused", { code: "provider_unsupported", source });
     return jsonWithCors({ error: "Configured voice provider is not supported." }, { status: 503 });
   }
 
@@ -286,6 +295,7 @@ async function mintVoiceSession(request: Request) {
   if (providerKind === "gpt-live") {
     credentials = resolveVoiceProviderCredentials();
     if (!credentials) {
+      logVoiceWarning("mint.refused", { code: "provider_unconfigured", provider: providerKind, source });
       return jsonWithCors(
         { error: "Voice provider is not configured on this instance." },
         { status: 503 },
@@ -297,6 +307,12 @@ async function mintVoiceSession(request: Request) {
   try {
     provider = await createVoiceProvider({ kind: providerKind, credentials });
   } catch (err) {
+    logVoiceWarning("mint.refused", {
+      code: "provider_init_failed",
+      provider: providerKind,
+      error: err instanceof Error ? err.name : "unknown",
+      source,
+    });
     return jsonWithCors(
       {
         error:
@@ -336,6 +352,7 @@ async function mintVoiceSession(request: Request) {
     voiceId: sessionConfig.voice,
   });
   if (!admitted.ok) {
+    logVoiceEvent("mint.refused", { code: "admission", reason: admitted.reason, source });
     // Widget visitors get one neutral refusal: no quota/minutes reason, no 402.
     if (visitor) {
       return jsonWithCors(VOICE_UNAVAILABLE, { status: 403 });

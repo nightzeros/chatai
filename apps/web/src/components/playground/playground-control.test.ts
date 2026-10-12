@@ -1,8 +1,6 @@
-import { readFileSync } from "node:fs";
-
+import { CONTROL_HEALTH_DEFAULTS } from "@nightzeros/chatai-widget-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CONTROL_HEALTH_DEFAULTS } from "./control-health";
 import { controlEndNotice, createPlaygroundControl, type PlaygroundControlView } from "./playground-control";
 import {
   CONTROL_GRACE_EXPIRED_NOTICE,
@@ -193,15 +191,5 @@ describe("Playground owner copy", () => {
     expect(deriveVoicePhase({ ...signals, connection: "reconnecting" })).toBe("reconnecting");
     expect(isPlaygroundVoiceActive("degraded")).toBe(true);
     expect(isPlaygroundVoiceActive("ended")).toBe(false);
-  });
-});
-
-describe("control-health copies", () => {
-  it("the Playground and widget state machines stay identical", () => {
-    const body = (path: string) => {
-      const source = readFileSync(new URL(path, import.meta.url), "utf8");
-      return source.slice(source.indexOf("*/") + 2);
-    };
-    expect(body("./control-health.ts")).toBe(body("../../../../../packages/widget-core/src/control-health.ts"));
   });
 });

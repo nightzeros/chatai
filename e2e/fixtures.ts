@@ -19,6 +19,7 @@ export const e2eEmail = process.env.E2E_EMAIL ?? "e2e@chatai.local";
 export const e2ePassword = process.env.E2E_PASSWORD ?? "E2ePass123!";
 export const assistantId = process.env.E2E_ASSISTANT_ID ?? "asst_e2e_v02";
 export const e2eBaseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
+export const authStatePath = join(process.cwd(), "playwright/.auth/user.json");
 
 export async function signIn(page: Page) {
   await page.goto("/login");

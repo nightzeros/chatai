@@ -60,7 +60,7 @@ if ! HEALTH_URL="${HEALTH_URL:-https://app.nightzeros.com/api/health}" \
   if [[ -n "$previous_tag" ]]; then
     echo "  cd $DEPLOY_DIR && CHATAI_IMAGE_TAG=${previous_tag} ./scripts/rollback.sh" >&2
   else
-    echo "  Investigate logs: docker compose -f $COMPOSE_FILE logs chatai" >&2
+    echo "  Investigate logs: cd $DEPLOY_DIR && CHATAI_IMAGE_TAG=${IMAGE_TAG} docker compose -f $COMPOSE_FILE logs chatai" >&2
   fi
   echo "[deploy] Migration compatibility: if migrations applied successfully but the new" >&2
   echo "  app is unhealthy, rolling back the app may still leave the DB on a newer schema." >&2

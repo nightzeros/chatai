@@ -1,9 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import { assistantId, signIn } from "./fixtures";
+import { assistantId } from "./fixtures";
 
 test("draft preview updates and settings save", async ({ page }) => {
-  await signIn(page);
   await page.goto(`/dashboard/assistants/${assistantId}/customize`);
   await page.getByLabel("Accent color").fill("#112233");
 

@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ClientHistoryMessage } from "@nightzeros/chatai-widget-core";
 import { Mic, PhoneOff, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { createPlaygroundControl, type PlaygroundControl, type PlaygroundControlView } from "./playground-control";
+import { buildPlaygroundMintBody, createPlaygroundPlayback, type PlaygroundPlayback } from "./playground-voice";
 import {
   deriveVoicePhase,
   detectInterruption,
@@ -42,12 +44,14 @@ export type CompletedVoiceTurn = {
   kind: "delegated" | "live" | "superseded";
   question: string;
   answer: string;
+  /** Voice-model speech the playback gate kept from the visitor ("" when nothing). */
+  withheld: string;
   interrupted: boolean;
 };
 
 type DebugExchange = CompletedVoiceTurn & { startMs: number; settled: boolean };
 
-export type ClientHistoryMessage = { role: "user" | "assistant"; content: string };
+export type { ClientHistoryMessage };
 
 type Caption = { id: string; role: "user" | "assistant" | "system"; text: string };
 
@@ -110,6 +114,9 @@ const POLL_MS = 1_000;
 const ICE_GATHER_TIMEOUT_MS = 4_000;
 const IN_FLIGHT = new Set(["collecting", "retrieving", "generating"]);
 
+/** ChatAI declined to start the call (the mint returned an error). */
+class VoiceRefusedError extends Error {}
+
 const PHASE_TONE: Record<VoicePhase, string> = {
   idle: "bg-muted-foreground/40",
   connecting: "bg-amber-500 animate-pulse",
@@ -121,6 +128,7 @@ const PHASE_TONE: Record<VoicePhase, string> = {
   reconnecting: "bg-amber-500 animate-pulse",
   control_lost: "bg-amber-600 animate-pulse",
   error: "bg-destructive",
+  unavailable: "bg-muted-foreground/40",
   ended: "bg-muted-foreground/40",
 };
 
@@ -191,6 +199,13 @@ export function VoicePanel({
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playback] = useState<PlaygroundPlayback>(() =>
+    createPlaygroundPlayback({
+      setAudioMuted: (muted) => {
+        if (audioRef.current) audioRef.current.muted = muted;
+      },
+    }),
+  );
   const audioCtxRef = useRef<AudioContext | null>(null);
   const micAnalyser = useRef<{ node: AnalyserNode; buffer: Float32Array<ArrayBuffer> } | null>(null);
   const remoteAnalyser = useRef<{ node: AnalyserNode; buffer: Float32Array<ArrayBuffer> } | null>(null);
@@ -203,6 +218,7 @@ export function VoicePanel({
     assistantVoiceAt: null,
     delegationActive: false,
     interruptedAt: null,
+    withheldAt: null,
   });
   const userWasActive = useRef(false);
   const pendingDelegations = useRef(new Map<string, number>());
@@ -241,7 +257,13 @@ export function VoicePanel({
   }, []);
 
   const handleProviderEvent = useCallback(
-    (event: { type?: string; delta?: string; delegation?: { id?: string }; error?: { message?: string } }) => {
+    (event: {
+      type?: string;
+      delta?: string;
+      start_ms?: number;
+      delegation?: { id?: string };
+      error?: { message?: string };
+    }) => {
       const now = performance.now();
       if (connectionRef.current === "degraded") {
         // Unsupervised provider activity is not shown while ChatAI control is unavailable.
@@ -254,9 +276,15 @@ export function VoicePanel({
           break;
         case "session.input_transcript.delta":
           signals.current.userVoiceAt = now;
+          playback.noteInput(event.start_ms);
           appendCaption("user", event.delta ?? "");
           break;
         case "session.output_transcript.delta":
+          // Speech ChatAI has not approved is muted; its transcript is not shown either.
+          if (!playback.audible()) {
+            signals.current.withheldAt = now;
+            break;
+          }
           markAssistantAudio(now);
           appendCaption("assistant", event.delta ?? "");
           break;
@@ -275,7 +303,7 @@ export function VoicePanel({
           break;
       }
     },
-    [appendCaption, markAssistantAudio, updateConnection],
+    [appendCaption, markAssistantAudio, playback, updateConnection],
   );
 
   /** Adds every exchange to the chat in spoken order; `final` includes the still-open one. */
@@ -286,9 +314,9 @@ export function VoicePanel({
       const completed = (latest.exchanges ?? [])
         .map((exchange) => ({ ...exchange, id: `${latest.sessionId}:${exchange.id}` }))
         .filter((exchange) => (final || exchange.settled) && !reported.current.has(exchange.id))
-        .map(({ id, kind, question, answer, interrupted }) => {
+        .map(({ id, kind, question, answer, withheld, interrupted }) => {
           reported.current.add(id);
-          return { id, kind, question, answer, interrupted };
+          return { id, kind, question, answer, withheld, interrupted };
         });
       if (completed.length) onTurnsCompleted(completed);
     },
@@ -308,9 +336,17 @@ export function VoicePanel({
     micAnalyser.current = null;
     remoteAnalyser.current = null;
     if (audioRef.current) audioRef.current.srcObject = null;
+    playback.stop();
     pendingDelegations.current.clear();
-    signals.current = { ...signals.current, userVoiceAt: null, assistantVoiceAt: null, delegationActive: false, interruptedAt: null };
-  }, []);
+    signals.current = {
+      ...signals.current,
+      userVoiceAt: null,
+      assistantVoiceAt: null,
+      delegationActive: false,
+      interruptedAt: null,
+      withheldAt: null,
+    };
+  }, [playback]);
 
   const endServerSession = useCallback(
     async (reason: "close_requested" | "connection_lost" | "error") => {
@@ -371,16 +407,22 @@ export function VoicePanel({
       micRef.current?.getTracks().forEach((track) => {
         track.enabled = !muted;
       });
-      if (audioRef.current) audioRef.current.muted = muted;
+      playback.setControlMuted(muted);
       if (muted) {
-        signals.current = { ...signals.current, userVoiceAt: null, assistantVoiceAt: null, interruptedAt: null };
+        signals.current = {
+          ...signals.current,
+          userVoiceAt: null,
+          assistantVoiceAt: null,
+          interruptedAt: null,
+          withheldAt: null,
+        };
         userWasActive.current = false;
         updateConnection("degraded");
       } else if (connectionRef.current === "degraded") {
         updateConnection("connected");
       }
     },
-    [updateConnection],
+    [playback, updateConnection],
   );
 
   /** Control stayed lost (or ChatAI ended the call): close media, one best-effort end. */
@@ -459,6 +501,7 @@ export function VoicePanel({
           const [remote] = event.streams;
           if (!remote) return;
           if (audioRef.current) audioRef.current.srcObject = remote;
+          playback.refresh();
           const remoteNode = audioCtx.createAnalyser();
           remoteNode.fftSize = 512;
           audioCtx.createMediaStreamSource(remote).connect(remoteNode);
@@ -495,17 +538,16 @@ export function VoicePanel({
         const response = await fetch("/api/v1/voice/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            assistantId: publicId,
-            sdpOffer: pc.localDescription?.sdp ?? "",
-            visitorId: visitorId(),
-            // The server binds only durable sessions; no-store reads prior turns without writing.
-            conversationId,
-            history: history(),
-            source: "playground",
-            ...(consentRef.current ? { recordingConsent: true } : {}),
-            capabilities: ["heartbeat"],
-          }),
+          body: JSON.stringify(
+            buildPlaygroundMintBody({
+              assistantId: publicId,
+              sdpOffer: pc.localDescription?.sdp ?? "",
+              visitorId: visitorId(),
+              conversationId,
+              history: history(),
+              recordingConsent: consentRef.current,
+            }),
+          ),
         });
         const body = (await response.json().catch(() => ({}))) as {
           error?: string;
@@ -516,9 +558,13 @@ export function VoicePanel({
           conversationId?: string | null;
           controlToken?: string;
           heartbeatIntervalMs?: number;
+          playbackGate?: boolean;
         };
-        if (!response.ok || !body.sessionId || !body.sdpAnswer) {
-          throw new Error(body.error ?? "Could not start a voice session.");
+        if (!response.ok) {
+          throw new VoiceRefusedError(body.error ?? "Voice isn't available right now.");
+        }
+        if (!body.sessionId || !body.sdpAnswer) {
+          throw new Error("Could not start a voice session.");
         }
         if (pcRef.current !== pc) {
           sessionIdRef.current = body.sessionId;
@@ -529,6 +575,8 @@ export function VoicePanel({
         setSessionMode({ ephemeral: Boolean(body.ephemeral), recording: Boolean(body.recording) });
         if (body.conversationId) onConversation(body.conversationId);
         if (body.controlToken) startControl(body.sessionId, body.controlToken, body.heartbeatIntervalMs);
+        // Before any remote audio can play: the gate starts closed.
+        if (body.playbackGate && body.controlToken) playback.startGate(body.sessionId, body.controlToken);
 
         if (config.mockProvider) {
           // The mock provider returns a synthetic SDP answer; no media will flow.
@@ -547,7 +595,8 @@ export function VoicePanel({
         setError(message);
         await endServerSession("error");
         teardown();
-        updateConnection("failed");
+        // A refused start has nothing to reconnect to; the owner fixes the cause and starts again.
+        updateConnection(caught instanceof VoiceRefusedError ? "refused" : "failed");
       }
     },
     [
@@ -560,6 +609,7 @@ export function VoicePanel({
       handleProviderEvent,
       history,
       onConversation,
+      playback,
       publicId,
       startControl,
       teardown,
@@ -583,7 +633,7 @@ export function VoicePanel({
   }, [endServerSession, pollSnapshot, reportCompletedTurns, start, teardown, updateConnection]);
 
   useEffect(() => {
-    if (connection === "idle" || connection === "ended") {
+    if (connection === "idle" || connection === "ended" || connection === "refused") {
       setPhase(deriveVoicePhase({ ...signals.current, connection, now: performance.now() }));
       return;
     }
@@ -602,7 +652,9 @@ export function VoicePanel({
         rms(remoteAnalyser.current?.node ?? null, remoteAnalyser.current?.buffer ?? null) >
         REMOTE_RMS_THRESHOLD
       ) {
-        markAssistantAudio(now);
+        // The analyser taps the stream before the mute: withheld speech is not assistant audio.
+        if (playback.audible()) markAssistantAudio(now);
+        else state.withheldAt = now;
       }
       const userActive = isUserActive(state);
       if (
@@ -619,7 +671,7 @@ export function VoicePanel({
       setPhase(deriveVoicePhase(state));
     }, TICK_MS);
     return () => clearInterval(timer);
-  }, [connection, markAssistantAudio]);
+  }, [connection, markAssistantAudio, playback]);
 
   useEffect(() => {
     // Also while degraded: the owner sees sideband re-attach progress.

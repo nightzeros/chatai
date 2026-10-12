@@ -14,6 +14,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(root, "./src"),
+      // Published from `dist`; tests use the source so they never run against a stale build.
+      "@nightzeros/chatai-widget-core": path.resolve(root, "../../packages/widget-core/src/index.ts"),
     },
   },
   test: {

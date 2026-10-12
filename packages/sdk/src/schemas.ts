@@ -224,10 +224,15 @@ export const voiceSessionEndResponseSchema = z.object({
     .optional(),
 });
 
-/** Mint refused before any provider session was created. */
+/**
+ * Mint refused before any provider session was created. `client_update_required`:
+ * the client did not declare `playback_gate` (an outdated or cached widget); reload or update it.
+ */
 export const voiceSessionRefusalSchema = z.object({
   error: z.string(),
-  reason: z.enum(["voice_minutes_exhausted", "voice_concurrency_limit", "voice_unavailable"]).optional(),
+  reason: z
+    .enum(["voice_minutes_exhausted", "voice_concurrency_limit", "voice_unavailable", "client_update_required"])
+    .optional(),
 });
 
 export type AssistantCreateInput = z.infer<typeof assistantCreateSchema>;

@@ -354,12 +354,15 @@ describe("POST /api/v1/voice/sessions", () => {
 
   it("rejects public (widget) mint when Voice is disabled", async () => {
     selectLimit.mockResolvedValueOnce([assistantRow({ voiceSettings: { enabled: false } })]);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const { POST } = await import("./route");
     const response = await POST(
       mintRequest({ visitorId: "visitor01", source: "widget" }, { Origin: "https://example.com" }),
     );
     expect(response.status).toBe(403);
     expect(insertValues).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith("[voice] mint.refused", { code: "voice_disabled", source: "widget" });
+    info.mockRestore();
   });
 
   it("lets the verified owner prototype in the playground while Voice is not public", async () => {
@@ -383,10 +386,16 @@ describe("POST /api/v1/voice/sessions", () => {
     const { env } = await import("@/lib/env");
     const mutableEnv = env as { VOICE_PROVIDER: string; VOICE_OPENAI_API_KEY?: string };
     mutableEnv.VOICE_PROVIDER = "gpt-live";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       // No VOICE_OPENAI_API_KEY → 503 even though the text provider is OpenAI with a key.
       const first = await (await import("./route")).POST(mintRequest({ source: "playground" }));
       expect(first.status).toBe(503);
+      expect(warn).toHaveBeenCalledWith("[voice] mint.refused", {
+        code: "provider_unconfigured",
+        provider: "gpt-live",
+        source: "playground",
+      });
 
       // Anthropic text assistant + instance voice key → mint proceeds.
       mutableEnv.VOICE_OPENAI_API_KEY = "sk-voice-instance-secret";
@@ -401,6 +410,7 @@ describe("POST /api/v1/voice/sessions", () => {
       expect(JSON.stringify(await second.json())).not.toContain("sk-voice-instance-secret");
       expect(resolveAssistantModels).not.toHaveBeenCalled();
     } finally {
+      warn.mockRestore();
       mutableEnv.VOICE_PROVIDER = "mock";
       mutableEnv.VOICE_OPENAI_API_KEY = undefined;
     }
@@ -629,6 +639,7 @@ describe("POST /api/v1/voice/sessions", () => {
       const create = vi.spyOn(provider, "createWebRtcSession");
       const { setVoiceProviderForTests } = await import("@/lib/voice");
       setVoiceProviderForTests(provider);
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
       const { POST } = await import("./route");
       const response = await POST(
@@ -640,6 +651,13 @@ describe("POST /api/v1/voice/sessions", () => {
       expect(body).toEqual({ error: "Voice isn't available right now.", reason: "voice_unavailable" });
       expect(JSON.stringify(body)).not.toMatch(/minute|plan|limit|quota|exhausted|concurrency|billing/i);
       expect(create).not.toHaveBeenCalled();
+      // The operator still sees why.
+      expect(info).toHaveBeenCalledWith("[voice] mint.refused", {
+        code: "admission",
+        reason: "voice_minutes_exhausted",
+        source: "widget",
+      });
+      info.mockRestore();
     });
 
     it("a keyless caller that omits source gets the same neutral refusal", async () => {
@@ -658,6 +676,7 @@ describe("POST /api/v1/voice/sessions", () => {
         error: "Hosted AI is temporarily unavailable for this account.",
         reason: "account_suspended",
       } as never);
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
       try {
         const { POST } = await import("./route");
         const visitor = await POST(
@@ -665,6 +684,12 @@ describe("POST /api/v1/voice/sessions", () => {
         );
         expect(visitor.status).toBe(403);
         expect(await visitor.json()).toEqual({ error: "Voice isn't available right now.", reason: "voice_unavailable" });
+        expect(info).toHaveBeenCalledWith("[voice] mint.refused", {
+          code: "hosting_access",
+          reason: "account_suspended",
+          source: "widget",
+        });
+        info.mockRestore();
 
         vi.mocked(resolveBillableAccountForAssistant).mockClear();
         enforceWidgetRequest.mockResolvedValueOnce({ status: 403, message: "Origin not allowed.", reason: "origin_denied:evil.test" });
@@ -903,20 +928,26 @@ describe("POST /api/v1/voice/sessions", () => {
     it.each([
       ["no capabilities", {}],
       ["heartbeat only (a 1.1.0 widget)", { capabilities: ["heartbeat"] }],
-    ])("fails closed without playback_gate (%s): neutral refusal, no provider session", async (_label, extra) => {
+    ])("fails closed without playback_gate (%s): update-required refusal, no provider session", async (_label, extra) => {
       const { MockRealtimeVoiceProvider } = await import("@chatai/voice/mock");
       const { setVoiceProviderForTests, listVoiceRuntimes } = await import("@/lib/voice");
       const provider = new MockRealtimeVoiceProvider();
       const create = vi.spyOn(provider, "createWebRtcSession");
       setVoiceProviderForTests(provider);
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
       const { POST } = await import("./route");
       for (const source of ["widget", "playground"] as const) {
         const response = await POST(
           mintRequest({ visitorId: "visitor01", source, capabilities: undefined, ...extra }, { Origin: "https://example.com" }),
         );
         expect(response.status).toBe(403);
-        expect(await response.json()).toEqual({ error: "Voice isn't available right now.", reason: "voice_unavailable" });
+        expect(await response.json()).toEqual({
+          error: "Voice needs an updated chat widget. Reload the page, or ask the site owner to update it.",
+          reason: "client_update_required",
+        });
+        expect(info).toHaveBeenCalledWith("[voice] mint.refused", { code: "playback_gate_missing", source });
       }
+      info.mockRestore();
       expect(create).not.toHaveBeenCalled();
       expect(admitVoiceSession).not.toHaveBeenCalled();
       expect(listVoiceRuntimes()).toHaveLength(0);

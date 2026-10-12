@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global console, process */
+/* global console, process, setTimeout */
 
 import { execSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -11,6 +11,10 @@ import { NPM_PUBLIC_PACKAGES } from "./npm-public-packages.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const version = readFileSync(path.join(root, "VERSION"), "utf8").trim();
+
+/** A fresh publish can take a minute or two to reach every registry read replica. */
+const ATTEMPTS = Number(process.env.NPM_VERIFY_ATTEMPTS ?? 12);
+const DELAY_MS = Number(process.env.NPM_VERIFY_DELAY_MS ?? 10_000);
 
 const EXPECTED_DEPENDENCIES = {
   "@nightzeros/chatai-widget-core": {},
@@ -37,7 +41,7 @@ function runCapture(command) {
 
 function npmView(field, pkg) {
   try {
-    return runCapture(`npm view ${pkg} ${field} --json`);
+    return runCapture(`npm view ${pkg} ${field} --json --prefer-online`);
   } catch (error) {
     const stderr = error instanceof Error && "stderr" in error ? String(error.stderr) : "";
     throw new Error(`[packages:verify-registry] npm view ${pkg} ${field} failed: ${stderr.trim()}`);
@@ -98,7 +102,7 @@ function assertRegistryInstallSmoke() {
     );
 
     run(
-      `npm install @nightzeros/chatai-react@${version} @nightzeros/chatai-sdk@${version}`,
+      `npm install --prefer-online @nightzeros/chatai-react@${version} @nightzeros/chatai-sdk@${version}`,
       installRoot,
     );
 
@@ -144,21 +148,37 @@ function assertRegistryInstallSmoke() {
   }
 }
 
-function main() {
+/** Retries registry propagation lag; the last failure is reported as is. */
+async function withRetry(label, check) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return check();
+    } catch (error) {
+      if (attempt >= ATTEMPTS) throw error;
+      const reason = error instanceof Error ? error.message : String(error);
+      console.log(
+        `[packages:verify-registry] ${label} not ready (attempt ${attempt}/${ATTEMPTS}): ${reason}. Retrying in ${DELAY_MS / 1000}s.`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+    }
+  }
+}
+
+async function main() {
   if (!/^\d+\.\d+\.\d+/.test(version)) {
     throw new Error(`[packages:verify-registry] Invalid VERSION: ${version}`);
   }
 
   for (const pkg of NPM_PUBLIC_PACKAGES) {
-    assertRegistryPackage(pkg);
+    await withRetry(pkg.name, () => assertRegistryPackage(pkg));
   }
 
-  assertRegistryInstallSmoke();
+  await withRetry("registry install smoke", () => assertRegistryInstallSmoke());
   console.log(`[packages:verify-registry] All ${NPM_PUBLIC_PACKAGES.length} packages verified on npm`);
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
