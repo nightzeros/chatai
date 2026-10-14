@@ -45,7 +45,7 @@
     "eslint": "^9.22.0",
     "eslint-config-prettier": "^10.1.1",
     "postgres": "^3.4.5",
-    "prettier": "^3.9.9",
+    "prettier": "^3.9.10",
     "turbo": "^2.11.7",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.71.1"
