@@ -6,6 +6,11 @@ type PreviewWidgetInput = {
   assistantId: string;
   apiUrl: string;
   settings: AssistantSettingsInput;
+  /**
+   * Design preview must pass `false` (default) so Customize never requests the mic.
+   * Live microphone test passes `true` / omits to follow assistant Voice settings.
+   */
+  voice?: boolean;
 };
 
 const previewStorage: Pick<Storage, "getItem" | "setItem" | "removeItem"> = {
@@ -23,5 +28,6 @@ export function previewWidgetOptions(input: PreviewWidgetInput): ChatWidgetOptio
     ...input.settings,
     layout: "contained",
     storage: previewStorage,
+    voice: input.voice ?? false,
   };
 }

@@ -82,6 +82,8 @@ export type WidgetVoiceState = {
   consentPending?: boolean;
   /** This session's audio is being recorded (the visitor consented). */
   recording?: boolean;
+  /** Visitor muted their microphone; assistant may still speak. */
+  microphoneMuted?: boolean;
   /** Visitor-safe explanation when ChatAI ended the call (e.g. usage limit). */
   notice?: string;
   mock?: boolean;
@@ -342,6 +344,7 @@ export function createWidgetController(options: WidgetControllerOptions) {
         ...(snap.ephemeral !== undefined ? { ephemeral: snap.ephemeral } : {}),
         ...(snap.transcriptSaved !== undefined ? { transcriptSaved: snap.transcriptSaved } : {}),
         ...(snap.recording ? { recording: true } : {}),
+        ...(snap.microphoneMuted ? { microphoneMuted: true } : {}),
         ...(snap.notice ? { notice: snap.notice } : {}),
         ...(snap.mock ? { mock: true } : {}),
       },
@@ -576,6 +579,13 @@ export function createWidgetController(options: WidgetControllerOptions) {
     },
     async endVoice() {
       await voiceSession?.end("close_requested");
+    },
+    /**
+     * Visitor microphone mute. Does not override safety mute during lost control;
+     * unmute restores capture only when control health permits.
+     */
+    setVoiceMicrophoneMuted(muted: boolean) {
+      voiceSession?.setMicrophoneMuted(muted);
     },
     /** Live mic/speaker levels for the waveform; zeros when Voice is off. */
     voiceLevels() {

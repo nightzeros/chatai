@@ -168,6 +168,31 @@ describe("Widget Voice control health", () => {
     expect(t.mints()).toBe(1);
   });
 
+  it("reconnect preserves visitor mic mute and does not unmute on control recovery", async () => {
+    let state = "degraded";
+    const t = setup({ heartbeat: () => heartbeatJson(state) });
+    await t.connect();
+    t.session.setMicrophoneMuted(true);
+    expect(t.track().enabled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(t.session.snapshot().connection).toBe("reconnecting");
+    expect(t.track().enabled).toBe(false);
+    expect(t.audio().muted).toBe(true);
+
+    // Visitor unmute during control loss cannot override safety mute.
+    t.session.setMicrophoneMuted(false);
+    expect(t.track().enabled).toBe(false);
+    expect(t.audio().muted).toBe(true);
+
+    t.session.setMicrophoneMuted(true);
+    state = "healthy";
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(t.session.snapshot()).toMatchObject({ connection: "connected", microphoneMuted: true });
+    expect(t.track().enabled).toBe(false);
+    expect(t.audio().muted).toBe(false);
+  });
+
   it("no recovery within 20 s ends Voice once, restores text and never restarts Voice", async () => {
     const t = setup({ heartbeat: failing, end: failing });
     await t.connect();

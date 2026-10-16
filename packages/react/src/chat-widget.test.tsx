@@ -12,6 +12,10 @@ vi.mock("./client", () => ({
 
 const mountMock = vi.mocked(mountChatWidget);
 
+function mockInstance() {
+  return { destroy: vi.fn(), update: vi.fn() };
+}
+
 afterEach(() => {
   document.body.replaceChildren();
   mountMock.mockReset();
@@ -19,8 +23,8 @@ afterEach(() => {
 
 describe("ChatWidget", () => {
   it("mounts once and destroys the widget on unmount", async () => {
-    const destroy = vi.fn();
-    mountMock.mockReturnValue({ destroy });
+    const instance = mockInstance();
+    mountMock.mockReturnValue(instance);
     const target = document.createElement("div");
     document.body.append(target);
     const root = createRoot(target);
@@ -33,13 +37,13 @@ describe("ChatWidget", () => {
     await act(async () => {
       root.unmount();
     });
-    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(instance.destroy).toHaveBeenCalledTimes(1);
   });
 
-  it("remounts for supported option changes but not wrapper class changes", async () => {
-    const firstDestroy = vi.fn();
-    const secondDestroy = vi.fn();
-    mountMock.mockReturnValueOnce({ destroy: firstDestroy }).mockReturnValueOnce({ destroy: secondDestroy });
+  it("updates presentation props without remounting; remounts on identity changes", async () => {
+    const first = mockInstance();
+    const second = mockInstance();
+    mountMock.mockReturnValueOnce(first).mockReturnValueOnce(second);
     const target = document.createElement("div");
     document.body.append(target);
     const root = createRoot(target);
@@ -53,9 +57,30 @@ describe("ChatWidget", () => {
     expect(mountMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      root.render(<ChatWidget assistantId="asst_demo" apiUrl="https://chat.example.com" theme="dark" />);
+      root.render(
+        <ChatWidget
+          assistantId="asst_demo"
+          apiUrl="https://chat.example.com"
+          theme="dark"
+          voiceAppearance={{ experience: "orb" }}
+        />,
+      );
     });
-    expect(firstDestroy).toHaveBeenCalledTimes(1);
+    expect(first.destroy).not.toHaveBeenCalled();
+    expect(mountMock).toHaveBeenCalledTimes(1);
+    expect(first.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        theme: "dark",
+        voiceAppearance: { experience: "orb" },
+      }),
+    );
+
+    await act(async () => {
+      root.render(
+        <ChatWidget assistantId="asst_other" apiUrl="https://chat.example.com" theme="dark" />,
+      );
+    });
+    expect(first.destroy).toHaveBeenCalledTimes(1);
     expect(mountMock).toHaveBeenCalledTimes(2);
     await act(async () => {
       root.unmount();

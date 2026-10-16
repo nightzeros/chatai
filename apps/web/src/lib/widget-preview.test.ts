@@ -23,7 +23,19 @@ describe("previewWidgetOptions", () => {
       theme: "dark",
       showSources: false,
       suggestedQuestions: ["Draft question"],
+      voice: false,
     });
     expect(options.storage?.getItem("chatai.widget.asst_demo.visitor")).toBeNull();
+  });
+
+  it("can enable live Voice for microphone tests", () => {
+    const options = previewWidgetOptions({
+      assistantId: "asst_demo",
+      apiUrl: "https://chat.example.com",
+      settings: { voiceAppearance: { experience: "orb" } },
+      voice: true,
+    });
+    expect(options.voice).toBe(true);
+    expect(options.voiceAppearance).toEqual({ experience: "orb" });
   });
 });

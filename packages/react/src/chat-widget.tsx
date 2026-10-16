@@ -14,6 +14,24 @@ function errorFrom(error: unknown) {
   return error instanceof Error ? error : new Error("Widget mount failed.");
 }
 
+/**
+ * Presentation fields can update without remounting (keeps an active Voice session).
+ * Identity / transport fields still remount the widget.
+ */
+function presentationFrom(props: ChatWidgetOptions): Partial<ChatWidgetOptions> {
+  return {
+    primaryColor: props.primaryColor,
+    position: props.position,
+    theme: props.theme,
+    iconUrl: props.iconUrl,
+    suggestedQuestions: props.suggestedQuestions,
+    showSources: props.showSources,
+    voiceAppearance: props.voiceAppearance,
+    layout: props.layout,
+    voice: props.voice,
+  };
+}
+
 export function ChatWidget({
   className,
   onReady,
@@ -30,10 +48,13 @@ export function ChatWidget({
   iconUrl,
   suggestedQuestions,
   showSources,
+  voiceAppearance,
   layout,
   voice,
+  voiceMedia,
 }: ChatWidgetProps): ReactElement | null {
   const targetRef = useRef<HTMLDivElement>(null);
+  const instanceRef = useRef<ReturnType<typeof mountChatWidget> | null>(null);
   const callbacksRef = useRef({ onReady, onError });
   const [mounted, setMounted] = useState(false);
   callbacksRef.current = { onReady, onError };
@@ -43,7 +64,9 @@ export function ChatWidget({
   }, []);
 
   const suggestedQuestionsKey = JSON.stringify(suggestedQuestions ?? []);
+  const voiceAppearanceKey = JSON.stringify(voiceAppearance ?? null);
 
+  // Remount only when the controller identity would change.
   useEffect(() => {
     if (!mounted || !targetRef.current) return;
 
@@ -55,20 +78,31 @@ export function ChatWidget({
         storage,
         createId,
         signEndpoint,
-        primaryColor,
-        position,
-        theme,
-        iconUrl,
-        suggestedQuestions,
-        showSources,
-        layout,
-        voice,
+        voiceMedia,
+        ...presentationFrom({
+          assistantId,
+          apiUrl,
+          primaryColor,
+          position,
+          theme,
+          iconUrl,
+          suggestedQuestions,
+          showSources,
+          voiceAppearance,
+          layout,
+          voice,
+        }),
       });
+      instanceRef.current = instance;
       callbacksRef.current.onReady?.();
-      return () => instance.destroy();
+      return () => {
+        instance.destroy();
+        instanceRef.current = null;
+      };
     } catch (error) {
       callbacksRef.current.onError?.(errorFrom(error));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- presentation updates via the effect below
   }, [
     assistantId,
     apiUrl,
@@ -76,15 +110,38 @@ export function ChatWidget({
     storage,
     createId,
     signEndpoint,
+    voiceMedia,
+    mounted,
+  ]);
+
+  useEffect(() => {
+    instanceRef.current?.update(
+      presentationFrom({
+        assistantId,
+        apiUrl,
+        primaryColor,
+        position,
+        theme,
+        iconUrl,
+        suggestedQuestions,
+        showSources,
+        voiceAppearance,
+        layout,
+        voice,
+      }),
+    );
+  }, [
     primaryColor,
     position,
     theme,
     iconUrl,
     suggestedQuestionsKey,
     showSources,
+    voiceAppearanceKey,
     layout,
     voice,
-    mounted,
+    assistantId,
+    apiUrl,
   ]);
 
   if (!mounted) return null;

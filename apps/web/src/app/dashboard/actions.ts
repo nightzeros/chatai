@@ -224,7 +224,19 @@ export async function updateAssistantSettings(
     await db()
       .update(assistants)
       .set({
-        settings: { ...existing.settings, ...settings },
+        settings: {
+          ...existing.settings,
+          ...settings,
+          // Nested leaf merge: a partial voiceAppearance must not wipe other appearance fields.
+          ...(settings.voiceAppearance
+            ? {
+                voiceAppearance: {
+                  ...existing.settings.voiceAppearance,
+                  ...settings.voiceAppearance,
+                },
+              }
+            : {}),
+        },
         updatedAt: new Date(),
       })
       .where(eq(assistants.id, existing.id));

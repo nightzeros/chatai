@@ -5,6 +5,8 @@ import { WidgetApp, type WidgetAppProps } from "./app";
 import styles from "./styles.generated";
 
 export type WidgetInstance = {
+  /** Re-render with merged options without destroying the controller when identity deps are unchanged. */
+  update(next: Partial<WidgetMountOptions>): void;
   destroy(): void;
 };
 
@@ -18,9 +20,18 @@ export function mountWidget(target: HTMLElement, options: WidgetMountOptions): W
   host.className = options.layout === "contained" ? "chatai-widget-host-contained" : "";
   root.replaceChildren(style, host);
 
-  render(<WidgetApp {...options} />, host);
+  let current: WidgetMountOptions = options;
+  const paint = () => {
+    host.className = current.layout === "contained" ? "chatai-widget-host-contained" : "";
+    render(<WidgetApp {...current} />, host);
+  };
+  paint();
 
   return {
+    update(next) {
+      current = { ...current, ...next };
+      paint();
+    },
     destroy() {
       render(null, host);
       root.replaceChildren();

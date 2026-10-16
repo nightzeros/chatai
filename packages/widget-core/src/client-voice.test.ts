@@ -131,6 +131,19 @@ describe("widget controller Voice", () => {
     ]);
   });
 
+  it("setVoiceMicrophoneMuted surfaces microphoneMuted on widget voice state", async () => {
+    const t = setup();
+    await t.controller.load();
+    await t.controller.startVoice();
+    t.channel().receive({ type: "session.started" });
+    t.controller.setVoiceMicrophoneMuted(true);
+    expect(t.controller.getState().voice.microphoneMuted).toBe(true);
+    expect(t.media!.tracks[0]!.enabled).toBe(false);
+    t.controller.setVoiceMicrophoneMuted(false);
+    expect(t.controller.getState().voice.microphoneMuted).toBeUndefined();
+    await t.controller.endVoice();
+  });
+
   it("Voice first: the durable conversation minted for Voice continues by text", async () => {
     const t = setup({ mint: { ephemeral: false, conversationId: "conv_voice" } });
     await t.controller.load();

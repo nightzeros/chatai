@@ -19,6 +19,16 @@ export const hallucinationModeEnum = pgEnum("hallucination_mode", [
   "flexible",
 ]);
 
+/** Live Voice presentation (Orb/Dock/…). Not privacy/provider `voiceSettings`. */
+export type VoiceAppearanceSettings = {
+  /** classic | orb | dock | guided | companion | side-panel; unfinished values must not be stored by the dashboard validator. */
+  experience?: "classic" | "orb" | "dock" | "guided" | "companion" | "side-panel";
+  accentColor?: string;
+  /** Orb/Dock/Guided/Companion/Side-panel captions panel only; Classic ignores this. */
+  captionsDefault?: boolean;
+  motion?: "system" | "reduced";
+};
+
 export type AssistantSettings = {
   primaryColor?: string;
   position?: "bottom-left" | "bottom-right";
@@ -26,6 +36,7 @@ export type AssistantSettings = {
   iconUrl?: string | null;
   suggestedQuestions?: string[];
   showSources?: boolean;
+  voiceAppearance?: VoiceAppearanceSettings;
 };
 
 /** Per-assistant chat/embedding overrides. Empty object uses instance env defaults. No API keys. */

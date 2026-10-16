@@ -57,6 +57,22 @@
   left: 12px;
 }
 
+/* Side panel — tall edge sheet beside host page content (no page scrape / context claims). */
+.chatai-widget.experience-side-panel .chatai-panel {
+  width: min(360px, calc(100vw - 24px));
+  height: min(calc(100dvh - 88px), 860px);
+  border-radius: 18px 18px 8px 18px;
+}
+
+.chatai-widget.experience-side-panel.position-left .chatai-panel {
+  border-radius: 18px 18px 18px 8px;
+}
+
+.chatai-widget.experience-side-panel.layout-contained .chatai-panel {
+  width: min(360px, 100%);
+  height: min(calc(100% - 70px), 100%);
+}
+
 .chatai-widget.theme-dark {
   --chatai-ink: #ecf4ec;
   --chatai-surface: #17231d;
@@ -742,6 +758,667 @@
   white-space: nowrap;
 }
 
+/* Orb / Dock voice stage — replaces transcript + composer while Voice is active. */
+.chatai-voice-stage {
+  --chatai-voice-accent: var(--chatai-accent);
+  --chatai-orb-energy: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 18px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  overflow: auto;
+  text-align: center;
+}
+
+.chatai-voice-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.chatai-voice-name {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.chatai-orb {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  margin: 8px 0 4px;
+  flex-shrink: 0;
+}
+
+.chatai-orb-core,
+.chatai-orb-shine,
+.chatai-orb-shadow {
+  position: absolute;
+  inset: 0;
+  border-radius: 48% 52% 57% 43% / 53% 42% 58% 47%;
+}
+
+.chatai-orb-core {
+  background: radial-gradient(
+    ellipse at 28% 20%,
+    #fff8e8 0%,
+    color-mix(in srgb, var(--chatai-voice-accent), #fff 55%) 26%,
+    var(--chatai-voice-accent) 54%,
+    color-mix(in srgb, var(--chatai-voice-accent), #1a1a12 55%) 82%
+  );
+  box-shadow:
+    inset -12px -18px 22px rgb(20 36 30 / 42%),
+    inset 4px 6px 16px rgb(255 255 255 / 42%);
+  transform: scale(calc(0.96 + var(--chatai-orb-energy) * 0.12));
+  transition: transform 180ms ease, border-radius 500ms ease;
+}
+
+.chatai-orb-shine {
+  inset: 10% 18% auto 14%;
+  height: 28%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(255 255 255 / 55%), transparent);
+  pointer-events: none;
+}
+
+.chatai-orb-shadow {
+  inset: auto 12% -6% 12%;
+  height: 18%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgb(20 36 30 / 22%), transparent 70%);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.chatai-voice-stage[data-motion="listening"] .chatai-orb-core {
+  border-radius: 55% 45% 42% 58% / 43% 60% 40% 57%;
+}
+
+.chatai-voice-stage[data-motion="hearing"] .chatai-orb-core {
+  border-radius: 52% 48% 60% 40% / 48% 55% 45% 52%;
+}
+
+.chatai-voice-stage[data-motion="speaking"] .chatai-orb-core {
+  border-radius: 40% 60% 52% 48% / 58% 45% 55% 42%;
+}
+
+.chatai-voice-stage[data-motion="processing"] .chatai-orb-core,
+.chatai-voice-stage[data-motion="pending"] .chatai-orb-core {
+  border-radius: 50% 50% 46% 54% / 54% 46% 54% 46%;
+}
+
+.chatai-voice-stage[data-motion="settle"] .chatai-orb-core {
+  border-radius: 47% 53% 50% 50% / 50% 48% 52% 50%;
+}
+
+.chatai-voice-stage-status {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.chatai-voice-stage-detail {
+  margin: 0;
+  max-width: 28ch;
+  color: var(--chatai-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.chatai-voice-stage-meta {
+  margin: 0;
+  color: var(--chatai-muted);
+  font-size: 11px;
+}
+
+.chatai-voice-captions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-height: 140px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--chatai-voice-accent), var(--chatai-panel) 92%);
+  text-align: left;
+}
+
+.chatai-voice-captions.is-empty {
+  text-align: center;
+  color: var(--chatai-muted);
+  font-size: 12px;
+}
+
+.chatai-voice-captions.is-empty p {
+  margin: 0;
+}
+
+.chatai-voice-caption {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.chatai-voice-caption-who {
+  color: var(--chatai-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.chatai-voice-caption.user .chatai-voice-caption-who {
+  color: var(--chatai-voice-accent);
+}
+
+.chatai-voice-caption.is-live .chatai-voice-caption-text::after {
+  content: "…";
+}
+
+.chatai-voice-caption-note {
+  color: var(--chatai-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.chatai-voice-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.chatai-voice-primary,
+.chatai-voice-secondary,
+.chatai-voice-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chatai-voice-primary {
+  border: 0;
+  background: var(--chatai-voice-accent);
+  color: #fff;
+}
+
+.chatai-voice-secondary {
+  border: 1px solid var(--chatai-border);
+  background: var(--chatai-panel);
+  color: var(--chatai-ink);
+}
+
+.chatai-voice-secondary.is-pressed {
+  border-color: var(--chatai-voice-accent);
+  background: color-mix(in srgb, var(--chatai-voice-accent), var(--chatai-panel) 88%);
+}
+
+.chatai-voice-danger {
+  border: 0;
+  background: #b42318;
+  color: #fff;
+}
+
+.chatai-voice-controls svg {
+  width: 16px;
+  height: 16px;
+}
+
+.chatai-voice-stage .chatai-voice-consent {
+  width: 100%;
+  border-top: 0;
+  border-radius: 12px;
+  text-align: left;
+}
+
+.chatai-voice-stage .chatai-voice-actions {
+  flex-wrap: wrap;
+  justify-content: stretch;
+}
+
+.chatai-voice-stage .chatai-consent-accept,
+.chatai-voice-stage .chatai-consent-cancel {
+  flex: 1;
+  min-height: 44px;
+}
+
+.chatai-voice-primary:focus-visible,
+.chatai-voice-secondary:focus-visible,
+.chatai-voice-danger:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--chatai-voice-accent), white 55%);
+  outline-offset: 2px;
+}
+
+/* Launch controls stay put; panel/dock surfaces sit above them in the column. */
+.chatai-launch-row {
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.chatai-dock-talk {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 5.75rem;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--chatai-voice-accent, var(--chatai-accent));
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgb(20 36 30 / 22%);
+}
+
+.chatai-dock-talk svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.chatai-dock-talk.is-open {
+  background: color-mix(in srgb, var(--chatai-voice-accent, var(--chatai-accent)), #1a1a12 28%);
+}
+
+.chatai-dock-talk:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--chatai-voice-accent, var(--chatai-accent)), white 55%);
+  outline-offset: 2px;
+}
+
+/* Same placement model as .chatai-panel: above the launch row, bottom-anchored. */
+.chatai-dock-surface {
+  display: flex;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(420px, calc(100dvh - 104px));
+  margin-bottom: 14px;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--chatai-border);
+  border-radius: 20px 20px 8px 20px;
+  background: var(--chatai-panel);
+  box-shadow: 0 24px 70px rgb(20 36 30 / 24%);
+  transform-origin: bottom right;
+  animation: chatai-panel-in 180ms ease-out;
+}
+
+.chatai-widget.position-left .chatai-dock-surface {
+  border-radius: 20px 20px 20px 8px;
+  transform-origin: bottom left;
+}
+
+.chatai-widget.position-left .chatai-launch-row {
+  flex-direction: row-reverse;
+}
+
+.chatai-dock-surface .chatai-voice-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.chatai-guided {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 18px 16px 12px;
+  overflow: auto;
+}
+
+.chatai-guided-kicker {
+  margin: 0;
+  color: var(--chatai-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chatai-guided-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.chatai-guided-welcome {
+  margin: 0;
+  color: var(--chatai-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.chatai-guided-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.chatai-guided-choices-label {
+  margin: 0;
+  color: var(--chatai-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chatai-guided-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--chatai-border);
+  border-radius: 12px;
+  background: var(--chatai-panel);
+  color: var(--chatai-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatai-guided-choice:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.chatai-guided-choice:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--chatai-accent), white 55%);
+  outline-offset: 2px;
+}
+
+.chatai-guided-choice-mark {
+  color: var(--chatai-muted);
+  font-size: 14px;
+}
+
+.chatai-guided-hint {
+  margin: 0;
+  color: var(--chatai-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.chatai-guided-start {
+  align-self: stretch;
+  margin-top: auto;
+}
+
+.chatai-guided-history {
+  flex: 0 1 40%;
+  max-height: 40%;
+  border-top: 1px solid var(--chatai-border);
+}
+
+.chatai-guided-stage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chatai-guided-stage .chatai-voice-stage {
+  flex: 1;
+  min-height: 0;
+}
+
+.chatai-guided-speak-hints {
+  flex-shrink: 0;
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--chatai-border);
+  background: color-mix(in srgb, var(--chatai-voice-accent, var(--chatai-accent)), var(--chatai-panel) 94%);
+}
+
+.chatai-guided-speak-hints ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chatai-guided-speak-hints li {
+  color: var(--chatai-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.chatai-guided-speak-hints li::before {
+  content: "“";
+}
+
+.chatai-guided-speak-hints li::after {
+  content: "”";
+}
+
+/* Companion — abstract character + idle canvas */
+.chatai-companion {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px 12px;
+  overflow: auto;
+  text-align: center;
+}
+
+.chatai-companion-kicker {
+  margin: 0;
+  color: var(--chatai-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.chatai-companion-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.chatai-companion-speech {
+  position: relative;
+  max-width: 28ch;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--chatai-border);
+  border-radius: 16px;
+  background: var(--chatai-panel);
+  color: var(--chatai-ink);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.chatai-companion-speech::after {
+  content: "";
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-right: 1px solid var(--chatai-border);
+  border-bottom: 1px solid var(--chatai-border);
+  background: var(--chatai-panel);
+  transform: rotate(45deg);
+}
+
+.chatai-companion-character {
+  --chatai-companion-energy: 0;
+  --chatai-companion-accent: var(--chatai-voice-accent, var(--chatai-accent));
+  position: relative;
+  width: 132px;
+  height: 148px;
+  margin: 18px 0 8px;
+}
+
+.chatai-companion-body {
+  position: absolute;
+  inset: 0 8% 18% 8%;
+  border-radius: 52% 48% 38% 42%;
+  background: radial-gradient(
+    ellipse at 27% 25%,
+    color-mix(in srgb, var(--chatai-companion-accent), #fff 62%) 0%,
+    var(--chatai-companion-accent) 52%,
+    color-mix(in srgb, var(--chatai-companion-accent), #1a1a12 45%) 88%
+  );
+  box-shadow:
+    inset -10px -12px 18px rgb(20 36 30 / 28%),
+    inset 4px 6px 14px rgb(255 255 255 / 35%),
+    0 14px 16px rgb(20 36 30 / 14%);
+  transform: rotate(calc(-6deg + var(--chatai-companion-energy) * 12deg))
+    translateY(calc(var(--chatai-companion-energy) * -6px))
+    scale(calc(0.97 + var(--chatai-companion-energy) * 0.08));
+  transition: transform 180ms ease, border-radius 480ms ease;
+}
+
+.chatai-companion-eye {
+  position: absolute;
+  top: 38%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1a1a12;
+  box-shadow: inset 0 -1px 0 rgb(255 255 255 / 35%);
+}
+
+.chatai-companion-eye-left {
+  left: 34%;
+}
+
+.chatai-companion-eye-right {
+  right: 34%;
+}
+
+.chatai-companion-smile {
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  width: 22px;
+  height: 10px;
+  margin-left: -11px;
+  border: 2px solid #1a1a12;
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  opacity: 0.85;
+}
+
+.chatai-companion-foot {
+  position: absolute;
+  bottom: 4%;
+  width: 22px;
+  height: 14px;
+  border-radius: 40% 40% 50% 50%;
+  background: color-mix(in srgb, var(--chatai-companion-accent), #1a1a12 35%);
+  box-shadow: 0 3px 4px rgb(20 36 30 / 18%);
+}
+
+.chatai-companion-foot-left {
+  left: 28%;
+}
+
+.chatai-companion-foot-right {
+  right: 28%;
+}
+
+.chatai-voice-stage[data-motion="listening"] .chatai-companion-body,
+.chatai-companion-character[data-motion="listening"] .chatai-companion-body {
+  border-radius: 48% 52% 42% 40%;
+}
+
+.chatai-voice-stage[data-motion="hearing"] .chatai-companion-body,
+.chatai-companion-character[data-motion="hearing"] .chatai-companion-body {
+  border-radius: 42% 58% 45% 35%;
+}
+
+.chatai-voice-stage[data-motion="speaking"] .chatai-companion-body,
+.chatai-companion-character[data-motion="speaking"] .chatai-companion-body {
+  border-radius: 40% 60% 48% 38%;
+}
+
+.chatai-voice-stage[data-motion="processing"] .chatai-companion-body,
+.chatai-voice-stage[data-motion="pending"] .chatai-companion-body,
+.chatai-companion-character[data-motion="processing"] .chatai-companion-body,
+.chatai-companion-character[data-motion="pending"] .chatai-companion-body {
+  border-radius: 50% 50% 44% 46%;
+}
+
+.chatai-companion-hint {
+  margin: 0;
+  color: var(--chatai-muted);
+  font-size: 11px;
+}
+
+.chatai-companion-start {
+  margin-top: 4px;
+  min-width: 11rem;
+}
+
+.chatai-companion-history {
+  flex: 0 1 auto;
+  max-height: 28%;
+  border-top: 1px solid var(--chatai-border);
+}
+
+.chatai-voice-stage.visual-companion .chatai-companion-character {
+  margin: 8px 0;
+}
+
+.chatai-voice-stage.layout-compact {
+  padding: 14px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  gap: 8px;
+}
+
+.chatai-voice-stage.layout-compact .chatai-orb {
+  width: 108px;
+  height: 108px;
+  margin: 4px 0;
+}
+
+.chatai-voice-stage.layout-compact .chatai-voice-name {
+  font-size: 15px;
+}
+
+.chatai-voice-stage.layout-compact .chatai-voice-captions {
+  max-height: 96px;
+}
+
 @media (max-width: 480px) {
   .chatai-widget {
     bottom: 12px;
@@ -772,6 +1449,35 @@
   .chatai-retry {
     min-height: 40px;
   }
+
+  .chatai-voice-stage {
+    padding: 14px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .chatai-orb {
+    width: 128px;
+    height: 128px;
+  }
+
+  .chatai-voice-captions {
+    max-height: 120px;
+  }
+
+  .chatai-dock-surface {
+    width: calc(100vw - 24px);
+    max-height: min(380px, calc(100dvh - 88px));
+  }
+
+  .chatai-dock-talk {
+    width: 5.25rem;
+    min-height: 44px;
+  }
+
+  .chatai-widget.experience-side-panel .chatai-panel {
+    width: calc(100vw - 24px);
+    height: min(calc(100dvh - 80px), 860px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -783,7 +1489,8 @@
   }
 
   .chatai-panel,
-  .chatai-panel.is-closing {
+  .chatai-panel.is-closing,
+  .chatai-dock-surface {
     animation: none;
   }
 
@@ -797,5 +1504,11 @@
     animation: none;
     transition: none;
     transform: scaleY(0.45);
+  }
+
+  .chatai-orb-core,
+  .chatai-companion-body {
+    transition: none;
+    transform: none;
   }
 }

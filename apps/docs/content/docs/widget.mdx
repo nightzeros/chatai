@@ -74,16 +74,25 @@ If `data-api-url` is missing or wrong, the launcher may appear while config/chat
 | `data-assistant-id` | Yes | Assistant `publicId` |
 | `data-api-url` | Self-host only | Absolute ChatAI API origin |
 | `data-voice` | No | Set to `off` to hide the Voice button on this page even when the assistant offers Voice |
+| `data-voice-experience` | No | `classic` (default), `orb`, `dock`, `guided`, `companion`, or `side-panel` — overrides the assistant Customize setting for this page |
+| `data-voice-captions` | No | `on` or `off` — default visibility of the stage captions panel (ignored by Classic) |
 
-Appearance (colors, position, suggested questions) is controlled from **Customize** on the assistant and loaded at runtime — keep Customize **saved** so embeds match the draft preview.
+Appearance (colors, position, suggested questions, Voice experience) is controlled from **Customize** on the assistant and loaded at runtime — keep Customize **saved** so embeds match the draft preview.
 
 ## Voice (preview)
 
 When the assistant owner turns on **Offer Voice in the public widget** (assistant **Settings → Privacy**) and the instance has a Voice provider configured, the widget shows a microphone button next to the message box. Visitors can switch between typing and speaking in the same conversation.
 
+- **Classic** (default): mic toggle in the composer and a waveform status strip.
+- **Orb**: while Voice is active, a centered stage replaces the transcript and composer (identity → orb → status → optional captions → mute / End / Back to chat).
+- **Dock**: a **Talk** control beside the chat launcher expands into a compact voice card (not the full Orb scene). Opening Talk never starts the mic; Start inside the card does. Talk and the text chat panel are mutually exclusive — opening chat ends an active Dock call.
+- **Guided**: a welcome canvas with the assistant’s configured name, welcome text, and real suggested questions. Tap a question to ask by text, or Start conversation for the shared voice stage (with “Try saying…” hints while live). No fabricated product cards or booking flows.
+- **Companion**: an abstract character canvas with the assistant’s configured name and welcome speech, then the shared voice stage with the character (instead of the orb) during the call. No invented persona names or commerce actions.
+- **Side panel**: a tall edge sheet beside the host page (transcript + composer when idle; shared Orb stage while Voice is active). Layout only — ChatAI does not scrape the page or claim “looking at” product context.
+- Choose the experience under **Customize → Voice experience**.
 - Answers come from the same Purpose, instructions and Knowledge as text chat; provider keys never reach the browser.
 - Voice needs HTTPS (or `localhost`), microphone permission and WebRTC. Otherwise the widget explains why and text chat keeps working.
-- The Voice bar shows **Not saved**, **Voice transcript not saved** or **Recording** depending on the assistant's privacy settings. Recording always asks the visitor to **Agree and start** first.
+- The Voice bar / Orb meta shows **Not saved**, **Voice transcript not saved** or **Recording** depending on the assistant's privacy settings. Recording always asks the visitor to **Agree and start** first.
 - Hide Voice on a page with `data-voice="off"`.
 - Voice plays only speech ChatAI has approved (the playback gate). The hosted `chat.js` supports it; the npm `@nightzeros/chatai-widget` needs 1.2.0 or later, and older versions get **Voice needs an updated chat widget**.
 

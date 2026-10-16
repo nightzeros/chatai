@@ -22,12 +22,23 @@ export default async function PlaygroundPage({ params }: { params: Promise<{ id:
     assistant.privacySettings,
     assistant.voiceSettings,
   );
+  const apiUrl = env.BETTER_AUTH_URL ?? "http://localhost:3000";
 
   return (
     <PlaygroundChat
       publicId={assistant.publicId}
       name={assistant.name}
       welcomeMessage={assistant.welcomeMessage}
+      apiUrl={apiUrl}
+      widgetSettings={{
+        primaryColor: assistant.settings.primaryColor,
+        position: assistant.settings.position,
+        theme: assistant.settings.theme,
+        iconUrl: assistant.settings.iconUrl,
+        suggestedQuestions: assistant.settings.suggestedQuestions,
+        showSources: assistant.settings.showSources,
+        voiceAppearance: assistant.settings.voiceAppearance,
+      }}
       voice={{
         assistantId: assistant.id,
         available: voiceConfigured,

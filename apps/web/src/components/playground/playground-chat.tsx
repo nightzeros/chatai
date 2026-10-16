@@ -6,6 +6,7 @@ import { ArrowUp, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { DebugPanel } from "@/components/playground/debug-panel";
 import { MarkdownMessage } from "@/components/playground/markdown-message";
 import { SourcesBlock } from "@/components/playground/sources-block";
+import { VisitorWidgetPanel } from "@/components/playground/visitor-widget-panel";
 import {
   VoicePanel,
   type ClientHistoryMessage,
@@ -14,6 +15,7 @@ import {
 } from "@/components/playground/voice-panel";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import type { AssistantSettingsInput } from "@/lib/assistant-settings";
 import { ChatRequestError, streamChat, type ChatMetaEvent } from "@/lib/chat-client";
 import { cn } from "@/lib/utils";
 
@@ -65,11 +67,15 @@ export function PlaygroundChat({
   name,
   welcomeMessage,
   voice,
+  apiUrl,
+  widgetSettings,
 }: {
   publicId: string;
   name: string;
   welcomeMessage: string;
   voice?: PlaygroundVoiceConfig;
+  apiUrl: string;
+  widgetSettings: AssistantSettingsInput;
 }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
@@ -225,14 +231,21 @@ export function PlaygroundChat({
     }
   }
 
+  const voiceExperience = widgetSettings.voiceAppearance?.experience ?? "classic";
+
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="font-display text-lg font-semibold tracking-tight">Playground</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Chat through the public API and inspect retrieval under each answer.
+          Chat through the public API and inspect retrieval under each answer. To see the{" "}
+          {voiceExperience === "orb" ? "Orb" : voiceExperience === "dock" ? "Dock" : "Classic"} Voice
+          layout visitors get, use the visitor widget below.
         </p>
       </div>
+
+      <VisitorWidgetPanel publicId={publicId} apiUrl={apiUrl} settings={widgetSettings} />
+
     <div className="flex h-[min(720px,calc(100dvh-9rem))] min-h-[18rem] flex-col overflow-hidden rounded-xl border border-border bg-card sm:min-h-[24rem] md:min-h-[28rem] md:h-[min(720px,calc(100dvh-16rem))]">
       <div className="flex flex-col gap-2 border-b border-border px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4">
         <div className="min-w-0">

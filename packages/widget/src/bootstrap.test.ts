@@ -41,4 +41,40 @@ describe("optionsFromScript", () => {
       signEndpoint: "https://chat.example.com/api/v1/widget/sign",
     });
   });
+
+  it("reads voice appearance script attributes and ignores unfinished experiences", () => {
+    const script = document.createElement("script");
+    script.src = "https://chat.example.com/widget/chat.js";
+    script.dataset.assistantId = "asst_demo";
+    script.dataset.voiceExperience = "orb";
+    script.dataset.voiceCaptions = "off";
+
+    expect(optionsFromScript(script)).toMatchObject({
+      voiceAppearance: { experience: "orb", captionsDefault: false },
+    });
+
+    script.dataset.voiceExperience = "dock";
+    delete script.dataset.voiceCaptions;
+    expect(optionsFromScript(script)).toMatchObject({
+      voiceAppearance: { experience: "dock" },
+    });
+
+    script.dataset.voiceExperience = "guided";
+    expect(optionsFromScript(script)).toMatchObject({
+      voiceAppearance: { experience: "guided" },
+    });
+
+    script.dataset.voiceExperience = "companion";
+    expect(optionsFromScript(script)).toMatchObject({
+      voiceAppearance: { experience: "companion" },
+    });
+
+    script.dataset.voiceExperience = "side-panel";
+    expect(optionsFromScript(script)).toMatchObject({
+      voiceAppearance: { experience: "side-panel" },
+    });
+
+    script.dataset.voiceExperience = "hologram";
+    expect(optionsFromScript(script).voiceAppearance).toBeUndefined();
+  });
 });
