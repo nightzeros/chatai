@@ -1,10 +1,38 @@
 import { describe, expect, it } from "vitest";
 
+import { z } from "zod";
+
 import {
   parseAssistantAllowlist,
   resolveTextAnswerOwner,
   resolveVoiceAnswerOwner,
 } from "./answer-owner";
+
+describe("answer owner production defaults", () => {
+  it("keeps schema defaults on legacy with visitor release off", () => {
+    // M7 guard: mirror apps/web/src/lib/env.ts — do not flip without soak + explicit release.
+    const defaults = z
+      .object({
+        ANSWER_OWNER_TEXT: z.enum(["legacy", "agent", "shadow_agent"]).default("legacy"),
+        ANSWER_OWNER_VOICE: z.enum(["legacy", "agent", "shadow_agent"]).default("legacy"),
+        TEXT_AGENT_VISITOR_RELEASE: z
+          .enum(["true", "false"])
+          .default("false")
+          .transform((v) => v === "true"),
+        VOICE_AGENT_VISITOR_RELEASE: z
+          .enum(["true", "false"])
+          .default("false")
+          .transform((v) => v === "true"),
+      })
+      .parse({});
+    expect(defaults).toEqual({
+      ANSWER_OWNER_TEXT: "legacy",
+      ANSWER_OWNER_VOICE: "legacy",
+      TEXT_AGENT_VISITOR_RELEASE: false,
+      VOICE_AGENT_VISITOR_RELEASE: false,
+    });
+  });
+});
 
 describe("resolveTextAnswerOwner", () => {
   it("defaults to legacy", () => {

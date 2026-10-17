@@ -84,9 +84,11 @@ The hosted `/widget/chat.js` is built from `packages/widget` and copied into `ap
 - Dual auth on chat: widget `publicId` (keyless) vs Bearer `sk_` for SDK/REST
 - Voice (preview) sessions are supervised in the web process, so Voice needs a long-lived Node.js server; see [Voice in production](/docs/self-hosting/docker#voice-in-production)
 - Every text and Voice answer passes through the same scope policy in `packages/rag`; see [Scope and Profile](/docs/assistants#scope-and-profile)
+- Substantive answers may use the legacy pipeline or the shared agent (`ANSWER_OWNER_TEXT` / `ANSWER_OWNER_VOICE`); defaults stay legacy — see [Answer owner rollout](/docs/self-hosting/answer-owner-rollout)
 
 ## Related
 
 - [Installation](/docs/installation)
 - [Docker](/docs/self-hosting/docker)
+- [Answer owner rollout](/docs/self-hosting/answer-owner-rollout)
 - [Contributing](/docs/contributing)

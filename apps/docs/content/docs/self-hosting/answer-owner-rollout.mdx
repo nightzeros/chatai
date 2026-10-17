@@ -1,0 +1,77 @@
+---
+title: Answer owner rollout
+description: How to roll the shared tool-calling agent into text and Voice without flipping visitors early, plus soak and transport exit criteria.
+---
+
+ChatAI can answer substantive text and Voice turns with either the legacy `prepareAnswer` path or the shared tool-calling agent (`packages/rag/src/agent`). Defaults stay on **legacy** until you flip instance flags. This page is the operator checklist for soak, visitor release, and when GPT-Live's transitional transport is no longer acceptable.
+
+## Defaults (safe)
+
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `ANSWER_OWNER_TEXT` | `legacy` | Text uses `prepareAnswer` |
+| `ANSWER_OWNER_VOICE` | `legacy` | Voice uses `prepareAnswer` → commentary → gate |
+| `TEXT_AGENT_VISITOR_RELEASE` | `false` | Widget/API visitors stay on legacy text even if text owner is `agent` |
+| `VOICE_AGENT_VISITOR_RELEASE` | `false` | Widget visitors stay on legacy Voice even if voice owner is `agent` |
+
+Playground/owner sessions may use `agent` when the matching owner flag is `agent`, without visitor release. Mid-turn flag flips do not switch the path for an in-flight turn (snapshot at turn start).
+
+## Rollout stages
+
+Do text before Voice. Prefer an allowlist of assistant ids before instance-wide enablement.
+
+1. **Shadow (optional):** `ANSWER_OWNER_TEXT=shadow_agent` (and later Voice). Production stays legacy; a background agent run writes `status=shadow` usage with `path: shadow_agent`. No visitor output, history, or customer charge from the shadow path.
+2. **Playground agent:** `ANSWER_OWNER_TEXT=agent` with visitor release still `false`. Exercise shared fixtures and reported conversations.
+3. **Voice playground agent:** `ANSWER_OWNER_VOICE=agent` after text looks healthy. Same gate rules: validated speakable text only, then commentary, then open gate.
+4. **Visitor release:** set `TEXT_AGENT_VISITOR_RELEASE=true` / `VOICE_AGENT_VISITOR_RELEASE=true` only after soak acceptance below. Independent per channel.
+5. **Widen allowlists** then clear them when ready for all assistants on that channel.
+
+**Rollback:** set the channel flag back to `legacy`. In-flight turns keep their snapshot; new turns use legacy immediately.
+
+## Soak acceptance (before visitor release)
+
+Keep defaults until these hold on staging (or a narrow production allowlist):
+
+- Shared fixtures green on text: ack, yes-after-offer, how-are-you, greeting+ask, overview, off-topic (no invite-loop phrasing).
+- Evidence: Layer B rejects bad citations; Layer C fail-closed when unavailable; unsupported-but-cited claims do not ship as verified.
+- Purpose: suggested / instructions-derived / unconfigured still enforce; uncertain → domain limitation, not the contested draft.
+- Billing: one production reservation settle per turn; shadow rows never increment customer hosted balance under `HOSTED_USAGE_ENFORCEMENT=enforce`.
+- Voice: no factual commentary append before validation; social path unchanged; widget visitors still legacy until `VOICE_AGENT_VISITOR_RELEASE`.
+- Metrics present on agent turns: `t_agent_draft_ms`, `t_verify_ms`, `t_purpose_ms`, `t_validated_ready_ms` (debug / internal).
+
+## GPT-Live transport exit criteria
+
+GPT-Live client-delegation + playback gate is a **transitional** transport. Validated server text is not the spoken audio: commentary is paraphrased, so heard claims can diverge.
+
+Treat these as transport replacement triggers (measure on real mic / staging transcripts):
+
+| Failure mode | Why it matters |
+| --- | --- |
+| Ungated factual speech | Visitor hears model audio before ChatAI validates / opens the gate |
+| Paraphrase distortion | Heard transcript asserts facts not in the validated payload |
+| Grounding control loss | Model invents or expands beyond passages/profile evidence after gate open |
+| Sideband cannot block audio | Server cannot prevent residual spontaneous speech on the media path |
+
+Acceptance for keeping the transport: compare validated commentary payload to the heard transcript on Orb / Dock / Guided; mismatches are **fidelity** failures, not “already safe because the server validated.”
+
+This checklist does **not** migrate Voice to a new provider by itself — it only says when to stop treating the current transport as good enough.
+
+## Legacy retirement checklist
+
+Do **not** remove `prepareAnswer` / scope-router ownership until all of the following are true:
+
+- [ ] Text production traffic uses `ANSWER_OWNER_TEXT=agent` (or allowlist covering production assistants) with visitor release on, soak metrics healthy
+- [ ] Voice production uses `ANSWER_OWNER_VOICE=agent` the same way, or an explicit decision to keep Voice on legacy longer
+- [ ] Shared fixtures remain green on both channels
+- [ ] Shadow soak (if used) no longer needed for the cutover decision
+- [ ] No nested call from the agent into `prepareAnswer` / `generateGuardedAnswer` exists
+- [ ] Docs and env reference describe only the surviving path (or document legacy as deprecated)
+
+Until then, legacy remains the production path for `legacy` and for the production side of `shadow_agent`.
+
+## Related
+
+- [Environment reference](/docs/self-hosting/env-reference)
+- [Voice](/docs/voice)
+- [Architecture](/docs/architecture)
+- [Scope and Profile](/docs/assistants#scope-and-profile)

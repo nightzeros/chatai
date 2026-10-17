@@ -20,10 +20,10 @@ ChatAI's server, not the voice model, decides what the visitor hears:
 
 1. **ChatAI classifies every utterance.** Only greetings, thanks, goodbyes and short acknowledgements ("okay", "got it", "mhm") count as small talk. Everything else goes to ChatAI's backend, including statements ("I'm hungry"), single words, feelings, "What do you mean?", requests to repeat, and "yes" in answer to a question.
 2. **Small talk:** the voice model may answer it directly.
-3. **Everything else:** ChatAI's text answer pipeline answers it (Scope Router, Purpose, Profile, history, retrieval and the output guard), using the assistant's hallucination mode as in text chat. If the voice model doesn't hand the turn to ChatAI within a fraction of a second, or starts answering on its own, ChatAI runs the pipeline anyway and tells the model to say only that answer.
+3. **Everything else:** ChatAI's server answers it. By default that is the legacy text pipeline (`prepareAnswer`). When `ANSWER_OWNER_VOICE=agent`, the shared tool-calling agent answers instead (still buffered through evidence and Purpose checks). Either way, ChatAI tells the voice model to speak only that validated text. See [Answer owner rollout](/docs/self-hosting/answer-owner-rollout).
 4. **Playback gate:** the widget plays the voice model's audio, and shows its captions, only after ChatAI approves them. Anything the model says before ChatAI's answer is muted, kept out of the conversation history, and labelled **Withheld (not heard)** in Conversation Review. The gate closes again as soon as the visitor starts speaking, so interruptions work as before.
 
-The voice model's instructions repeat these rules, but they are a backup: the server-side gate is what enforces them.
+The voice model's instructions repeat these rules, but they are a backup: the server-side gate is what enforces them. Validated server text is not a guarantee of spoken wording — commentary may paraphrase; see transport exit criteria in the answer-owner rollout guide.
 
 Voice runtime state lives in the web process, so Voice needs a long-lived Node.js server (the Docker image or `next start`) and a single web instance or sticky routing. Serverless hosting is not supported for Voice; text chat keeps working there. See [Voice in production](/docs/self-hosting/docker#voice-in-production).
 
