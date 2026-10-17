@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@chatai/ai", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@chatai/ai")>();
+  const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
     generateAgentText: vi.fn(),
@@ -66,6 +66,8 @@ const embedding = {
   dimensions: 1536,
 };
 
+const emptyUsage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, totalTokens: 0 };
+
 describe("runAssistantAgent", () => {
   beforeEach(() => {
     vi.mocked(generateAgentText).mockReset();
@@ -97,6 +99,21 @@ describe("runAssistantAgent", () => {
       chat,
       embedding,
       onUsage: (record) => accrued.push(record.eventId ?? ""),
+      deps: {
+        verifyAgentSemanticSupport: async () => ({
+          passed: true,
+          unavailable: false,
+          reason: "ok",
+          usage: emptyUsage,
+        }),
+        checkPurpose: async () => ({
+          decision: "in_scope",
+          confidence: "high",
+          rationale: "portfolio",
+          usage: emptyUsage,
+          unavailable: false,
+        }),
+      },
     });
 
     expect(result.answer).toContain("booking app");
@@ -122,10 +139,104 @@ describe("runAssistantAgent", () => {
       history: [],
       chat,
       embedding,
+      deps: {
+        verifyAgentSemanticSupport: async () => ({
+          passed: true,
+          unavailable: false,
+          reason: "skipped",
+          usage: emptyUsage,
+        }),
+        checkPurpose: async () => ({
+          decision: "in_scope",
+          confidence: "high",
+          rationale: "ok",
+          usage: emptyUsage,
+          unavailable: false,
+        }),
+      },
     });
 
     expect(result.answer).toMatch(/verified sources/i);
     expect(result.sources).toEqual([]);
+  });
+
+  it("fail-closes when semantic verification is unavailable", async () => {
+    vi.mocked(generateAgentText).mockImplementation(async (opts) => {
+      await opts.tools.searchKnowledge!.execute({ query: "overview" });
+      return {
+        text: "They built a booking app [1].",
+        usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+        stepUsages: [],
+        steps: 1,
+      };
+    });
+
+    const result = await runAssistantAgent({
+      turnId: "trn_4",
+      db: {} as never,
+      assistantId: "asst_1",
+      message: "Tell me about him",
+      history: [],
+      chat,
+      embedding,
+      deps: {
+        verifyAgentSemanticSupport: async () => ({
+          passed: false,
+          unavailable: true,
+          reason: "Verifier unavailable.",
+          usage: emptyUsage,
+        }),
+        checkPurpose: async () => ({
+          decision: "in_scope",
+          confidence: "high",
+          rationale: "ok",
+          usage: emptyUsage,
+          unavailable: false,
+        }),
+      },
+    });
+
+    expect(result.answer).toMatch(/verified sources/i);
+  });
+
+  it("replaces out-of-scope drafts with a domain limitation", async () => {
+    vi.mocked(generateAgentText).mockImplementation(async (opts) => {
+      await opts.tools.searchKnowledge!.execute({ query: "cake" });
+      return {
+        text: "Here is a cake recipe [1].",
+        usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+        stepUsages: [],
+        steps: 1,
+      };
+    });
+
+    const result = await runAssistantAgent({
+      turnId: "trn_5",
+      db: {} as never,
+      assistantId: "asst_1",
+      message: "Help me bake a cake",
+      history: [],
+      chat,
+      embedding,
+      deps: {
+        verifyAgentSemanticSupport: async () => ({
+          passed: true,
+          unavailable: false,
+          reason: "ok",
+          usage: emptyUsage,
+        }),
+        checkPurpose: async () => ({
+          decision: "out_of_scope",
+          confidence: "high",
+          rationale: "cooking",
+          usage: emptyUsage,
+          unavailable: false,
+        }),
+      },
+    });
+
+    expect(result.answer).not.toMatch(/cake recipe/i);
+    expect(result.answer).not.toMatch(/feel free to ask/i);
   });
 
   it("fails closed for incompatible providers", async () => {

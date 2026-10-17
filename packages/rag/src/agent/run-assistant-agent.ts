@@ -1,12 +1,16 @@
 import {
   generateAgentText,
+  generateChat,
+  runGenerateChat,
   type ChatConfig,
   type ChatMessage,
   type EmbeddingConfig,
+  type GenerateChatFn,
 } from "@chatai/ai";
 import type { Database, MessageDebug, MessageOutcome, MessageSource } from "@chatai/database";
 
-import { sourcesFromAnswer } from "../answer/citations";
+import { extractCitationIndexes, sourcesFromAnswer } from "../answer/citations";
+import { buildContextBlocks } from "../answer/prompt";
 import { loadAssistantContext } from "../answer/profile";
 import type { ProviderUsageListener, ProviderUsageRecord } from "../answer/provider-usage";
 import type { RagSettings } from "../answer/rag-settings";
@@ -20,14 +24,22 @@ import type { RetrievedChunk } from "../answer/retrieve";
 import {
   boundHistory,
   CONVERSATION_HISTORY_WINDOW,
+  isConversationalMessage,
   toChatMessages,
   type ChatHistoryMessage,
 } from "../answer/turn-plan";
 
+import {
+  applyPurposeDecision,
+  checkPurpose,
+  purposeUsageRecord,
+} from "./check-purpose";
 import { assertAgentCompatible } from "./compatibility";
 import { bindCitationsToTurnEvidence } from "./citation-bind";
+import { shouldRunPurposePreOutput } from "./purpose-pre-output";
 import { searchKnowledgeToolDefinition, type KnowledgePassage } from "./search-knowledge";
 import { createUsageLedger } from "./usage-ledger";
+import { verifyAgentSemanticSupport, verifyUsageRecord } from "./verify-agent-output";
 
 const SAFE_LIMITATION =
   "I don't have verified sources for that in the available knowledge. Please ask about something covered in the documents.";
@@ -39,13 +51,19 @@ export type AssistantAgentResult = {
   outcome: MessageOutcome;
   providerUsages: ProviderUsageRecord[];
   debug: MessageDebug;
-  /** Snapshot frozen for this turn. */
   turnSnapshot: {
     turnId: string;
     answerOwner: "agent";
     chatProvider: string | null | undefined;
     chatModel: string;
   };
+};
+
+export type RunAssistantAgentDeps = {
+  generateAgentText?: typeof generateAgentText;
+  generateChat?: GenerateChatFn;
+  checkPurpose?: typeof checkPurpose;
+  verifyAgentSemanticSupport?: typeof verifyAgentSemanticSupport;
 };
 
 export async function runAssistantAgent(opts: {
@@ -64,6 +82,7 @@ export async function runAssistantAgent(opts: {
   maxOutputTokens?: number;
   abortSignal?: AbortSignal;
   onUsage?: ProviderUsageListener;
+  deps?: RunAssistantAgentDeps;
 }): Promise<AssistantAgentResult> {
   const compatible = assertAgentCompatible(opts.chat);
   if (!compatible.ok) {
@@ -75,6 +94,11 @@ export async function runAssistantAgent(opts: {
     ledger.record(record);
     opts.onUsage?.(record);
   };
+
+  const generateAgent = opts.deps?.generateAgentText ?? generateAgentText;
+  const generate = opts.deps?.generateChat ?? generateChat;
+  const runPurpose = opts.deps?.checkPurpose ?? checkPurpose;
+  const runVerify = opts.deps?.verifyAgentSemanticSupport ?? verifyAgentSemanticSupport;
 
   const context = await loadAssistantContext(opts.db, opts.assistantId);
   const profile = buildScopeProfile({
@@ -101,7 +125,6 @@ export async function runAssistantAgent(opts: {
     abortSignal: opts.abortSignal,
     onPassages: (nextPassages, nextChunks) => {
       searchCalls += 1;
-      // Replace turn evidence with the latest retrieval set (citation ids reset per tool result).
       passages.splice(0, passages.length, ...nextPassages);
       chunks.splice(0, chunks.length, ...nextChunks);
     },
@@ -127,13 +150,14 @@ export async function runAssistantAgent(opts: {
   const started = Date.now();
   let text = "";
   let steps = 0;
+  const debugExtras: Record<string, unknown> = {};
 
   try {
     if (opts.abortSignal?.aborted) {
       throw new Error("Turn cancelled.");
     }
 
-    const generated = await generateAgentText({
+    const generated = await generateAgent({
       config: opts.chat,
       system,
       messages,
@@ -156,7 +180,6 @@ export async function runAssistantAgent(opts: {
         eventId: `${opts.turnId}:${step.step}`,
       });
     }
-    // Total usage may duplicate step sum on some providers; prefer step records when present.
     if (generated.stepUsages.length === 0) {
       onUsage({
         kind: "chat_completion",
@@ -190,19 +213,140 @@ export async function runAssistantAgent(opts: {
     text = passages.length === 0 ? SAFE_LIMITATION : templateRedirect(profile);
   }
 
-  // Layer B: citation ids must resolve to this turn's passages.
+  // Layer B — deterministic citation binding
   const bind = bindCitationsToTurnEvidence(text, passages.length);
   if (!bind.ok) {
     text = SAFE_LIMITATION;
+    debugExtras.citationBind = bind;
   }
 
-  // Layer C (semantic support) and Purpose judge are not visitor-released in this slice.
+  const socialOnly =
+    searchCalls === 0 &&
+    isConversationalMessage(opts.message) &&
+    extractCitationIndexes(text).length === 0;
+
+  // Layer C — semantic support (fail closed when unavailable). Skip pure social.
+  if (!socialOnly && bind.ok && text !== SAFE_LIMITATION) {
+    let verify = await runVerify({
+      question: opts.message,
+      answer: text,
+      chunks,
+      chat: opts.chat,
+      generate,
+      abortSignal: opts.abortSignal,
+    });
+    if (verify.usage.totalTokens > 0) {
+      onUsage(verifyUsageRecord(opts.chat, verify.usage, opts.turnId));
+    }
+
+    if (!verify.passed && !verify.unavailable && chunks.length > 0) {
+      // One remediation pass
+      try {
+        const retry = await runGenerateChat(generate, {
+          config: opts.chat,
+          system: [
+            "Rewrite the answer using only the numbered sources.",
+            "Cite every factual claim. If sources are insufficient, say so clearly.",
+          ].join(" "),
+          prompt: [
+            `Question: ${opts.message}`,
+            `Sources:\n${buildContextBlocks(chunks)}`,
+            `Previous draft (unsupported):\n${text}`,
+            `Verifier reason: ${verify.reason}`,
+          ].join("\n\n"),
+          ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
+        });
+        onUsage({
+          kind: "chat_completion",
+          provider: opts.chat.provider,
+          model: opts.chat.model,
+          usage: retry.usage,
+          step: "verify_remediate",
+          eventId: `${opts.turnId}:verify_remediate`,
+        });
+        const remediated = retry.text.trim();
+        const rebind = bindCitationsToTurnEvidence(remediated, passages.length);
+        if (rebind.ok && remediated) {
+          text = remediated;
+          verify = await runVerify({
+            question: opts.message,
+            answer: text,
+            chunks,
+            chat: opts.chat,
+            generate,
+            abortSignal: opts.abortSignal,
+          });
+          if (verify.usage.totalTokens > 0) {
+            onUsage({
+              ...verifyUsageRecord(opts.chat, verify.usage, opts.turnId),
+              eventId: `${opts.turnId}:verify_answer_retry`,
+              step: "verify_answer_retry",
+            });
+          }
+        }
+      } catch {
+        verify = { passed: false, unavailable: true, reason: "Remediation failed.", usage: verify.usage };
+      }
+    }
+
+    if (!verify.passed || verify.unavailable) {
+      text = SAFE_LIMITATION;
+      debugExtras.verify = {
+        passed: verify.passed,
+        unavailable: verify.unavailable,
+        reason: verify.reason,
+      };
+    } else {
+      debugExtras.verify = { passed: true };
+    }
+  }
+
+  // Purpose pre-output (commercial topic). Exemptions before substantive-claim clause.
+  const citationIds = extractCitationIndexes(text).map(String);
+  const knowledgePassageIds = passages.map((passage) => passage.id);
+  const runPurposeCheck = shouldRunPurposePreOutput({
+    responseClass: socialOnly ? "social_only" : "other",
+    citationIds,
+    profileEvidenceIds: [],
+    knowledgePassageIds,
+    searchKnowledgeCalled: searchCalls > 0,
+    requestIsProfileCoveredOverview: false,
+    earlierCheckPurposeUncertain: false,
+    draftHasSubstantiveNonSocialClaims: !socialOnly && text !== SAFE_LIMITATION,
+  });
+
+  if (runPurposeCheck && text !== SAFE_LIMITATION) {
+    const purposeResult = await runPurpose({
+      request: opts.message,
+      draft: text,
+      reason: "server_pre_output",
+      profile,
+      chat: opts.chat,
+      generate,
+      abortSignal: opts.abortSignal,
+    });
+    if (purposeResult.usage.totalTokens > 0) {
+      onUsage(purposeUsageRecord(opts.chat, purposeResult.usage, opts.turnId));
+    }
+    const delivery = applyPurposeDecision(purposeResult, profile);
+    debugExtras.purpose = {
+      decision: purposeResult.decision,
+      confidence: purposeResult.confidence,
+      unavailable: purposeResult.unavailable,
+      action: delivery.action,
+    };
+    if (delivery.action === "redirect" || delivery.action === "limit") {
+      text = delivery.text;
+    }
+  }
+
   const bestScore = chunks[0]?.similarity ?? 0;
+  const limited = text === SAFE_LIMITATION || Boolean(debugExtras.purpose && (debugExtras.purpose as { action?: string }).action !== "deliver");
   const outcome: MessageOutcome =
-    passages.length === 0 && searchCalls > 0
+    limited && passages.length === 0
       ? "fallback_no_context"
-      : searchCalls === 0 && !/\[[1-9]\d*\]/.test(text)
-        ? "answered_with_context"
+      : limited && debugExtras.verify && !(debugExtras.verify as { passed?: boolean }).passed
+        ? "fallback_no_context"
         : "answered_with_context";
 
   return buildResult({
@@ -211,11 +355,12 @@ export async function runAssistantAgent(opts: {
     answer: text,
     chunks,
     confidence: bestScore,
-    outcome: bind.ok ? outcome : "fallback_no_context",
+    outcome: bind.ok && !limited ? outcome : text === SAFE_LIMITATION ? "fallback_no_context" : outcome,
     usages: ledger.records(),
     started,
     steps,
     searchCalls,
+    debugExtras,
   });
 }
 
@@ -231,6 +376,7 @@ function buildResult(opts: {
   steps: number;
   searchCalls: number;
   error?: string;
+  debugExtras?: Record<string, unknown>;
 }): AssistantAgentResult {
   const sources: MessageSource[] =
     opts.outcome === "fallback_no_context" || opts.outcome === "model_failure"
@@ -264,6 +410,7 @@ function buildResult(opts: {
       answerOwner: "agent",
       agentSteps: opts.steps,
       searchKnowledgeCalls: opts.searchCalls,
+      ...(opts.debugExtras ?? {}),
       ...(opts.error ? { error: opts.error } : {}),
     },
     turnSnapshot: {
