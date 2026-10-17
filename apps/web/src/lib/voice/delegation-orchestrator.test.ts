@@ -1500,6 +1500,19 @@ describe("playback gate: ChatAI decides who answers each utterance", () => {
     },
   );
 
+  it("keeps the Oct 15 greeting exchange audible without forcing a lookup", async () => {
+    const { session, channel, prepareAnswer } = setup({ settings: { forceBackendAfterMs: 40 } });
+    channel.userSays(" Hey, what's up", 1_000, 1_600);
+    channel.assistantSays(" Hey! What's up?", 1_800, 2_500);
+    channel.userSays(" How are you", 3_000, 3_600);
+    expect(session.gate?.decision).toMatchObject({ state: "open", reason: "social" });
+    channel.assistantSays(" I'm here and ready to help.", 3_800, 4_500);
+    await sleep(120);
+    expect(session.outputFragments.at(-1)?.withheld).toBeUndefined();
+    expect(prepareAnswer).not.toHaveBeenCalled();
+    expect(session.turns).toEqual([]);
+  });
+
   it('"yes" right after an assistant question accepts an offer: it goes to the backend', async () => {
     const { session, channel, prepareAnswer } = setup({ settings: { forceBackendAfterMs: 40 } });
     channel.userSays(" Hi", 1_000, 1_400);

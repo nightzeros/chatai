@@ -14,10 +14,12 @@ import {
   type ChatHistoryMessage,
   type ProviderUsageRecord,
 } from "@chatai/rag/answer";
+import { runAssistantAgent } from "@chatai/rag/agent";
 import { enqueueOnlineEvalJob, shouldSampleEval } from "@chatai/evals";
 import { z } from "zod";
 
 import { resolveAssistantModels } from "@/lib/ai-config";
+import { parseAssistantAllowlist, resolveTextAnswerOwner } from "@/lib/answer-owner";
 import { usesApiKeyAuth } from "@/lib/api-keys";
 import { getOwnedAssistantByRef } from "@/lib/assistants";
 import { authorizeV1 } from "@/lib/authorize-v1";
@@ -199,7 +201,17 @@ export async function POST(request: Request) {
 
   const models = await resolveAssistantModels(assistant);
   const usageRequestId = createId();
+  const turnId = usageRequestId;
   const rag = resolveRagSettings(assistant.ragSettings);
+
+  // Snapshot at turn creation — flag flips mid-request must not switch implementations.
+  const answerOwner = resolveTextAnswerOwner({
+    answerOwnerText: env.ANSWER_OWNER_TEXT,
+    allowlistAssistantIds: parseAssistantAllowlist(env.ANSWER_OWNER_TEXT_ASSISTANTS),
+    assistantId: assistant.id,
+    visitor,
+    visitorRelease: env.TEXT_AGENT_VISITOR_RELEASE,
+  });
 
   const gate = await beginChatUsageReservation({
     account: hostingAccount,
@@ -229,7 +241,13 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const assistantMessageId = createId();
   const accrued: ProviderUsageRecord[] = [];
-  const onUsage = (record: ProviderUsageRecord) => accrued.push(record);
+  const seenUsageEventIds = new Set<string>();
+  const onUsage = (record: ProviderUsageRecord) => {
+    const eventId = record.eventId ?? `${record.kind}:${record.step ?? "step"}:${accrued.length}`;
+    if (seenUsageEventIds.has(eventId)) return;
+    seenUsageEventIds.add(eventId);
+    accrued.push({ ...record, eventId });
+  };
   let usageSettled = false;
   let disconnected = false;
   const settleUsage = (records: ProviderUsageRecord[], failed: boolean) =>
@@ -259,73 +277,126 @@ export async function POST(request: Request) {
       };
 
       try {
-        const initial = await prepareAnswer({
-          db: db(),
-          assistantId: assistant.id,
-          assistantName: assistant.name,
-          assistantDescription: assistant.description,
-          instructions: assistant.instructions,
-          mode: assistant.hallucinationMode,
-          message: input.message,
-          history,
-          embedding: models.embedding,
-          chat: models.chat,
+        let finalAnswer: string;
+        let finalSources: Awaited<ReturnType<typeof finalizeAnswer>>["sources"];
+        let finalConfidence: number;
+        let finalOutcome: Awaited<ReturnType<typeof finalizeAnswer>>["outcome"];
+        let finalDebug: Awaited<ReturnType<typeof finalizeAnswer>>["debug"];
+        let answerUsages: ProviderUsageRecord[];
 
-          ragSettings: assistant.ragSettings,
-          cohereApiKey: env.COHERE_API_KEY ?? null,
-          voiceUnavailable: input.voiceUnavailable === true,
-          outputGuard: env.OUTPUT_SCOPE_CHECK,
-          profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
-          onUsage,
-        });
+        if (answerOwner === "agent") {
+          // Factual agent path buffers until complete (no TTFA benefit from chunking early).
+          const agentResult = await runAssistantAgent({
+            turnId,
+            db: db(),
+            assistantId: assistant.id,
+            assistantName: assistant.name,
+            assistantDescription: assistant.description,
+            instructions: assistant.instructions,
+            message: input.message,
+            history,
+            embedding: models.embedding,
+            chat: models.chat,
+            ragSettings: assistant.ragSettings,
+            cohereApiKey: env.COHERE_API_KEY ?? null,
+            maxOutputTokens: outputCap.maxOutputTokens,
+            onUsage,
+          });
+          finalAnswer = agentResult.answer;
+          finalSources = agentResult.sources;
+          finalConfidence = agentResult.confidence;
+          finalOutcome = agentResult.outcome;
+          finalDebug = {
+            ...agentResult.debug,
+            latencyMs: Date.now() - started,
+            model: models.chat.model,
+            provider: models.chat.provider,
+            answerOwner: "agent",
+          };
+          answerUsages = agentResult.providerUsages;
+          send({ type: "token", text: finalAnswer });
+        } else {
+          const initial = await prepareAnswer({
+            db: db(),
+            assistantId: assistant.id,
+            assistantName: assistant.name,
+            assistantDescription: assistant.description,
+            instructions: assistant.instructions,
+            mode: assistant.hallucinationMode,
+            message: input.message,
+            history,
+            embedding: models.embedding,
+            chat: models.chat,
 
-        const generated = await generateGuardedAnswer({
-          prepared: initial,
-          question: input.message,
-          chat: models.chat,
-          verifyCitations: rag.guardrails.verifyCitations,
-          outputGuard: env.OUTPUT_SCOPE_CHECK,
-          generate: async ({ system, messages: chatMessages }) => {
-            const result = await generateChat({ config: models.chat, system, messages: chatMessages, ...outputCap });
-            return { text: result.text, usage: result.usage };
-          },
-          stream: async ({ system, messages: chatMessages }, onDelta) => {
-            let text = "";
-            const result = streamChat({ config: models.chat, system, messages: chatMessages, ...outputCap });
-            for await (const delta of result.textStream) {
-              text += delta;
-              onDelta(delta);
-            }
-            return { text, usage: await result.usage };
-          },
-          onDelta: (text) => send({ type: "token", text }),
-          onUsage,
-        });
-        const prepared = generated.prepared;
-        const fullText = generated.text;
-        const answerUsages = generated.usages;
-        if (!generated.streamed) send({ type: "token", text: fullText });
+            ragSettings: assistant.ragSettings,
+            cohereApiKey: env.COHERE_API_KEY ?? null,
+            voiceUnavailable: input.voiceUnavailable === true,
+            outputGuard: env.OUTPUT_SCOPE_CHECK,
+            profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
+            onUsage,
+          });
+
+          const generated = await generateGuardedAnswer({
+            prepared: initial,
+            question: input.message,
+            chat: models.chat,
+            verifyCitations: rag.guardrails.verifyCitations,
+            outputGuard: env.OUTPUT_SCOPE_CHECK,
+            generate: async ({ system, messages: chatMessages }) => {
+              const result = await generateChat({ config: models.chat, system, messages: chatMessages, ...outputCap });
+              return { text: result.text, usage: result.usage };
+            },
+            stream: async ({ system, messages: chatMessages }, onDelta) => {
+              let text = "";
+              const result = streamChat({ config: models.chat, system, messages: chatMessages, ...outputCap });
+              for await (const delta of result.textStream) {
+                text += delta;
+                onDelta(delta);
+              }
+              return { text, usage: await result.usage };
+            },
+            onDelta: (text) => send({ type: "token", text }),
+            onUsage,
+          });
+          const prepared = generated.prepared;
+          const fullText = generated.text;
+          answerUsages = generated.usages;
+          if (!generated.streamed) send({ type: "token", text: fullText });
+
+          const latencyMs = Date.now() - started;
+          const final = finalizeAnswer(fullText, {
+            ...prepared,
+            providerUsages: answerUsages,
+            debug: {
+              ...prepared.debug,
+              latencyMs,
+              model: models.chat.model,
+              provider: models.chat.provider,
+              answerOwner: "legacy",
+            },
+          });
+          finalAnswer = final.answer;
+          finalSources = final.sources;
+          finalConfidence = final.confidence;
+          finalOutcome = final.outcome;
+          finalDebug = final.debug;
+        }
 
         usageSettled = true;
         await settleUsage(answerUsages, false);
 
         const latencyMs = Date.now() - started;
-        const final = finalizeAnswer(fullText, {
-          ...prepared,
-          providerUsages: answerUsages,
-          debug: { ...prepared.debug, latencyMs, model: models.chat.model, provider: models.chat.provider },
-        });
 
         if (persist) {
           await db().insert(messages).values({
             id: assistantMessageId,
             conversationId,
             role: "assistant",
-            content: final.answer,
-            sources: final.sources,
-            confidence: final.confidence,
-            outcome: final.outcome,
-            debug: final.debug,
+            content: finalAnswer,
+            sources: finalSources,
+            confidence: finalConfidence,
+            outcome: finalOutcome,
+            debug: finalDebug,
             latencyMs,
           });
 
@@ -343,10 +414,10 @@ export async function POST(request: Request) {
         send(publicChatMeta({
           messageId: assistantMessageId,
           conversationId,
-          sources: final.sources,
-          confidence: final.confidence,
-          outcome: final.outcome,
-          debug: final.debug,
+          sources: finalSources,
+          confidence: finalConfidence,
+          outcome: finalOutcome,
+          debug: finalDebug,
         }, includeDebug));
         send({ type: "done" });
       } catch (error) {
@@ -359,29 +430,38 @@ export async function POST(request: Request) {
 
         const message = error instanceof Error ? error.message : "Model failed.";
         const latencyMs = Date.now() - started;
+        const incompatible = typeof error === "object" && error && "code" in error
+          && (error as { code?: string }).code === "agent_model_incompatible";
 
         if (persist) {
           await db().insert(messages).values({
             id: assistantMessageId,
             conversationId,
             role: "assistant",
-            content: "I ran into a problem generating a response. Please try again.",
+            content: incompatible
+              ? message
+              : "I ran into a problem generating a response. Please try again.",
             sources: [],
             confidence: 0,
             outcome: "model_failure",
-            debug: { model: models.chat.model, provider: models.chat.provider, latencyMs, error: message },
+            debug: { model: models.chat.model, provider: models.chat.provider, latencyMs, error: message, answerOwner },
             latencyMs,
           });
         }
 
-        send({ type: "token", text: "I ran into a problem generating a response. Please try again." });
+        send({
+          type: "token",
+          text: incompatible
+            ? message
+            : "I ran into a problem generating a response. Please try again.",
+        });
         send(publicChatMeta({
           messageId: assistantMessageId,
           conversationId,
           sources: [],
           confidence: 0,
           outcome: "model_failure",
-          debug: { error: message },
+          debug: { error: message, answerOwner },
         }, includeDebug));
         send({ type: "done" });
       } finally {

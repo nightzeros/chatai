@@ -581,7 +581,14 @@ describe("prepareAnswer with an Assistant Profile", () => {
       deps: {
         generateChat: model as unknown as GenerateChatFn,
         loadKnowledgeTitles: async () => extra.titles ?? ["Opening hours"],
-        loadAssistantContext: async () => ({ purpose, facts: [], version: 3, ...extra.context }),
+        loadAssistantContext: async () => ({
+          purpose,
+          facts: [],
+          overviewClaims: [],
+          overview: null,
+          version: 3,
+          ...extra.context,
+        }),
       },
     });
   }
@@ -815,5 +822,21 @@ describe("prepareAnswer usage reporting", () => {
     const { result, reported } = prepare("I'd love to chat about Zenith", [], generateChat as unknown as GenerateChatFn);
     await expect(result).rejects.toThrow("provider 500");
     expect(reported.map((record) => record.step).sort()).toEqual(["query_embedding", "rewrite_query"]);
+  });
+});
+
+
+describe("overview after invitation regression", () => {
+  it.each(["invite", "conversational"])("retrieves evidence even when the planner incorrectly returns %s", async (route) => {
+    const generate = vi.fn().mockResolvedValue(JSON.stringify({ route, scope: "in", query: "ask about Zenith" }));
+    const prepared = await run("Tell me about them", [
+      { role: "user", content: "Tell me about Zenith" },
+      { role: "assistant", content: "Feel free to ask about Zenith!", redirected: true },
+    ], generate);
+    expect(prepared).toMatchObject({ shouldGenerate: true, turn: { kind: "knowledge", retrieval: "performed" } });
+    expect(retrieveChunks).toHaveBeenCalledTimes(1);
+    expect(prepared.retrieved).toEqual([expect.objectContaining({ chunkId: zenithChunk.chunkId, content: zenithChunk.content })]);
+    expect(JSON.parse(prepared.messages.at(-1)!.content).sources[0].content).toBe(zenithChunk.content);
+    expect(prepared.fallbackText).not.toContain("Feel free");
   });
 });

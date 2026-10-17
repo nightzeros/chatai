@@ -520,3 +520,64 @@ describe("planner invite route", () => {
     expect(system).toMatch(/invite/);
   });
 });
+
+describe("portfolio conversation regressions", () => {
+  it("continues with offered project details when the visitor accepts", async () => {
+    const generate = vi.fn().mockResolvedValue(
+      '{"route":"knowledge","scope":"in","query":"project details for the portfolio"}',
+    );
+    const plan = await planTurn({
+      message: "Yes",
+      history: [
+        { role: "user", content: "Hi" },
+        {
+          role: "assistant",
+          content: "Want me to walk through the project details?",
+          grounded: true,
+        },
+      ],
+      chat,
+      generate,
+    });
+    expect(plan.socialProtocol).toBeUndefined();
+    expect(plan).toMatchObject({ kind: "knowledge", scope: "in" });
+    expect(generate).toHaveBeenCalledOnce();
+  });
+
+  it.each(["How are you", "Yo, 'sup", "Hey, what's up", "Thanks"])(
+    "keeps %s social after a question from the assistant", async (message) => {
+      const generate = vi.fn();
+      const plan = await planTurn({ message, history: [
+        { role: "user", content: "Hey, what's up" },
+        { role: "assistant", content: "Hey! What's up?", liveReply: true },
+      ], chat, generate });
+      expect(plan).toMatchObject({ kind: "conversational", scope: "in", socialProtocol: true });
+      expect(generate).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["invite", "conversational"])("cannot skip retrieval on a mistaken %s route", async (route) => {
+    const generate = vi.fn().mockResolvedValue(JSON.stringify({ route, scope: "in", query: "ask about Abdul-Wahab" }));
+    const plan = await planTurn({ message: "Can you hear me? I said, tell me about him", history: [
+      { role: "user", content: "Tell me about him" },
+      { role: "assistant", content: "Feel free to ask about Abdul-Wahab's background or projects!", redirected: true },
+    ], chat, generate });
+    expect(plan).toMatchObject({ kind: "knowledge", scope: "in", query: "Can you hear me? I said, tell me about him" });
+    expect(plan.invite).toBeUndefined();
+  });
+
+  it("does not authorize an unrelated information request", async () => {
+    const generate = vi.fn().mockResolvedValue('{"route":"invite","scope":"out","query":"recipe"}');
+    const plan = await planTurn({ message: "Tell me how to bake a cake", history: [], chat, generate });
+    expect(plan.scope).toBe("out");
+    expect(plan.invite).toBeUndefined();
+  });
+});
+
+
+it("keeps the permitted query when a mistaken social route accompanies partial scope", async () => {
+  const generate = vi.fn().mockResolvedValue('{"route":"invite","scope":"partial","query":"portfolio projects"}');
+  const plan = await planTurn({ message: "Tell me about his projects and how to bake a cake", history: [], chat, generate });
+  expect(plan).toMatchObject({ kind: "knowledge", scope: "partial", query: "portfolio projects" });
+  expect(plan.invite).toBeUndefined();
+});

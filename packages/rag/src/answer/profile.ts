@@ -4,11 +4,13 @@ import {
   documents,
   eq,
   inArray,
+  type AssistantOverview,
   type AssistantPurpose,
   type Database,
   type KeyFact,
 } from "@chatai/database";
 
+import { activeOverviewClaims, type ActiveOverviewClaim } from "./overview";
 import type { RetrievedChunk } from "./retrieve";
 
 /**
@@ -25,11 +27,21 @@ export type ActiveKeyFact = KeyFact & { documentId: string; documentName: string
 export type AssistantContext = {
   purpose: AssistantPurpose | null;
   facts: ActiveKeyFact[];
+  /** Approved overview claims still backed by active facts and documents. */
+  overviewClaims: ActiveOverviewClaim[];
+  /** Raw overview row status for diagnostics (may be suggestion/invalidated). */
+  overview: AssistantOverview | null;
   /** Profile version used for this turn (null when no profile row exists). */
   version: number | null;
 };
 
-export const EMPTY_ASSISTANT_CONTEXT: AssistantContext = { purpose: null, facts: [], version: null };
+export const EMPTY_ASSISTANT_CONTEXT: AssistantContext = {
+  purpose: null,
+  facts: [],
+  overviewClaims: [],
+  overview: null,
+  version: null,
+};
 
 const OWNER_FACTS_DOCUMENT_ID = "key-facts";
 const OWNER_FACTS_DOCUMENT_NAME = "Key facts";
@@ -77,6 +89,7 @@ export async function loadAssistantContext(db: Database, assistantId: string): P
       .select({
         purpose: assistantProfiles.purpose,
         facts: assistantProfiles.facts,
+        overview: assistantProfiles.overview,
         version: assistantProfiles.version,
       })
       .from(assistantProfiles)
@@ -86,7 +99,15 @@ export async function loadAssistantContext(db: Database, assistantId: string): P
       value = EMPTY_ASSISTANT_CONTEXT;
     } else {
       const facts = Array.isArray(row.facts) ? row.facts : [];
-      const documentIds = [...new Set(facts.flatMap((fact) => fact.sources.map((source) => source.documentId)))];
+      const overview = row.overview ?? null;
+      const overviewSourceIds =
+        overview?.claims.flatMap((claim) => claim.sources.map((source) => source.documentId)) ?? [];
+      const documentIds = [
+        ...new Set([
+          ...facts.flatMap((fact) => fact.sources.map((source) => source.documentId)),
+          ...overviewSourceIds,
+        ]),
+      ];
       const docs = new Map<string, SourceDocument>();
       if (documentIds.length > 0) {
         const rows = await db
@@ -101,7 +122,18 @@ export async function loadAssistantContext(db: Database, assistantId: string): P
           .where(and(eq(documents.assistantId, assistantId), inArray(documents.id, documentIds)));
         for (const doc of rows) docs.set(doc.id, doc);
       }
-      value = { purpose: row.purpose ?? null, facts: activeFacts(facts, docs), version: row.version };
+      const active = activeFacts(facts, docs);
+      value = {
+        purpose: row.purpose ?? null,
+        facts: active,
+        overviewClaims: activeOverviewClaims(
+          overview,
+          new Set(active.map((fact) => fact.id)),
+          docs,
+        ),
+        overview,
+        version: row.version,
+      };
     }
   } catch {
     return EMPTY_ASSISTANT_CONTEXT;

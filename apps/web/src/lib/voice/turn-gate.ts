@@ -1,4 +1,4 @@
-import { isConversationalMessage } from "@chatai/rag/answer";
+import { isConversationalMessage, isContextualAcknowledgement } from "@chatai/rag/answer";
 
 import type { VoiceRuntimeSession, VoiceTurn } from "./session-runtime";
 
@@ -129,14 +129,14 @@ function isVoiceSmallTalk(text: string): boolean {
  * Who may answer an utterance. Only greetings, thanks, goodbyes and short
  * acknowledgements are `social`; everything else (statements, single words,
  * feelings, "what do you mean?", requests to repeat, unclear speech) goes to
- * the backend. Any reply to an assistant question accepts or answers it, so it
+ * the backend. A short acceptance of an assistant question answers it, so it
  * is a backend turn too ("yes" after "Want to hear about our plans?").
  */
 export function classifyVoiceTurn(text: string, lastAssistantText?: string | null): VoiceTurnClass {
   const trimmed = text.trim();
   if (!trimmed) return "backend";
   if (normalize(trimmed).split(" ").length > MAX_SOCIAL_WORDS) return "backend";
-  if (lastAssistantText && /\?["')\s]*$/.test(lastAssistantText.trim())) return "backend";
+  if (isContextualAcknowledgement(trimmed, lastAssistantText)) return "backend";
   return isVoiceSmallTalk(trimmed) ? "social" : "backend";
 }
 

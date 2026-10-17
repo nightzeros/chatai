@@ -118,3 +118,12 @@ describe("voice gate state", () => {
     expect(seen).toEqual(["open"]);
   });
 });
+
+describe("greetings after an assistant question", () => {
+  it.each(["How are you", "Yo, 'sup", "Hey, what's up", "Thanks"])("allows %s through the social gate", (text) => {
+    expect(classifyVoiceTurn(text, "Hey! What's up?")).toBe("social");
+  });
+  it("keeps an information request after a greeting on the backend path", () => {
+    expect(classifyVoiceTurn("Yo, sup, tell me about him", "Hey! What's up?")).toBe("backend");
+  });
+});
