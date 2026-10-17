@@ -191,6 +191,134 @@ describe("M5 text acceptance fixtures", () => {
     expect(result.debug.timings).toBeDefined();
   });
 
+  it.each(TEXT_ACCEPTANCE_FIXTURES.filter((fixture) => fixture.expect === "social"))(
+    "skips Layer C for social fixture %s",
+    async (fixture) => {
+      const verify = vi.fn(async () => ({
+        passed: true,
+        unavailable: false,
+        reason: "should not run",
+        usage: emptyUsage,
+      }));
+      vi.mocked(generateAgentText).mockResolvedValue({
+        text: "You're welcome!",
+        usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+        stepUsages: [],
+        steps: 1,
+      });
+
+      const result = await runAssistantAgent({
+        turnId: `m5_${fixture.id}`,
+        db: {} as never,
+        assistantId: "asst_1",
+        message: fixture.message,
+        history: [],
+        chat,
+        embedding,
+        deps: {
+          verifyAgentSemanticSupport: verify,
+          checkPurpose: async () => ({
+            decision: "in_scope",
+            confidence: "high",
+            rationale: "ok",
+            usage: emptyUsage,
+            unavailable: false,
+          }),
+        },
+      });
+
+      expect(result.answer).toBeTruthy();
+      expect(verify).not.toHaveBeenCalled();
+      expect((result.debug.timings as { t_verify_ms: number }).t_verify_ms).toBe(0);
+    },
+  );
+
+  it("strips unsupported-but-cited claims after Layer C failure", async () => {
+    vi.mocked(generateAgentText).mockImplementation(async (opts) => {
+      await opts.tools.searchKnowledge!.execute({ query: "overview" });
+      return {
+        text: "Ada won a Nobel Prize [1].",
+        usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+        stepUsages: [],
+        steps: 1,
+      };
+    });
+
+    const result = await runAssistantAgent({
+      turnId: "m5_layer_c_fail",
+      db: {} as never,
+      assistantId: "asst_1",
+      message: "Tell me about him",
+      history: [],
+      chat,
+      embedding,
+      deps: {
+        verifyAgentSemanticSupport: async () => ({
+          passed: false,
+          unavailable: false,
+          reason: "Nobel Prize is not in the cited source.",
+          usage: emptyUsage,
+        }),
+        // Remediation generateChat is not injected — verify fail + empty remediate → safe limitation
+        generateChat: vi.fn(async () => {
+          throw new Error("remediation unavailable");
+        }),
+        checkPurpose: async () => ({
+          decision: "in_scope",
+          confidence: "high",
+          rationale: "ok",
+          usage: emptyUsage,
+          unavailable: false,
+        }),
+      },
+    });
+
+    expect(result.answer).toMatch(/verified sources/i);
+    expect(result.answer).not.toMatch(/Nobel/i);
+    expect(result.debug.verify).toMatchObject({ passed: false });
+  });
+
+  it("limits delivery when Purpose judge is uncertain", async () => {
+    vi.mocked(generateAgentText).mockImplementation(async (opts) => {
+      await opts.tools.searchKnowledge!.execute({ query: "maybe cooking" });
+      return {
+        text: "Ada built a booking app [1].",
+        usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+        stepUsages: [],
+        steps: 1,
+      };
+    });
+
+    const result = await runAssistantAgent({
+      turnId: "m5_purpose_uncertain",
+      db: {} as never,
+      assistantId: "asst_1",
+      message: "Tell me about Ada and also how to bake bread",
+      history: [],
+      chat,
+      embedding,
+      deps: {
+        verifyAgentSemanticSupport: async () => ({
+          passed: true,
+          unavailable: false,
+          reason: "ok",
+          usage: emptyUsage,
+        }),
+        checkPurpose: async () => ({
+          decision: "uncertain",
+          confidence: "low",
+          rationale: "mixed request",
+          mixed: true,
+          usage: emptyUsage,
+          unavailable: false,
+        }),
+      },
+    });
+
+    expect(result.answer).not.toMatch(/feel free to ask/i);
+    expect(result.debug.purpose).toMatchObject({ decision: "uncertain", action: "limit" });
+  });
+
   it("fail-closes factual delivery when Layer C is unavailable", async () => {
     vi.mocked(generateAgentText).mockImplementation(async (opts) => {
       await opts.tools.searchKnowledge!.execute({ query: "overview" });
