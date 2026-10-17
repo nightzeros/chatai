@@ -50,6 +50,11 @@ export {
   isOverviewOrIdentityRequest,
 } from "./overview";
 export type { ActiveOverviewClaim } from "./overview";
+export {
+  overviewFromEditedClaims,
+  parseOverviewClaims,
+  suggestOverview,
+} from "./overview-generate";
 export { isBasicProfileQuestion } from "./profile-answer";
 export {
   dropConflicts,

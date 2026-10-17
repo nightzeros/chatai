@@ -3,12 +3,24 @@
  * Snapshot the resolved owner at turn creation; mid-turn env changes must not switch paths.
  */
 
-export type AnswerOwnerText = "legacy" | "agent";
+/** Instance / env flag values. */
+export type AnswerOwnerTextFlag = "legacy" | "agent" | "shadow_agent";
+
+/** Production path that delivers visitor/playground output and history. */
+export type TextAnswerPath = "legacy" | "agent";
+
+export type ResolvedTextAnswerOwner = {
+  production: TextAnswerPath;
+  /**
+   * Run the tool-calling agent in addition to production legacy for comparison.
+   * Never visitor-visible; never writes production history; never customer-charged.
+   */
+  shadowAgent: boolean;
+};
 
 export type ResolveTextAnswerOwnerInput = {
-  /** Instance default: legacy | agent */
-  answerOwnerText: AnswerOwnerText;
-  /** When non-empty, only these assistant ids may use agent. */
+  answerOwnerText: AnswerOwnerTextFlag;
+  /** When non-empty, only these assistant ids may use agent or shadow_agent. */
   allowlistAssistantIds: string[];
   assistantId: string;
   visitor: boolean;
@@ -19,17 +31,30 @@ export type ResolveTextAnswerOwnerInput = {
   visitorRelease: boolean;
 };
 
-export function resolveTextAnswerOwner(input: ResolveTextAnswerOwnerInput): AnswerOwnerText {
-  if (input.answerOwnerText !== "agent") return "legacy";
-  if (
-    input.allowlistAssistantIds.length > 0 &&
-    !input.allowlistAssistantIds.includes(input.assistantId)
-  ) {
-    return "legacy";
+function isAllowlisted(input: ResolveTextAnswerOwnerInput): boolean {
+  if (input.allowlistAssistantIds.length === 0) return true;
+  return input.allowlistAssistantIds.includes(input.assistantId);
+}
+
+export function resolveTextAnswerOwner(input: ResolveTextAnswerOwnerInput): ResolvedTextAnswerOwner {
+  if (!isAllowlisted(input)) {
+    return { production: "legacy", shadowAgent: false };
   }
-  // Production enablement blocked until evidence + Purpose checks are complete.
-  if (input.visitor && !input.visitorRelease) return "legacy";
-  return "agent";
+
+  if (input.answerOwnerText === "shadow_agent") {
+    // Production stays legacy; agent runs only for comparison / cost / quality metrics.
+    return { production: "legacy", shadowAgent: true };
+  }
+
+  if (input.answerOwnerText !== "agent") {
+    return { production: "legacy", shadowAgent: false };
+  }
+
+  // Production enablement blocked for visitors until evidence + Purpose checks are complete.
+  if (input.visitor && !input.visitorRelease) {
+    return { production: "legacy", shadowAgent: false };
+  }
+  return { production: "agent", shadowAgent: false };
 }
 
 export function parseAssistantAllowlist(raw: string | undefined): string[] {

@@ -210,13 +210,15 @@ const envSchema = z.object({
     .default("false")
     .transform((v) => v === "true"),
   /**
-   * Who owns substantive text answers. `legacy` = prepareAnswer path (default).
+   * Who owns substantive text answers.
+   * `legacy` = prepareAnswer path (default).
    * `agent` = shared tool-calling agent (playground/owner only until visitor release).
+   * `shadow_agent` = legacy production + background agent for comparison (no visitor output/charge).
    */
-  ANSWER_OWNER_TEXT: z.enum(["legacy", "agent"]).default("legacy"),
+  ANSWER_OWNER_TEXT: z.enum(["legacy", "agent", "shadow_agent"]).default("legacy"),
   /**
-   * Comma-separated assistant ids allowed to use ANSWER_OWNER_TEXT=agent.
-   * Empty = all assistants when the owner flag is agent (still subject to visitor release).
+   * Comma-separated assistant ids allowed to use ANSWER_OWNER_TEXT=agent|shadow_agent.
+   * Empty = all assistants when the owner flag is agent/shadow_agent (still subject to visitor release).
    */
   ANSWER_OWNER_TEXT_ASSISTANTS: z.string().default(""),
   /**
