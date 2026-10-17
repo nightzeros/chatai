@@ -93,6 +93,10 @@ vi.mock("@chatai/rag/answer", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@chatai/rag/answer")>()),
   prepareAnswer: (...args: unknown[]) => prepareAnswer(...args),
 }));
+const runAssistantAgent = vi.fn();
+vi.mock("@chatai/rag/agent", () => ({
+  runAssistantAgent: (...args: unknown[]) => runAssistantAgent(...args),
+}));
 
 function prepared(overrides: Partial<PreparedAnswer>): PreparedAnswer {
   return {
@@ -148,6 +152,7 @@ describe("POST /api/v1/chat conversation history", () => {
     idSeq = 0;
     apiKeyRequest = false;
     sessionUserId = "user_1";
+    runAssistantAgent.mockReset();
     resolveBillableAccountForAssistant.mockImplementation(async () => ({ id: "acct_1", status: "active" }));
     checkHostingAccountAccess.mockImplementation(() => ({ ok: true }));
     beginChatUsageReservation.mockImplementation(async () => ({ ok: true, reservation: null }));
@@ -155,6 +160,9 @@ describe("POST /api/v1/chat conversation history", () => {
     abortChatUsageReservation.mockImplementation(async () => undefined);
     enforceWidgetRequest.mockImplementation(async () => null);
     delete envMock.OUTPUT_SCOPE_CHECK;
+    envMock.ANSWER_OWNER_TEXT = "legacy";
+    envMock.ANSWER_OWNER_TEXT_ASSISTANTS = "";
+    envMock.TEXT_AGENT_VISITOR_RELEASE = false;
     assistantRow = {
       id: "asst_internal",
       publicId: "asst_public",
@@ -704,6 +712,75 @@ describe("POST /api/v1/chat conversation history", () => {
       await vi.waitFor(() =>
         expect(messageRows()[1]).toMatchObject({ role: "assistant", content: "Zenith has 17 members." }),
       );
+    });
+  });
+
+  describe("ANSWER_OWNER_TEXT agent path", () => {
+    it("uses the agent for playground when ANSWER_OWNER_TEXT=agent", async () => {
+      envMock.ANSWER_OWNER_TEXT = "agent";
+      runAssistantAgent.mockResolvedValueOnce({
+        answer: "They built a booking app [1].",
+        sources: [{ documentId: "d1", documentName: "Doc", chunkId: "c1", excerpt: "Built a booking app." }],
+        confidence: 0.9,
+        outcome: "answered_with_context",
+        providerUsages: [
+          {
+            kind: "chat_completion",
+            usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+            step: "agent_step_1",
+            eventId: "trn:agent_step_1",
+          },
+        ],
+        debug: { answerOwner: "agent" },
+        turnSnapshot: {
+          turnId: "id_1",
+          answerOwner: "agent",
+          chatProvider: "openai",
+          chatModel: "gpt",
+        },
+      });
+
+      const result = await post({ message: "Tell me about him", source: "playground" });
+
+      expect(runAssistantAgent).toHaveBeenCalledOnce();
+      expect(prepareAnswer).not.toHaveBeenCalled();
+      expect(result.text).toContain("booking app");
+      expect(finishChatUsageReservation).toHaveBeenCalledOnce();
+    });
+
+    it("keeps visitors on the legacy path while TEXT_AGENT_VISITOR_RELEASE is false", async () => {
+      envMock.ANSWER_OWNER_TEXT = "agent";
+      envMock.TEXT_AGENT_VISITOR_RELEASE = false;
+      sessionUserId = null;
+      prepareAnswer.mockResolvedValueOnce(
+        prepared({
+          shouldGenerate: false,
+          fallbackText: "Legacy visitor answer.",
+          outcome: "conversational",
+        }),
+      );
+
+      const result = await post({ message: "Hello", source: "widget", visitorId: "visitor01" });
+
+      expect(runAssistantAgent).not.toHaveBeenCalled();
+      expect(prepareAnswer).toHaveBeenCalledOnce();
+      expect(result.text).toBe("Legacy visitor answer.");
+    });
+
+    it("rolls back to legacy when ANSWER_OWNER_TEXT=legacy", async () => {
+      envMock.ANSWER_OWNER_TEXT = "legacy";
+      prepareAnswer.mockResolvedValueOnce(
+        prepared({
+          shouldGenerate: false,
+          fallbackText: "Legacy default.",
+          outcome: "conversational",
+        }),
+      );
+
+      await post({ message: "Hello", source: "playground" });
+
+      expect(runAssistantAgent).not.toHaveBeenCalled();
+      expect(prepareAnswer).toHaveBeenCalledOnce();
     });
   });
 });

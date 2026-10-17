@@ -522,6 +522,28 @@ describe("planner invite route", () => {
 });
 
 describe("portfolio conversation regressions", () => {
+  it("continues with offered project details when the visitor accepts", async () => {
+    const generate = vi.fn().mockResolvedValue(
+      '{"route":"knowledge","scope":"in","query":"project details for the portfolio"}',
+    );
+    const plan = await planTurn({
+      message: "Yes",
+      history: [
+        { role: "user", content: "Hi" },
+        {
+          role: "assistant",
+          content: "Want me to walk through the project details?",
+          grounded: true,
+        },
+      ],
+      chat,
+      generate,
+    });
+    expect(plan.socialProtocol).toBeUndefined();
+    expect(plan).toMatchObject({ kind: "knowledge", scope: "in" });
+    expect(generate).toHaveBeenCalledOnce();
+  });
+
   it.each(["How are you", "Yo, 'sup", "Hey, what's up", "Thanks"])(
     "keeps %s social after a question from the assistant", async (message) => {
       const generate = vi.fn();

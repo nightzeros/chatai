@@ -10,6 +10,11 @@ export {
   type StreamChatResult,
 } from "./chat";
 export {
+  generateAgentText,
+  type AgentToolDefinition,
+  type GenerateAgentTextResult,
+} from "./agent-chat";
+export {
   asEmbedManyResult,
   asGenerateChatResult,
   emptyProviderUsage,
