@@ -19,12 +19,22 @@ vi.mock("@/lib/db", () => ({
     update: () => ({ set: updateSet }),
   }),
 }));
-vi.mock("@/lib/env", () => ({ env: {} }));
+const { envMock } = vi.hoisted(() => ({
+  envMock: {
+    ANSWER_OWNER_VOICE: "legacy" as string,
+    ANSWER_OWNER_VOICE_ASSISTANTS: "",
+    VOICE_AGENT_VISITOR_RELEASE: false as boolean,
+  } as Record<string, unknown>,
+}));
+vi.mock("@/lib/env", () => ({ env: envMock }));
 vi.mock("@/lib/ai-config", () => ({ resolveAssistantModels: vi.fn() }));
 vi.mock("@/lib/hosting/usage-gate", () => ({
   beginChatUsageReservation: vi.fn(),
   finishChatUsageReservation: vi.fn(),
   abortChatUsageReservation: vi.fn(),
+}));
+vi.mock("@/lib/hosting/shadow-meter", () => ({
+  recordShadowUsages: vi.fn(async () => 0),
 }));
 let idSeq = 0;
 vi.mock("@/lib/ids", () => ({ createId: () => `id_${++idSeq}` }));
@@ -156,9 +166,36 @@ function setup(options: {
   gateOk?: boolean;
   modelsError?: Error;
   settings?: Partial<VoiceOrchestratorDeps["settings"]>;
+  runAssistantAgent?: VoiceOrchestratorDeps["runAssistantAgent"];
+  source?: VoiceRuntimeSession["source"];
 } = {}) {
   const logs: Array<{ event: string; fields: Record<string, unknown> }> = [];
   const prepareAnswer = vi.fn(options.prepare ?? (async (args: PrepareArgs) => prepared(args.message)));
+  const runAssistantAgent = vi.fn(
+    options.runAssistantAgent ??
+      (async () => ({
+        answer: "Agent voice answer about the Pro plan [1].",
+        sources: [{ documentId: "d1", documentName: "Doc", chunkId: "c1", excerpt: "Pro plan" }],
+        confidence: 0.9,
+        outcome: "answered_with_context" as const,
+        providerUsages: [
+          {
+            kind: "chat_completion" as const,
+            usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+            step: "agent_step_1",
+            eventId: "voice:agent_step_1",
+          },
+        ],
+        debug: { answerOwner: "agent", timings: { t_validated_ready_ms: 12 } },
+        turnSnapshot: {
+          turnId: "id_1",
+          answerOwner: "agent" as const,
+          chatProvider: "openai",
+          chatModel: "gpt",
+        },
+      })),
+  );
+  const recordShadowUsages = vi.fn(async () => 0);
   const generateChat = vi.fn(
     async ({ messages }: { messages: Array<{ role: string; content: string }> }) => {
       const prompt = messages.at(-1)?.content ?? "";
@@ -177,6 +214,7 @@ function setup(options: {
 
   setVoiceOrchestratorDepsForTests({
     prepareAnswer: prepareAnswer as unknown as VoiceOrchestratorDeps["prepareAnswer"],
+    runAssistantAgent: runAssistantAgent as unknown as VoiceOrchestratorDeps["runAssistantAgent"],
     generateChat: generateChat as unknown as VoiceOrchestratorDeps["generateChat"],
     resolveAssistantModels: (async () => {
       if (options.modelsError) throw options.modelsError;
@@ -189,6 +227,7 @@ function setup(options: {
     beginChatUsageReservation: beginChatUsageReservation as unknown as VoiceOrchestratorDeps["beginChatUsageReservation"],
     finishChatUsageReservation,
     abortChatUsageReservation: vi.fn(async () => undefined),
+    recordShadowUsages: recordShadowUsages as unknown as VoiceOrchestratorDeps["recordShadowUsages"],
     settings: { utteranceSettleMaxMs: 0, ...options.settings } as VoiceOrchestratorDeps["settings"],
     log: (event, fields) => logs.push({ event, fields }),
   });
@@ -200,10 +239,21 @@ function setup(options: {
     conversationId: ephemeral ? null : "conv_1",
     durableRowInserted: !ephemeral,
     delegations: channel.delegations,
+    ...(options.source ? { source: options.source } : {}),
   });
   superviseSideband(session, channel);
   openSessions.push(session);
-  return { session, channel, prepareAnswer, generateChat, finishChatUsageReservation, beginChatUsageReservation, logs };
+  return {
+    session,
+    channel,
+    prepareAnswer,
+    runAssistantAgent,
+    recordShadowUsages,
+    generateChat,
+    finishChatUsageReservation,
+    beginChatUsageReservation,
+    logs,
+  };
 }
 
 function messageInserts() {
@@ -217,6 +267,9 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     insertValues.mockClear();
     updateSet.mockClear();
     idSeq = 0;
+    envMock.ANSWER_OWNER_VOICE = "legacy";
+    envMock.ANSWER_OWNER_VOICE_ASSISTANTS = "";
+    envMock.VOICE_AGENT_VISITOR_RELEASE = false;
   });
   afterEach(() => {
     setVoiceOrchestratorDepsForTests(null);
@@ -260,6 +313,58 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     );
     // Structured logs carry timings only — never transcript or answer text.
     expect(JSON.stringify(logs)).not.toContain("Pro plan");
+  });
+
+  it("uses the shared agent when ANSWER_OWNER_VOICE=agent (playground)", async () => {
+    envMock.ANSWER_OWNER_VOICE = "agent";
+    const { session, channel, prepareAnswer, runAssistantAgent, logs } = setup();
+    channel.userSays("What is the Pro plan?", 1_000);
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+
+    expect(runAssistantAgent).toHaveBeenCalledOnce();
+    expect(prepareAnswer).not.toHaveBeenCalled();
+    expect(channel.commentary).toEqual([
+      { delegationId: "del_1", content: "Agent voice answer about the Pro plan." },
+    ]);
+    expect(session.turns[0]?.status).toBe("answered");
+    expect(logs.some((entry) => entry.event === "turn.answered" && entry.fields.answerOwner === "agent")).toBe(
+      true,
+    );
+  });
+
+  it("keeps widget visitors on legacy until VOICE_AGENT_VISITOR_RELEASE", async () => {
+    envMock.ANSWER_OWNER_VOICE = "agent";
+    envMock.VOICE_AGENT_VISITOR_RELEASE = false;
+    const { session, channel, prepareAnswer, runAssistantAgent } = setup({ source: "widget" });
+    channel.userSays("What is the Pro plan?", 1_000);
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+
+    expect(prepareAnswer).toHaveBeenCalledOnce();
+    expect(runAssistantAgent).not.toHaveBeenCalled();
+    expect(session.turns[0]?.status).toBe("answered");
+  });
+
+  it("shadow_agent keeps legacy commentary and meters comparison-only agent separately", async () => {
+    envMock.ANSWER_OWNER_VOICE = "shadow_agent";
+    const { session, channel, prepareAnswer, runAssistantAgent, recordShadowUsages } = setup();
+    channel.userSays("What is the Pro plan?", 1_000);
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+
+    expect(prepareAnswer).toHaveBeenCalledOnce();
+    expect(channel.commentary[0]?.content).toContain("Answer to:");
+    await vi.waitFor(() => {
+      expect(runAssistantAgent).toHaveBeenCalledOnce();
+      expect(recordShadowUsages).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shadowPath: "shadow_agent",
+          requestId: expect.stringContaining(":shadow_agent"),
+        }),
+      );
+    });
+    expect(session.turns[0]?.status).toBe("answered");
   });
 
   it("a lookup past the delegation deadline gets a neutral apology; its late result is discarded", async () => {

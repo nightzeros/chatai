@@ -198,6 +198,9 @@ export async function runAssistantAgent(opts: {
   let text = "";
   let steps = 0;
   const debugExtras: Record<string, unknown> = {};
+  let tAgentDraftMs = 0;
+  let tVerifyMs = 0;
+  let tPurposeMs = 0;
 
   try {
     if (opts.abortSignal?.aborted) {
@@ -216,6 +219,7 @@ export async function runAssistantAgent(opts: {
 
     text = generated.text.trim();
     steps = generated.steps;
+    tAgentDraftMs = Date.now() - started;
 
     for (const step of generated.stepUsages) {
       onUsage({
@@ -281,6 +285,7 @@ export async function runAssistantAgent(opts: {
 
   // Layer C — semantic support (fail closed when unavailable). Skip pure social.
   if (!socialOnly && bind.ok && text !== SAFE_LIMITATION) {
+    const verifyStarted = Date.now();
     let verify = await runVerify({
       question: opts.message,
       answer: text,
@@ -343,6 +348,7 @@ export async function runAssistantAgent(opts: {
       }
     }
 
+    tVerifyMs = Date.now() - verifyStarted;
     if (!verify.passed || verify.unavailable) {
       text = SAFE_LIMITATION;
       debugExtras.verify = {
@@ -371,6 +377,7 @@ export async function runAssistantAgent(opts: {
   });
 
   if (runPurposeCheck && text !== SAFE_LIMITATION) {
+    const purposeStarted = Date.now();
     const purposeResult = await runPurpose({
       request: opts.message,
       draft: text,
@@ -380,6 +387,7 @@ export async function runAssistantAgent(opts: {
       generate,
       abortSignal: opts.abortSignal,
     });
+    tPurposeMs = Date.now() - purposeStarted;
     if (purposeResult.usage.totalTokens > 0) {
       onUsage(purposeUsageRecord(opts.chat, purposeResult.usage, opts.turnId));
     }
@@ -394,6 +402,13 @@ export async function runAssistantAgent(opts: {
       text = delivery.text;
     }
   }
+
+  debugExtras.timings = {
+    t_agent_draft_ms: tAgentDraftMs,
+    t_verify_ms: tVerifyMs,
+    t_purpose_ms: tPurposeMs,
+    t_validated_ready_ms: Date.now() - started,
+  };
 
   const bestScore = chunks[0]?.similarity ?? 0;
   const limited = text === SAFE_LIMITATION || Boolean(debugExtras.purpose && (debugExtras.purpose as { action?: string }).action !== "deliver");

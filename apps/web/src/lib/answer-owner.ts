@@ -1,14 +1,33 @@
 /**
- * Text answer-owner rollout. Voice has a separate flag (not used in this slice).
+ * Text and Voice answer-owner rollout (independent flags).
  * Snapshot the resolved owner at turn creation; mid-turn env changes must not switch paths.
  */
 
-export type AnswerOwnerText = "legacy" | "agent";
+/** Instance / env flag values. */
+export type AnswerOwnerFlag = "legacy" | "agent" | "shadow_agent";
+/** @deprecated Use AnswerOwnerFlag */
+export type AnswerOwnerTextFlag = AnswerOwnerFlag;
 
-export type ResolveTextAnswerOwnerInput = {
-  /** Instance default: legacy | agent */
-  answerOwnerText: AnswerOwnerText;
-  /** When non-empty, only these assistant ids may use agent. */
+/** Production path that delivers visitor/playground output and history. */
+export type AnswerProductionPath = "legacy" | "agent";
+/** @deprecated Use AnswerProductionPath */
+export type TextAnswerPath = AnswerProductionPath;
+
+export type ResolvedAnswerOwner = {
+  production: AnswerProductionPath;
+  /**
+   * Run the tool-calling agent in addition to production legacy for comparison.
+   * Never visitor-visible; never writes production history; never customer-charged.
+   */
+  shadowAgent: boolean;
+};
+
+/** @deprecated Use ResolvedAnswerOwner */
+export type ResolvedTextAnswerOwner = ResolvedAnswerOwner;
+
+export type ResolveAnswerOwnerInput = {
+  answerOwner: AnswerOwnerFlag;
+  /** When non-empty, only these assistant ids may use agent or shadow_agent. */
   allowlistAssistantIds: string[];
   assistantId: string;
   visitor: boolean;
@@ -19,17 +38,67 @@ export type ResolveTextAnswerOwnerInput = {
   visitorRelease: boolean;
 };
 
-export function resolveTextAnswerOwner(input: ResolveTextAnswerOwnerInput): AnswerOwnerText {
-  if (input.answerOwnerText !== "agent") return "legacy";
-  if (
-    input.allowlistAssistantIds.length > 0 &&
-    !input.allowlistAssistantIds.includes(input.assistantId)
-  ) {
-    return "legacy";
+export type ResolveTextAnswerOwnerInput = {
+  answerOwnerText: AnswerOwnerFlag;
+  allowlistAssistantIds: string[];
+  assistantId: string;
+  visitor: boolean;
+  visitorRelease: boolean;
+};
+
+function isAllowlisted(input: {
+  allowlistAssistantIds: string[];
+  assistantId: string;
+}): boolean {
+  if (input.allowlistAssistantIds.length === 0) return true;
+  return input.allowlistAssistantIds.includes(input.assistantId);
+}
+
+export function resolveAnswerOwner(input: ResolveAnswerOwnerInput): ResolvedAnswerOwner {
+  if (!isAllowlisted(input)) {
+    return { production: "legacy", shadowAgent: false };
   }
-  // Production enablement blocked until evidence + Purpose checks are complete.
-  if (input.visitor && !input.visitorRelease) return "legacy";
-  return "agent";
+
+  if (input.answerOwner === "shadow_agent") {
+    // Production stays legacy; agent runs only for comparison / cost / quality metrics.
+    return { production: "legacy", shadowAgent: true };
+  }
+
+  if (input.answerOwner !== "agent") {
+    return { production: "legacy", shadowAgent: false };
+  }
+
+  // Production enablement blocked for visitors until evidence + Purpose checks are complete.
+  if (input.visitor && !input.visitorRelease) {
+    return { production: "legacy", shadowAgent: false };
+  }
+  return { production: "agent", shadowAgent: false };
+}
+
+export function resolveTextAnswerOwner(input: ResolveTextAnswerOwnerInput): ResolvedAnswerOwner {
+  return resolveAnswerOwner({
+    answerOwner: input.answerOwnerText,
+    allowlistAssistantIds: input.allowlistAssistantIds,
+    assistantId: input.assistantId,
+    visitor: input.visitor,
+    visitorRelease: input.visitorRelease,
+  });
+}
+
+export function resolveVoiceAnswerOwner(input: {
+  answerOwnerVoice: AnswerOwnerFlag;
+  allowlistAssistantIds: string[];
+  assistantId: string;
+  visitor: boolean;
+  visitorRelease: boolean;
+}): ResolvedAnswerOwner {
+  return resolveAnswerOwner({
+    answerOwner: input.answerOwnerVoice,
+    allowlistAssistantIds: input.allowlistAssistantIds,
+    assistantId: input.assistantId,
+    visitor: input.visitor,
+    visitorRelease: input.visitorRelease,
+  });
 }
 
 export function parseAssistantAllowlist(raw: string | undefined): string[] {

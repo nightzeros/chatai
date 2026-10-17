@@ -3,6 +3,7 @@ import { activeFacts, buildScopeProfile, instructionsHash } from "@chatai/rag/an
 import { notFound } from "next/navigation";
 
 import { ProfileFactsCard } from "@/components/assistants/profile-facts-card";
+import { ProfileOverviewCard } from "@/components/assistants/profile-overview-card";
 import { ProfilePurposeCard } from "@/components/assistants/profile-purpose-card";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOwnedAssistant } from "@/lib/assistants";
@@ -137,6 +138,31 @@ export default async function AssistantProfilePage({ params }: { params: Promise
               topic: conflict.topic,
               sourceNames: names(conflict.documentIds),
             }))}
+          />
+          <ProfileOverviewCard
+            assistantId={assistant.id}
+            version={row?.version ?? null}
+            overview={
+              row?.overview
+                ? {
+                    status: row.overview.status,
+                    version: row.overview.version,
+                    suggestedAt: row.overview.suggestedAt ?? null,
+                    approvedAt: row.overview.approvedAt ?? null,
+                    claims: row.overview.claims.map((claim) => ({
+                      id: claim.id,
+                      text: claim.text,
+                      factIds: claim.factIds,
+                      factLabels: claim.factIds.map(
+                        (factId) => facts.find((fact) => fact.id === factId)?.text ?? factId,
+                      ),
+                    })),
+                  }
+                : null
+            }
+            facts={facts
+              .filter((fact) => activeIds.has(fact.id))
+              .map((fact) => ({ id: fact.id, text: fact.text }))}
           />
         </>
       )}

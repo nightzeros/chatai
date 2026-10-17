@@ -1,4 +1,5 @@
 import { generateChat } from "@chatai/ai";
+import { runAssistantAgent } from "@chatai/rag/agent";
 import {
   finalizeAnswer,
   generateGuardedAnswer,
@@ -12,15 +13,18 @@ import {
 import type { AppendResult, VoiceControlEvent } from "@chatai/voice";
 
 import { resolveAssistantModels } from "@/lib/ai-config";
+import { parseAssistantAllowlist, resolveVoiceAnswerOwner } from "@/lib/answer-owner";
 import { isGroundedOutcome } from "@/lib/conversation-history";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import { recordShadowUsages } from "@/lib/hosting/shadow-meter";
 import {
   abortChatUsageReservation,
   beginChatUsageReservation,
   finishChatUsageReservation,
 } from "@/lib/hosting/usage-gate";
 import { createId } from "@/lib/ids";
+import { isPublicVisitor } from "@/lib/policies/chat-source";
 import {
   insertVoiceAssistantMessage,
   insertVoiceLiveExchange,
@@ -142,24 +146,28 @@ export function isPreScopeEngagement(text: string): boolean {
 
 export type VoiceOrchestratorDeps = {
   prepareAnswer: typeof prepareAnswer;
+  runAssistantAgent: typeof runAssistantAgent;
   generateChat: typeof generateChat;
   generateVerifiedAnswer: typeof generateVerifiedAnswer;
   resolveAssistantModels: typeof resolveAssistantModels;
   beginChatUsageReservation: typeof beginChatUsageReservation;
   finishChatUsageReservation: typeof finishChatUsageReservation;
   abortChatUsageReservation: typeof abortChatUsageReservation;
+  recordShadowUsages: typeof recordShadowUsages;
   settings: typeof VOICE_ORCHESTRATION_DEFAULTS;
   log: (event: string, fields: Record<string, unknown>) => void;
 };
 
 const defaultDeps: VoiceOrchestratorDeps = {
   prepareAnswer,
+  runAssistantAgent,
   generateChat,
   generateVerifiedAnswer,
   resolveAssistantModels,
   beginChatUsageReservation,
   finishChatUsageReservation,
   abortChatUsageReservation,
+  recordShadowUsages,
   settings: VOICE_ORCHESTRATION_DEFAULTS,
   log: (event, fields) => console.info(`[voice] ${event}`, fields),
 };
@@ -791,6 +799,15 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
   });
   const rag = resolveRagSettings(assistant.ragSettings);
   const requestId = createId();
+  // Snapshot at turn start — mid-turn flag flips must not switch paths.
+  const visitor = isPublicVisitor({ apiKey: false, source: session.source });
+  const answerOwner = resolveVoiceAnswerOwner({
+    answerOwnerVoice: env.ANSWER_OWNER_VOICE ?? "legacy",
+    allowlistAssistantIds: parseAssistantAllowlist(env.ANSWER_OWNER_VOICE_ASSISTANTS),
+    assistantId: assistant.id,
+    visitor,
+    visitorRelease: env.VOICE_AGENT_VISITOR_RELEASE === true,
+  });
 
   const gate = await deps.beginChatUsageReservation({
     account: assistant.hostingAccount,
@@ -846,92 +863,155 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
       ragStartMs: turn.metrics.ragStartMs,
     }).catch(() => undefined);
 
-    const ragStarted = Date.now();
-    let prepared: PreparedAnswer = await deps.prepareAnswer({
-      db: db(),
-      assistantId: assistant.id,
-      assistantName: assistant.name ?? null,
-      assistantDescription: assistant.description ?? null,
-      instructions: assistant.instructions,
-      mode: assistant.hallucinationMode,
-      message: turn.userText,
-      history,
-      embedding: models.embedding,
-      chat: models.chat,
-      ragSettings: assistant.ragSettings,
-      cohereApiKey: env.COHERE_API_KEY ?? null,
-      responseStyle: VOICE_ANSWER_STYLE,
-      outputGuard: env.OUTPUT_SCOPE_CHECK,
-      profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
-    });
-    turn.metrics.ragDurationMs = Date.now() - ragStarted;
-    if (prepared.scope) {
-      turn.metrics.scopeDecision = prepared.scope.decision;
-      if (prepared.scope.plannerMs !== undefined) turn.metrics.plannerMs = prepared.scope.plannerMs;
-      if (prepared.scope.plannerWaitMs !== undefined) turn.metrics.plannerWaitMs = prepared.scope.plannerWaitMs;
-      if (prepared.scope.profileVersion !== undefined) turn.metrics.profileVersion = prepared.scope.profileVersion;
-    }
-    turn.rewrittenQuery = prepared.query;
-    turn.retrieval = {
-      action: prepared.decision.action,
-      contextSufficient: prepared.decision.contextSufficient,
-      chunks: prepared.retrieved.slice(0, 8).map((chunk) => ({
-        documentName: chunk.documentName,
-        similarity: Math.round(chunk.similarity * 1000) / 1000,
-        preview: chunk.content.replace(/\s+/g, " ").trim().slice(0, 240),
-      })),
+    let debug: Record<string, unknown> = {
+      answerOwner: answerOwner.production,
+      shadowAgent: answerOwner.shadowAgent,
     };
-    usages = [...prepared.providerUsages];
 
-    if (turn.abort.signal.aborted) {
-      discardLateResult(session, turn, "after_prepare");
+    if (answerOwner.production === "agent") {
+      const agentStarted = Date.now();
+      turn.status = "generating";
+      const agentResult = await deps.runAssistantAgent({
+        turnId: requestId,
+        db: db(),
+        assistantId: assistant.id,
+        assistantName: assistant.name ?? null,
+        assistantDescription: assistant.description ?? null,
+        instructions: [assistant.instructions?.trim(), VOICE_ANSWER_STYLE].filter(Boolean).join("\n\n"),
+        message: turn.userText,
+        history,
+        embedding: models.embedding,
+        chat: models.chat,
+        ragSettings: assistant.ragSettings,
+        cohereApiKey: env.COHERE_API_KEY ?? null,
+        maxOutputTokens:
+          models.billing.chat === "hosted" ? env.HOSTED_USAGE_MAX_OUTPUT_TOKENS : undefined,
+        abortSignal: turn.abort.signal,
+      });
+      usages = agentResult.providerUsages;
+      turn.metrics.ragDurationMs = Date.now() - agentStarted;
+      turn.metrics.generateDurationMs = Date.now() - agentStarted;
+      turn.retrieval = {
+        action: "generate",
+        contextSufficient: agentResult.sources.length > 0,
+        chunks: agentResult.sources.slice(0, 8).map((source) => ({
+          documentName: source.documentName,
+          similarity: 0,
+          preview: (source.excerpt ?? "").replace(/\s+/g, " ").trim().slice(0, 240),
+        })),
+      };
       await finishUsage();
-      return;
+
+      if (turn.abort.signal.aborted) {
+        discardLateResult(session, turn, "after_generate");
+        return;
+      }
+
+      turn.outcome = agentResult.outcome;
+      turn.sources = agentResult.sources;
+      turn.confidence = agentResult.confidence;
+      turn.groundedAnswer = agentResult.answer;
+      turn.answerText = toSpeakableCommentary(agentResult.answer, deps.settings.commentaryMaxChars);
+      debug = {
+        ...agentResult.debug,
+        ...debug,
+        provider: models.chat.provider,
+        timings: agentResult.debug.timings,
+      };
+    } else {
+      const ragStarted = Date.now();
+      let prepared: PreparedAnswer = await deps.prepareAnswer({
+        db: db(),
+        assistantId: assistant.id,
+        assistantName: assistant.name ?? null,
+        assistantDescription: assistant.description ?? null,
+        instructions: assistant.instructions,
+        mode: assistant.hallucinationMode,
+        message: turn.userText,
+        history,
+        embedding: models.embedding,
+        chat: models.chat,
+        ragSettings: assistant.ragSettings,
+        cohereApiKey: env.COHERE_API_KEY ?? null,
+        responseStyle: VOICE_ANSWER_STYLE,
+        outputGuard: env.OUTPUT_SCOPE_CHECK,
+        profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
+      });
+      turn.metrics.ragDurationMs = Date.now() - ragStarted;
+      if (prepared.scope) {
+        turn.metrics.scopeDecision = prepared.scope.decision;
+        if (prepared.scope.plannerMs !== undefined) turn.metrics.plannerMs = prepared.scope.plannerMs;
+        if (prepared.scope.plannerWaitMs !== undefined) turn.metrics.plannerWaitMs = prepared.scope.plannerWaitMs;
+        if (prepared.scope.profileVersion !== undefined) turn.metrics.profileVersion = prepared.scope.profileVersion;
+      }
+      turn.rewrittenQuery = prepared.query;
+      turn.retrieval = {
+        action: prepared.decision.action,
+        contextSufficient: prepared.decision.contextSufficient,
+        chunks: prepared.retrieved.slice(0, 8).map((chunk) => ({
+          documentName: chunk.documentName,
+          similarity: Math.round(chunk.similarity * 1000) / 1000,
+          preview: chunk.content.replace(/\s+/g, " ").trim().slice(0, 240),
+        })),
+      };
+      usages = [...prepared.providerUsages];
+
+      if (turn.abort.signal.aborted) {
+        discardLateResult(session, turn, "after_prepare");
+        await finishUsage();
+        return;
+      }
+
+      turn.status = "generating";
+      const generateStarted = Date.now();
+      // Buffered (never streamed): the output scope check runs before appendCommentary.
+      const generated = await generateGuardedAnswer({
+        prepared,
+        question: turn.userText,
+        chat: models.chat,
+        verifyCitations: rag.guardrails.verifyCitations,
+        outputGuard: env.OUTPUT_SCOPE_CHECK,
+        systemSuffix: VOICE_ANSWER_STYLE,
+        generate: async ({ system, messages }) => {
+          const result = await deps.generateChat({
+            config: models.chat,
+            system,
+            messages,
+            ...(models.billing.chat === "hosted" ? { maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS } : {}),
+          });
+          return { text: result.text, usage: result.usage };
+        },
+        generateVerified: deps.generateVerifiedAnswer,
+        deps: { generateChat: deps.generateChat },
+      });
+      prepared = generated.prepared;
+      usages = generated.usages;
+      const answer = generated.text;
+      if (generated.guard?.replaced) turn.metrics.outputGuardReplaced = true;
+      turn.metrics.generateDurationMs = Date.now() - generateStarted;
+      await finishUsage();
+
+      if (turn.abort.signal.aborted) {
+        discardLateResult(session, turn, "after_generate");
+        return;
+      }
+
+      const final = finalizeAnswer(answer, { ...prepared, providerUsages: usages });
+      turn.outcome = final.outcome;
+      turn.sources = final.sources;
+      turn.confidence = final.confidence;
+      turn.groundedAnswer = final.answer;
+      turn.answerText = toSpeakableCommentary(final.answer, deps.settings.commentaryMaxChars);
+      debug = {
+        ...final.debug,
+        ...debug,
+        provider: models.chat.provider,
+      };
     }
-
-    turn.status = "generating";
-    const generateStarted = Date.now();
-    // Buffered (never streamed): the output scope check runs before appendCommentary.
-    const generated = await generateGuardedAnswer({
-      prepared,
-      question: turn.userText,
-      chat: models.chat,
-      verifyCitations: rag.guardrails.verifyCitations,
-      outputGuard: env.OUTPUT_SCOPE_CHECK,
-      systemSuffix: VOICE_ANSWER_STYLE,
-      generate: async ({ system, messages }) => {
-        const result = await deps.generateChat({
-          config: models.chat,
-          system,
-          messages,
-          ...(models.billing.chat === "hosted" ? { maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS } : {}),
-        });
-        return { text: result.text, usage: result.usage };
-      },
-      generateVerified: deps.generateVerifiedAnswer,
-      deps: { generateChat: deps.generateChat },
-    });
-    prepared = generated.prepared;
-    usages = generated.usages;
-    const answer = generated.text;
-    if (generated.guard?.replaced) turn.metrics.outputGuardReplaced = true;
-    turn.metrics.generateDurationMs = Date.now() - generateStarted;
-    await finishUsage();
-
-    if (turn.abort.signal.aborted) {
-      discardLateResult(session, turn, "after_generate");
-      return;
-    }
-
-    const final = finalizeAnswer(answer, { ...prepared, providerUsages: usages });
-    turn.outcome = final.outcome;
-    turn.sources = final.sources;
-    turn.confidence = final.confidence;
-    turn.groundedAnswer = final.answer;
-    turn.answerText = toSpeakableCommentary(final.answer, deps.settings.commentaryMaxChars);
 
     const outputIndex = session.outputFragments.length;
     auditPreResultOutput(session, turn, outputIndex);
+    // Gate opens only after validated speakable text (legacy or agent).
     const appended = await appendCommentary(session, turn, turn.answerText, "backend_answer");
     if (!appended.ok) {
       turn.rejectReason = appended.reason;
@@ -968,8 +1048,7 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
     });
 
     await insertVoiceAssistantMessage(session, turn, {
-      ...final.debug,
-      provider: models.chat.provider,
+      ...debug,
       voice: {
         delegationId: turn.delegationId,
         turnId: turn.id,
@@ -985,13 +1064,31 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
       outcome: turn.outcome,
       sourceCount: turn.sources.length,
       historyTurns: history.length,
+      answerOwner: answerOwner.production,
     });
     void writeLifecycleVoiceEvent(session, "rag.completed", {
       delegationId: turn.delegationId,
       outcome: turn.outcome,
       sourceCount: turn.sources.length,
       metrics: { ...turn.metrics, delegationReceivedAt: undefined },
+      answerOwner: answerOwner.production,
     }).catch(() => undefined);
+
+    if (answerOwner.shadowAgent) {
+      void runShadowVoiceAgent({
+        turnId: requestId,
+        session,
+        assistant,
+        message: turn.userText,
+        history,
+        models,
+      }).catch((shadowError: unknown) => {
+        deps.log("turn.shadow_agent_failed", {
+          ...metricFields(session, turn),
+          error: shadowError instanceof Error ? shadowError.message : String(shadowError),
+        });
+      });
+    }
   } catch (error) {
     if (!finished) {
       if (usages.length > 0) {
@@ -1007,6 +1104,54 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
     }
     await failTurn(session, turn, error);
   }
+}
+
+/**
+ * Comparison-only Voice agent. Never opens the gate, never writes history, always
+ * meters as status=shadow (no customer charge).
+ */
+async function runShadowVoiceAgent(opts: {
+  turnId: string;
+  session: VoiceRuntimeSession;
+  assistant: NonNullable<VoiceRuntimeSession["assistant"]>;
+  message: string;
+  history: VoiceRuntimeSession["history"];
+  models: Awaited<ReturnType<typeof resolveAssistantModels>>;
+}): Promise<void> {
+  const shadowTurnId = `${opts.turnId}:shadow_agent`;
+  const result = await deps.runAssistantAgent({
+    turnId: shadowTurnId,
+    db: db(),
+    assistantId: opts.assistant.id,
+    assistantName: opts.assistant.name ?? null,
+    assistantDescription: opts.assistant.description ?? null,
+    instructions: [opts.assistant.instructions?.trim(), VOICE_ANSWER_STYLE].filter(Boolean).join("\n\n"),
+    message: opts.message,
+    history: opts.history,
+    embedding: opts.models.embedding,
+    chat: opts.models.chat,
+    ragSettings: opts.assistant.ragSettings,
+    cohereApiKey: env.COHERE_API_KEY ?? null,
+    maxOutputTokens:
+      opts.models.billing.chat === "hosted" ? env.HOSTED_USAGE_MAX_OUTPUT_TOKENS : undefined,
+  });
+  await deps.recordShadowUsages({
+    accountId: opts.assistant.hostingAccount.id,
+    assistantId: opts.assistant.id,
+    requestId: shadowTurnId,
+    source: opts.session.source === "playground" || opts.session.source === "widget" || opts.session.source === "api"
+      ? opts.session.source
+      : "api",
+    visitorId: opts.session.visitorId,
+    records: result.providerUsages,
+    billingModeFor: (kind) => {
+      if (kind === "embedding") return opts.models.billing.embedding;
+      if (kind === "rerank") return opts.models.billing.rerank;
+      return opts.models.billing.chat;
+    },
+    shadowPath: "shadow_agent",
+    turnId: opts.turnId,
+  });
 }
 
 /** The lookup threw: fail the turn and give the live model the neutral apology. */

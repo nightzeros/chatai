@@ -29,3 +29,9 @@ export {
   verifyAgentSemanticSupport,
   type AgentVerifyResult,
 } from "./verify-agent-output";
+export {
+  TEXT_ACCEPTANCE_FIXTURES,
+  textAcceptanceFixture,
+  type TextAcceptanceFixture,
+  type TextAcceptanceFixtureId,
+} from "./text-acceptance-fixtures";
