@@ -229,6 +229,21 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  /**
+   * Who owns substantive Voice answers (independent of ANSWER_OWNER_TEXT).
+   * `legacy` = prepareAnswer path (default). `agent` / `shadow_agent` mirror text rollout.
+   */
+  ANSWER_OWNER_VOICE: z.enum(["legacy", "agent", "shadow_agent"]).default("legacy"),
+  /** Comma-separated assistant ids allowed when ANSWER_OWNER_VOICE=agent|shadow_agent. */
+  ANSWER_OWNER_VOICE_ASSISTANTS: z.string().default(""),
+  /**
+   * Allow public visitors onto the Voice agent. Keep false until text acceptance and
+   * Voice gate/fidelity checks pass. Does not affect playground/owner sessions.
+   */
+  VOICE_AGENT_VISITOR_RELEASE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -306,6 +321,9 @@ function loadEnv(): Env {
     ANSWER_OWNER_TEXT: process.env.ANSWER_OWNER_TEXT || undefined,
     ANSWER_OWNER_TEXT_ASSISTANTS: process.env.ANSWER_OWNER_TEXT_ASSISTANTS,
     TEXT_AGENT_VISITOR_RELEASE: process.env.TEXT_AGENT_VISITOR_RELEASE || undefined,
+    ANSWER_OWNER_VOICE: process.env.ANSWER_OWNER_VOICE || undefined,
+    ANSWER_OWNER_VOICE_ASSISTANTS: process.env.ANSWER_OWNER_VOICE_ASSISTANTS,
+    VOICE_AGENT_VISITOR_RELEASE: process.env.VOICE_AGENT_VISITOR_RELEASE || undefined,
   });
 
   if (!parsed.success) {
