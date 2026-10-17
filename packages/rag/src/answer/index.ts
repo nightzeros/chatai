@@ -55,7 +55,7 @@ export {
   verifyFactCandidate,
 } from "./profile-generate";
 export type { FactGenerationResult, VerifiedFactCandidate } from "./profile-generate";
-export { isVagueHelpRequest } from "./turn-plan";
+export { isVagueHelpRequest, isContextualAcknowledgement } from "./turn-plan";
 export type { TurnPlan } from "./turn-plan";
 export { thresholds } from "./thresholds";
 export { retrieveChunks, retrieveHybridChunks, fuseHybridResults, mergeRetrievalLists, HYBRID_CANDIDATE_LIMIT, VECTOR_ONLY_LIMIT } from "./retrieve";
