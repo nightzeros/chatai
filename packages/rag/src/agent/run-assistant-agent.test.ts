@@ -9,7 +9,13 @@ vi.mock("@chatai/ai", async (importOriginal) => {
 });
 
 vi.mock("../answer/profile", () => ({
-  loadAssistantContext: vi.fn(async () => ({ purpose: null, facts: [], version: 1 })),
+  loadAssistantContext: vi.fn(async () => ({
+    purpose: null,
+    facts: [],
+    overviewClaims: [],
+    overview: null,
+    version: 1,
+  })),
 }));
 
 vi.mock("./search-knowledge", () => ({

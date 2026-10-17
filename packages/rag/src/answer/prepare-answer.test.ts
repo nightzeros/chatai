@@ -581,7 +581,14 @@ describe("prepareAnswer with an Assistant Profile", () => {
       deps: {
         generateChat: model as unknown as GenerateChatFn,
         loadKnowledgeTitles: async () => extra.titles ?? ["Opening hours"],
-        loadAssistantContext: async () => ({ purpose, facts: [], version: 3, ...extra.context }),
+        loadAssistantContext: async () => ({
+          purpose,
+          facts: [],
+          overviewClaims: [],
+          overview: null,
+          version: 3,
+          ...extra.context,
+        }),
       },
     });
   }

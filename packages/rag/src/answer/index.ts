@@ -42,6 +42,14 @@ export {
   loadAssistantContext,
 } from "./profile";
 export type { ActiveKeyFact, AssistantContext } from "./profile";
+export {
+  activeOverviewClaims,
+  factsSupportOverview,
+  invalidateOverviewForDocuments,
+  invalidateOverviewForFacts,
+  isOverviewOrIdentityRequest,
+} from "./overview";
+export type { ActiveOverviewClaim } from "./overview";
 export { isBasicProfileQuestion } from "./profile-answer";
 export {
   dropConflicts,

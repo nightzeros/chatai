@@ -10,8 +10,13 @@ import {
 import type { Database, MessageDebug, MessageOutcome, MessageSource } from "@chatai/database";
 
 import { extractCitationIndexes, sourcesFromAnswer } from "../answer/citations";
+import {
+  factsSupportOverview,
+  isOverviewOrIdentityRequest,
+} from "../answer/overview";
 import { buildContextBlocks } from "../answer/prompt";
-import { loadAssistantContext } from "../answer/profile";
+import { loadAssistantContext, type ActiveKeyFact } from "../answer/profile";
+import type { ActiveOverviewClaim } from "../answer/overview";
 import type { ProviderUsageListener, ProviderUsageRecord } from "../answer/provider-usage";
 import type { RagSettings } from "../answer/rag-settings";
 import {
@@ -28,6 +33,7 @@ import {
   toChatMessages,
   type ChatHistoryMessage,
 } from "../answer/turn-plan";
+import { isBasicProfileQuestion } from "../answer/profile-answer";
 
 import {
   applyPurposeDecision,
@@ -113,6 +119,29 @@ export async function runAssistantAgent(opts: {
   const passages: KnowledgePassage[] = [];
   const chunks: RetrievedChunk[] = [];
   let searchCalls = 0;
+  let usedProfileEvidenceOnly = false;
+
+  const profileRequest =
+    isOverviewOrIdentityRequest(opts.message) || isBasicProfileQuestion(opts.message);
+  const profileChunks = profileEvidenceChunks(context.facts, context.overviewClaims);
+  const profileSufficient =
+    profileRequest &&
+    (context.overviewClaims.length > 0 || factsSupportOverview(context.facts) || context.facts.length > 0);
+
+  if (profileSufficient && profileChunks.length > 0) {
+    for (const [index, chunk] of profileChunks.entries()) {
+      passages.push({
+        id: String(index + 1),
+        documentId: chunk.documentId,
+        chunkId: chunk.chunkId,
+        title: chunk.documentName,
+        text: chunk.content,
+        score: 1,
+      });
+      chunks.push(chunk);
+    }
+    usedProfileEvidenceOnly = true;
+  }
 
   const searchKnowledge = searchKnowledgeToolDefinition({
     db: opts.db,
@@ -125,6 +154,7 @@ export async function runAssistantAgent(opts: {
     abortSignal: opts.abortSignal,
     onPassages: (nextPassages, nextChunks) => {
       searchCalls += 1;
+      usedProfileEvidenceOnly = false;
       passages.splice(0, passages.length, ...nextPassages);
       chunks.splice(0, chunks.length, ...nextChunks);
     },
@@ -137,11 +167,28 @@ export async function runAssistantAgent(opts: {
     "",
     ANSWER_SCOPE_POLICY,
     "",
-    "You answer using the searchKnowledge tool for organization-specific facts.",
+    "You answer using the searchKnowledge tool for organization-specific facts when needed.",
     "searchKnowledge returns passages only. You compose the final answer yourself.",
-    "Cite source-backed claims with [1], [2], … matching passage ids from the latest searchKnowledge result.",
+    "Cite source-backed claims with [1], [2], … matching passage ids from the latest evidence set.",
     "Do not invent citations. If passages are empty, say what is missing without fabricating facts.",
     "Do not output a generic invitation to ask questions when evidence supports an overview.",
+    ...(profileSufficient && passages.length > 0
+      ? [
+          "",
+          `Owner-approved profile evidence is already available as passages [1]–[${passages.length}].`,
+          "For overview/identity questions, answer from that evidence when it is sufficient; call searchKnowledge only for missing details.",
+          "Time-sensitive facts (pricing, availability) need retrieval when profile evidence is marked time_sensitive or may be stale.",
+          "Passages JSON:",
+          JSON.stringify({
+            sources: passages.map((passage) => ({
+              id: passage.id,
+              title: passage.title,
+              content: passage.text,
+              keyFact: true,
+            })),
+          }),
+        ]
+      : []),
   ].join("\n");
 
   const history = boundHistory(opts.history, CONVERSATION_HISTORY_WINDOW.messages);
@@ -225,6 +272,13 @@ export async function runAssistantAgent(opts: {
     isConversationalMessage(opts.message) &&
     extractCitationIndexes(text).length === 0;
 
+  const profileOverview =
+    usedProfileEvidenceOnly &&
+    searchCalls === 0 &&
+    profileRequest &&
+    bind.ok &&
+    text !== SAFE_LIMITATION;
+
   // Layer C — semantic support (fail closed when unavailable). Skip pure social.
   if (!socialOnly && bind.ok && text !== SAFE_LIMITATION) {
     let verify = await runVerify({
@@ -303,14 +357,15 @@ export async function runAssistantAgent(opts: {
 
   // Purpose pre-output (commercial topic). Exemptions before substantive-claim clause.
   const citationIds = extractCitationIndexes(text).map(String);
-  const knowledgePassageIds = passages.map((passage) => passage.id);
+  const knowledgePassageIds = usedProfileEvidenceOnly ? [] : passages.map((passage) => passage.id);
+  const profileEvidenceIds = usedProfileEvidenceOnly ? passages.map((passage) => passage.id) : [];
   const runPurposeCheck = shouldRunPurposePreOutput({
-    responseClass: socialOnly ? "social_only" : "other",
+    responseClass: socialOnly ? "social_only" : profileOverview ? "profile_overview" : "other",
     citationIds,
-    profileEvidenceIds: [],
+    profileEvidenceIds,
     knowledgePassageIds,
     searchKnowledgeCalled: searchCalls > 0,
-    requestIsProfileCoveredOverview: false,
+    requestIsProfileCoveredOverview: profileOverview,
     earlierCheckPurposeUncertain: false,
     draftHasSubstantiveNonSocialClaims: !socialOnly && text !== SAFE_LIMITATION,
   });
@@ -362,6 +417,34 @@ export async function runAssistantAgent(opts: {
     searchCalls,
     debugExtras,
   });
+}
+
+function profileEvidenceChunks(
+  facts: ActiveKeyFact[],
+  overviewClaims: ActiveOverviewClaim[],
+): RetrievedChunk[] {
+  const chunks: RetrievedChunk[] = [];
+  for (const fact of facts) {
+    chunks.push({
+      chunkId: `fact:${fact.id}`,
+      documentId: fact.documentId,
+      documentName: fact.documentName,
+      content: fact.text,
+      similarity: 1,
+      keyFact: true,
+    });
+  }
+  for (const claim of overviewClaims) {
+    chunks.push({
+      chunkId: `overview:${claim.id}`,
+      documentId: claim.sources[0]?.documentId ?? "key-facts",
+      documentName: "Approved overview",
+      content: claim.text,
+      similarity: 1,
+      keyFact: true,
+    });
+  }
+  return chunks;
 }
 
 function buildResult(opts: {
