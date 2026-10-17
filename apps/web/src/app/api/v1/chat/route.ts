@@ -37,6 +37,7 @@ import {
   checkHostingAccountAccess,
   resolveBillableAccountForAssistant,
 } from "@/lib/hosting/accounts";
+import { recordShadowUsages } from "@/lib/hosting/shadow-meter";
 import {
   abortChatUsageReservation,
   beginChatUsageReservation,
@@ -212,6 +213,7 @@ export async function POST(request: Request) {
     visitor,
     visitorRelease: env.TEXT_AGENT_VISITOR_RELEASE,
   });
+  const productionOwner = answerOwner.production;
 
   const gate = await beginChatUsageReservation({
     account: hostingAccount,
@@ -284,7 +286,7 @@ export async function POST(request: Request) {
         let finalDebug: Awaited<ReturnType<typeof finalizeAnswer>>["debug"];
         let answerUsages: ProviderUsageRecord[];
 
-        if (answerOwner === "agent") {
+        if (productionOwner === "agent") {
           // Factual agent path buffers until complete (no TTFA benefit from chunking early).
           const agentResult = await runAssistantAgent({
             turnId,
@@ -312,6 +314,7 @@ export async function POST(request: Request) {
             model: models.chat.model,
             provider: models.chat.provider,
             answerOwner: "agent",
+            shadowAgent: false,
           };
           answerUsages = agentResult.providerUsages;
           send({ type: "token", text: finalAnswer });
@@ -373,6 +376,7 @@ export async function POST(request: Request) {
               model: models.chat.model,
               provider: models.chat.provider,
               answerOwner: "legacy",
+              shadowAgent: answerOwner.shadowAgent,
             },
           });
           finalAnswer = final.answer;
@@ -420,6 +424,23 @@ export async function POST(request: Request) {
           debug: finalDebug,
         }, includeDebug));
         send({ type: "done" });
+
+        // Comparison-only: never blocks visitor delivery, never writes history, never customer-charges.
+        if (answerOwner.shadowAgent) {
+          void runShadowTextAgent({
+            turnId,
+            accountId: hostingAccount.id,
+            assistant,
+            message: input.message,
+            history,
+            models,
+            source,
+            visitorId: input.visitorId,
+            maxOutputTokens: outputCap.maxOutputTokens,
+          }).catch((shadowError: unknown) => {
+            console.error("[chat] shadow_agent failed:", shadowError);
+          });
+        }
       } catch (error) {
         if (!usageSettled) {
           usageSettled = true;
@@ -444,7 +465,14 @@ export async function POST(request: Request) {
             sources: [],
             confidence: 0,
             outcome: "model_failure",
-            debug: { model: models.chat.model, provider: models.chat.provider, latencyMs, error: message, answerOwner },
+            debug: {
+              model: models.chat.model,
+              provider: models.chat.provider,
+              latencyMs,
+              error: message,
+              answerOwner: productionOwner,
+              shadowAgent: answerOwner.shadowAgent,
+            },
             latencyMs,
           });
         }
@@ -461,7 +489,11 @@ export async function POST(request: Request) {
           sources: [],
           confidence: 0,
           outcome: "model_failure",
-          debug: { error: message, answerOwner },
+          debug: {
+            error: message,
+            answerOwner: productionOwner,
+            shadowAgent: answerOwner.shadowAgent,
+          },
         }, includeDebug));
         send({ type: "done" });
       } finally {
@@ -480,5 +512,59 @@ export async function POST(request: Request) {
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
     },
+  });
+}
+
+/**
+ * Runs the shared agent for comparison only. Never delivers output, never writes
+ * conversation history, and always meters as status=shadow (no customer charge).
+ */
+async function runShadowTextAgent(opts: {
+  turnId: string;
+  accountId: string;
+  assistant: {
+    id: string;
+    name: string;
+    description: string | null;
+    instructions: string | null;
+    ragSettings: Parameters<typeof resolveRagSettings>[0];
+  };
+  message: string;
+  history: ChatHistoryMessage[];
+  models: Awaited<ReturnType<typeof resolveAssistantModels>>;
+  source: ConversationSource;
+  visitorId?: string | null;
+  maxOutputTokens?: number;
+}): Promise<void> {
+  const shadowTurnId = `${opts.turnId}:shadow_agent`;
+  const result = await runAssistantAgent({
+    turnId: shadowTurnId,
+    db: db(),
+    assistantId: opts.assistant.id,
+    assistantName: opts.assistant.name,
+    assistantDescription: opts.assistant.description,
+    instructions: opts.assistant.instructions,
+    message: opts.message,
+    history: opts.history,
+    embedding: opts.models.embedding,
+    chat: opts.models.chat,
+    ragSettings: opts.assistant.ragSettings,
+    cohereApiKey: env.COHERE_API_KEY ?? null,
+    maxOutputTokens: opts.maxOutputTokens,
+  });
+  await recordShadowUsages({
+    accountId: opts.accountId,
+    assistantId: opts.assistant.id,
+    requestId: shadowTurnId,
+    source: opts.source === "playground" || opts.source === "widget" || opts.source === "api" ? opts.source : "api",
+    visitorId: opts.visitorId,
+    records: result.providerUsages,
+    billingModeFor: (kind) => {
+      if (kind === "embedding") return opts.models.billing.embedding;
+      if (kind === "rerank") return opts.models.billing.rerank;
+      return opts.models.billing.chat;
+    },
+    shadowPath: "shadow_agent",
+    turnId: opts.turnId,
   });
 }

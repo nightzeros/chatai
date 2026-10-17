@@ -1,11 +1,21 @@
 "use server";
 
-import { and, assistantProfiles, eq, type AssistantPurpose, type KeyFact } from "@chatai/database";
+import {
+  and,
+  assistantProfiles,
+  eq,
+  type AssistantOverview,
+  type AssistantPurpose,
+  type KeyFact,
+} from "@chatai/database";
 import {
   factFingerprint,
   instructionsHash,
   invalidateAssistantContext,
+  invalidateOverviewForFacts,
   loadKnowledgeTitles,
+  overviewFromEditedClaims,
+  suggestOverview,
   suggestPurpose,
 } from "@chatai/rag/answer";
 import { revalidatePath } from "next/cache";
@@ -31,7 +41,16 @@ export type ProfileActionState = { error: string } | { saved: true; message?: st
 
 type ProfileRow = typeof assistantProfiles.$inferSelect;
 type ProfilePatch = Partial<
-  Pick<ProfileRow, "purpose" | "purposeSuggestion" | "facts" | "suggestions" | "dismissed" | "factsPublishedAt">
+  Pick<
+    ProfileRow,
+    | "purpose"
+    | "purposeSuggestion"
+    | "facts"
+    | "overview"
+    | "suggestions"
+    | "dismissed"
+    | "factsPublishedAt"
+  >
 >;
 
 const STALE_VERSION = "This profile changed in another tab or by a background refresh. Reload the page and try again.";
@@ -243,7 +262,12 @@ export async function generateFacts(_prev: ProfileActionState, formData: FormDat
 }
 
 function publish(row: ProfileRow, facts: KeyFact[], extra: ProfilePatch = {}): ProfilePatch {
-  return { facts, factsPublishedAt: row.factsPublishedAt ?? new Date(), ...extra };
+  return {
+    facts,
+    factsPublishedAt: row.factsPublishedAt ?? new Date(),
+    overview: invalidateOverviewForFacts(row.overview, new Set(facts.map((fact) => fact.id))),
+    ...extra,
+  };
 }
 
 function acceptInto(row: ProfileRow, ids: Set<string>): ProfilePatch | { error: string } {
@@ -370,8 +394,10 @@ export async function removeFact(_prev: ProfileActionState, formData: FormData):
     (row) => {
       const fact = row.facts.find((f) => f.id === factId);
       if (!fact) return { error: "That fact no longer exists. Reload the page." };
+      const facts = row.facts.filter((f) => f.id !== factId);
       return {
-        facts: row.facts.filter((f) => f.id !== factId),
+        facts,
+        overview: invalidateOverviewForFacts(row.overview, new Set(facts.map((f) => f.id))),
         ...(fact.origin === "generated" ? { dismissed: [...new Set([...row.dismissed, factFingerprint(fact)])] } : {}),
       };
     },
@@ -380,4 +406,167 @@ export async function removeFact(_prev: ProfileActionState, formData: FormData):
   if ("error" in result) return result;
   await audit(session.user.id, assistant.id, "fact_removed");
   return done(assistant.id);
+}
+
+// --- Overview ----------------------------------------------------------------
+
+export async function requestOverviewSuggestion(
+  _prev: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const owned = await ownedAssistant(formData);
+  if (!owned) return { error: "Assistant not found." };
+  const { session, assistant } = owned;
+  const [row] = await db()
+    .select()
+    .from(assistantProfiles)
+    .where(eq(assistantProfiles.assistantId, assistant.id))
+    .limit(1);
+  if (!row || row.facts.length === 0) {
+    return { error: "Publish at least one key fact before drafting an overview." };
+  }
+  const models = await resolveAssistantModels(assistant);
+  const account = await resolveBillableAccountForAssistant(assistant);
+  const access = checkHostingAccountAccess(account);
+  if (!access.ok) return { error: access.error };
+  const requestId = createId();
+  let reservation;
+  try {
+    reservation = await beginProfileUsageReservation({
+      account,
+      assistantId: assistant.id,
+      requestId,
+      chat: models.chat,
+      embedding: models.embedding,
+      billing: models.billing,
+    });
+  } catch (error) {
+    if (isUsageLimitExceededError(error)) return { error: "Usage limit reached. Try again later." };
+    throw error;
+  }
+  let overview: AssistantOverview | null;
+  try {
+    const result = await suggestOverview({
+      facts: row.facts,
+      represents: row.purpose?.represents ?? null,
+      chat: models.chat,
+      now: new Date().toISOString(),
+    });
+    await finishProfileUsageReservation({
+      reservation,
+      accountId: account.id,
+      assistantId: assistant.id,
+      requestId,
+      records: result.usages,
+      billing: models.billing,
+    });
+    overview = result.overview;
+  } catch {
+    await abortEvalUsageReservation(reservation).catch(() => undefined);
+    return { error: "Could not draft an overview right now. Try again." };
+  }
+  if (!overview) {
+    return { error: "Could not draft a usable overview from the current key facts. Edit the facts and try again." };
+  }
+  const result = await mutateProfile(
+    assistant.id,
+    versionOf(formData),
+    () => ({ overview }),
+    session.user.id,
+  );
+  if ("error" in result) return result;
+  await audit(session.user.id, assistant.id, "overview_suggested", { claims: overview.claims.length });
+  return done(assistant.id, "Overview suggestion ready. Edit the claims if needed, then approve.");
+}
+
+export async function saveOverviewDraft(
+  _prev: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const owned = await ownedAssistant(formData);
+  if (!owned) return { error: "Assistant not found." };
+  const { session, assistant } = owned;
+  const claimsJson = String(formData.get("claimsJson") ?? "");
+  let parsed: Array<{ id?: string; text: string; factIds: string[] }>;
+  try {
+    const value = JSON.parse(claimsJson) as unknown;
+    if (!Array.isArray(value)) return { error: "Invalid overview claims." };
+    parsed = value as Array<{ id?: string; text: string; factIds: string[] }>;
+  } catch {
+    return { error: "Invalid overview claims." };
+  }
+  const result = await mutateProfile(
+    assistant.id,
+    versionOf(formData),
+    (row) => {
+      const built = overviewFromEditedClaims(parsed, row.facts, row.overview, new Date().toISOString());
+      if ("error" in built) return built;
+      return { overview: built };
+    },
+    session.user.id,
+  );
+  if ("error" in result) return result;
+  await audit(session.user.id, assistant.id, "overview_draft_saved");
+  return done(assistant.id, "Overview draft saved (not live until approved).");
+}
+
+export async function approveOverview(
+  _prev: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const owned = await ownedAssistant(formData);
+  if (!owned) return { error: "Assistant not found." };
+  const { session, assistant } = owned;
+  const claimsJson = String(formData.get("claimsJson") ?? "");
+  let parsed: Array<{ id?: string; text: string; factIds: string[] }> | null = null;
+  if (claimsJson.trim()) {
+    try {
+      const value = JSON.parse(claimsJson) as unknown;
+      if (!Array.isArray(value)) return { error: "Invalid overview claims." };
+      parsed = value as Array<{ id?: string; text: string; factIds: string[] }>;
+    } catch {
+      return { error: "Invalid overview claims." };
+    }
+  }
+  const result = await mutateProfile(
+    assistant.id,
+    versionOf(formData),
+    (row) => {
+      const base =
+        parsed !== null
+          ? overviewFromEditedClaims(parsed, row.facts, row.overview, new Date().toISOString())
+          : row.overview;
+      if (!base || "error" in base) {
+        return { error: base && "error" in base ? base.error : "Draft an overview before approving." };
+      }
+      if (base.claims.length === 0) return { error: "Add at least one overview claim before approving." };
+      const overview: AssistantOverview = {
+        ...base,
+        status: "approved",
+        version: base.version + (base.status === "approved" ? 0 : 1),
+        approvedAt: new Date().toISOString(),
+        approvedBy: session.user.id,
+      };
+      return { overview };
+    },
+    session.user.id,
+  );
+  if ("error" in result) return result;
+  await audit(session.user.id, assistant.id, "overview_approved", {
+    claims: result.row.overview?.claims.length ?? 0,
+  });
+  return done(assistant.id, "Overview approved. Text and Voice may use it on the next turn.");
+}
+
+export async function clearOverview(
+  _prev: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const owned = await ownedAssistant(formData);
+  if (!owned) return { error: "Assistant not found." };
+  const { session, assistant } = owned;
+  const result = await mutateProfile(assistant.id, versionOf(formData), () => ({ overview: null }), session.user.id);
+  if ("error" in result) return result;
+  await audit(session.user.id, assistant.id, "overview_cleared");
+  return done(assistant.id, "Overview cleared. Overviews fall back to key facts or retrieval.");
 }

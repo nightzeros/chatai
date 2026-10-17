@@ -61,6 +61,10 @@ vi.mock("@/lib/hosting/usage-gate", () => ({
   finishChatUsageReservation: (...args: unknown[]) => finishChatUsageReservation(...args),
   abortChatUsageReservation: (...args: unknown[]) => abortChatUsageReservation(...args),
 }));
+const recordShadowUsages = vi.fn();
+vi.mock("@/lib/hosting/shadow-meter", () => ({
+  recordShadowUsages: (...args: unknown[]) => recordShadowUsages(...args),
+}));
 const enforceWidgetRequest = vi.fn();
 vi.mock("@/lib/policies/security-policy", () => ({
   SecurityPolicy: { fromAssistant: () => ({ enforceWidgetRequest }) },
@@ -153,6 +157,8 @@ describe("POST /api/v1/chat conversation history", () => {
     apiKeyRequest = false;
     sessionUserId = "user_1";
     runAssistantAgent.mockReset();
+    recordShadowUsages.mockReset();
+    recordShadowUsages.mockResolvedValue(0);
     resolveBillableAccountForAssistant.mockImplementation(async () => ({ id: "acct_1", status: "active" }));
     checkHostingAccountAccess.mockImplementation(() => ({ ok: true }));
     beginChatUsageReservation.mockImplementation(async () => ({ ok: true, reservation: null }));
@@ -781,6 +787,55 @@ describe("POST /api/v1/chat conversation history", () => {
 
       expect(runAssistantAgent).not.toHaveBeenCalled();
       expect(prepareAnswer).toHaveBeenCalledOnce();
+    });
+
+    it("keeps legacy production and meters shadow_agent separately", async () => {
+      envMock.ANSWER_OWNER_TEXT = "shadow_agent";
+      prepareAnswer.mockResolvedValueOnce(
+        prepared({
+          shouldGenerate: false,
+          fallbackText: "Legacy production answer.",
+          outcome: "conversational",
+        }),
+      );
+      runAssistantAgent.mockResolvedValueOnce({
+        answer: "Shadow-only answer that must not reach the visitor.",
+        sources: [],
+        confidence: 0.5,
+        outcome: "answered_with_context",
+        providerUsages: [
+          {
+            kind: "chat_completion",
+            usage: { inputTokens: 2, outputTokens: 2, cachedInputTokens: 0, totalTokens: 4 },
+            step: "agent_step_1",
+            eventId: "shadow:agent_step_1",
+          },
+        ],
+        debug: { answerOwner: "agent" },
+        turnSnapshot: {
+          turnId: "id_1:shadow_agent",
+          answerOwner: "agent",
+          chatProvider: "openai",
+          chatModel: "gpt",
+        },
+      });
+
+      const result = await post({ message: "Tell me about him", source: "playground" });
+
+      expect(result.text).toBe("Legacy production answer.");
+      expect(result.text).not.toContain("Shadow-only");
+      expect(prepareAnswer).toHaveBeenCalledOnce();
+      expect(finishChatUsageReservation).toHaveBeenCalledOnce();
+
+      await vi.waitFor(() => {
+        expect(runAssistantAgent).toHaveBeenCalledOnce();
+        expect(recordShadowUsages).toHaveBeenCalledWith(
+          expect.objectContaining({
+            shadowPath: "shadow_agent",
+            requestId: expect.stringContaining(":shadow_agent"),
+          }),
+        );
+      });
     });
   });
 });
