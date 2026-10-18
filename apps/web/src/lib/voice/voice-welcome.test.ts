@@ -1,3 +1,4 @@
+import type { AppendResult } from "@chatai/voice";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db", () => ({
@@ -184,7 +185,10 @@ describe("speakVoiceWelcome", () => {
   });
 
   it("leaves welcomeSpoken false on transient channel failure so a later call can retry", async () => {
-    const appendCommentary = vi.fn(async () => ({ ok: false as const, reason: "session_closed" as const }));
+    const appendCommentary = vi.fn(async (): Promise<AppendResult> => ({
+      ok: false,
+      reason: "session_closed",
+    }));
     const session = fakeVoiceRuntime({
       assistant: {
         id: "a1",
@@ -213,7 +217,7 @@ describe("speakVoiceWelcome", () => {
     expect(session.welcomeSpoken).not.toBe(true);
     expect(appendCommentary).toHaveBeenCalledTimes(1);
 
-    appendCommentary.mockResolvedValueOnce({ ok: true as const, eventId: "e2" });
+    appendCommentary.mockResolvedValueOnce({ ok: true, eventId: "e2" });
     await speakVoiceWelcome(session);
     expect(session.welcomeSpoken).toBe(true);
     expect(appendCommentary).toHaveBeenCalledTimes(2);
