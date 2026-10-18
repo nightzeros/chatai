@@ -74,6 +74,30 @@ const embedding = {
 
 const emptyUsage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, totalTokens: 0 };
 
+const passthroughRewrite = async ({ message }: { message: string }) => ({
+  query: message,
+  rawQuery: message,
+  rewritten: false,
+  usage: emptyUsage,
+});
+
+const baseDeps = {
+  rewriteRetrievalQuery: passthroughRewrite,
+  verifyAgentSemanticSupport: async () => ({
+    passed: true,
+    unavailable: false,
+    reason: "ok",
+    usage: emptyUsage,
+  }),
+  checkPurpose: async () => ({
+    decision: "in_scope" as const,
+    confidence: "high" as const,
+    rationale: "ok",
+    usage: emptyUsage,
+    unavailable: false,
+  }),
+};
+
 describe("runAssistantAgent", () => {
   beforeEach(() => {
     vi.mocked(generateAgentText).mockReset();
@@ -106,12 +130,7 @@ describe("runAssistantAgent", () => {
       embedding,
       onUsage: (record) => accrued.push(record.eventId ?? ""),
       deps: {
-        verifyAgentSemanticSupport: async () => ({
-          passed: true,
-          unavailable: false,
-          reason: "ok",
-          usage: emptyUsage,
-        }),
+        ...baseDeps,
         checkPurpose: async () => ({
           decision: "in_scope",
           confidence: "high",
@@ -126,6 +145,8 @@ describe("runAssistantAgent", () => {
     expect(result.sources[0]?.documentId).toBe("d1");
     expect(result.turnSnapshot.answerOwner).toBe("agent");
     expect(accrued).toContain("trn_1:agent_step_1");
+    expect(result.debug.question).toBe("overview");
+    expect(result.debug.searchQueries).toEqual([{ raw: "overview", rewritten: "overview" }]);
     expect(generateAgentText).toHaveBeenCalledOnce();
   });
 
@@ -145,21 +166,7 @@ describe("runAssistantAgent", () => {
       history: [],
       chat,
       embedding,
-      deps: {
-        verifyAgentSemanticSupport: async () => ({
-          passed: true,
-          unavailable: false,
-          reason: "skipped",
-          usage: emptyUsage,
-        }),
-        checkPurpose: async () => ({
-          decision: "in_scope",
-          confidence: "high",
-          rationale: "ok",
-          usage: emptyUsage,
-          unavailable: false,
-        }),
-      },
+      deps: baseDeps,
     });
 
     expect(result.answer).toMatch(/verified sources/i);
@@ -186,18 +193,12 @@ describe("runAssistantAgent", () => {
       chat,
       embedding,
       deps: {
+        ...baseDeps,
         verifyAgentSemanticSupport: async () => ({
           passed: false,
           unavailable: true,
           reason: "Verifier unavailable.",
           usage: emptyUsage,
-        }),
-        checkPurpose: async () => ({
-          decision: "in_scope",
-          confidence: "high",
-          rationale: "ok",
-          usage: emptyUsage,
-          unavailable: false,
         }),
       },
     });
@@ -205,7 +206,7 @@ describe("runAssistantAgent", () => {
     expect(result.answer).toMatch(/verified sources/i);
   });
 
-  it("replaces out-of-scope drafts with a domain limitation", async () => {
+  it("replaces out-of-scope drafts with a domain limitation and out_of_scope outcome", async () => {
     vi.mocked(generateAgentText).mockImplementation(async (opts) => {
       await opts.tools.searchKnowledge!.execute({ query: "cake" });
       return {
@@ -225,12 +226,7 @@ describe("runAssistantAgent", () => {
       chat,
       embedding,
       deps: {
-        verifyAgentSemanticSupport: async () => ({
-          passed: true,
-          unavailable: false,
-          reason: "ok",
-          usage: emptyUsage,
-        }),
+        ...baseDeps,
         checkPurpose: async () => ({
           decision: "out_of_scope",
           confidence: "high",
@@ -243,6 +239,95 @@ describe("runAssistantAgent", () => {
 
     expect(result.answer).not.toMatch(/cake recipe/i);
     expect(result.answer).not.toMatch(/feel free to ask/i);
+    expect(result.outcome).toBe("out_of_scope");
+    expect(result.sources).toEqual([]);
+  });
+
+  it("passes passage titles into Purpose and delivers when titles keep the turn in_scope", async () => {
+    vi.mocked(generateAgentText).mockImplementation(async (opts) => {
+      await opts.tools.searchKnowledge!.execute({ query: "the new project" });
+      return {
+        text: "ChatAI is NightZeros' latest project [1].",
+        usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+        stepUsages: [],
+        steps: 1,
+      };
+    });
+
+    const checkPurpose = vi.fn(async (opts: { passageTitles?: Array<string | null> }) => {
+      expect(opts.passageTitles).toContain("Doc");
+      return {
+        decision: "in_scope" as const,
+        confidence: "high" as const,
+        rationale: "project titles serve Purpose",
+        usage: emptyUsage,
+        unavailable: false,
+      };
+    });
+
+    const result = await runAssistantAgent({
+      turnId: "trn_titles_in_scope",
+      db: {} as never,
+      assistantId: "asst_1",
+      message: "the new project",
+      history: [],
+      chat,
+      embedding,
+      deps: {
+        ...baseDeps,
+        checkPurpose,
+        rewriteRetrievalQuery: async () => ({
+          query: "NightZeros new project ChatAI",
+          rawQuery: "the new project",
+          rewritten: true,
+          usage: emptyUsage,
+        }),
+      },
+    });
+
+    expect(checkPurpose).toHaveBeenCalledOnce();
+    expect(result.answer).toMatch(/ChatAI/i);
+    expect(result.outcome).toBe("answered_with_context");
+    expect(result.debug.question).toBe("NightZeros new project ChatAI");
+    expect(result.debug.searchQueries).toEqual([
+      { raw: "the new project", rewritten: "NightZeros new project ChatAI" },
+    ]);
+  });
+
+  it("keeps a verified draft when Purpose is uncertain after successful search", async () => {
+    vi.mocked(generateAgentText).mockImplementation(async (opts) => {
+      await opts.tools.searchKnowledge!.execute({ query: "latest project" });
+      return {
+        text: "ChatAI is NightZeros' first product for building assistants [1].",
+        usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+        stepUsages: [],
+        steps: 1,
+      };
+    });
+
+    const result = await runAssistantAgent({
+      turnId: "trn_uncertain_keep",
+      db: {} as never,
+      assistantId: "asst_1",
+      message: "What's the latest project",
+      history: [],
+      chat,
+      embedding,
+      deps: {
+        ...baseDeps,
+        checkPurpose: async () => ({
+          decision: "uncertain",
+          confidence: "low",
+          rationale: "borderline",
+          usage: emptyUsage,
+          unavailable: false,
+        }),
+      },
+    });
+
+    expect(result.answer).toMatch(/ChatAI/i);
+    expect(result.answer).not.toMatch(/I can help with/i);
+    expect(result.debug.purpose).toMatchObject({ action: "deliver", evidenceSupported: true });
   });
 
   it("fails closed for incompatible providers", async () => {

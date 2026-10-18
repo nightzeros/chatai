@@ -21,8 +21,8 @@ Playground/owner sessions may use `agent` when the matching owner flag is `agent
 Do text before Voice. Prefer an allowlist of assistant ids before instance-wide enablement.
 
 1. **Shadow (optional):** `ANSWER_OWNER_TEXT=shadow_agent` (and later Voice). Production stays legacy; a background agent run writes `status=shadow` usage with `path: shadow_agent`. No visitor output, history, or customer charge from the shadow path.
-2. **Playground agent:** `ANSWER_OWNER_TEXT=agent` with visitor release still `false`. Exercise shared fixtures and reported conversations.
-3. **Voice playground agent:** `ANSWER_OWNER_VOICE=agent` after text looks healthy. Same gate rules: validated speakable text only, then commentary, then open gate.
+2. **Playground agent:** `ANSWER_OWNER_TEXT=agent` with visitor release still `false`. Exercise shared fixtures and reported conversations. Confirm `debug.answerOwner === "agent"` via **Dashboard → Conversations → Export JSON** (sanitized per-message `debug`; not an in-playground download).
+3. **Voice playground agent:** `ANSWER_OWNER_VOICE=agent` after text looks healthy. Same gate rules: validated speakable text only, then commentary, then open gate. On connect, the server speaks the assistant welcome once (`session.started` → commentary + gate). Exports include `modality: "voice"` and slim `debug.voice` when present.
 4. **Visitor release:** set `TEXT_AGENT_VISITOR_RELEASE=true` / `VOICE_AGENT_VISITOR_RELEASE=true` only after soak acceptance below. Independent per channel.
 5. **Widen allowlists** then clear them when ready for all assistants on that channel.
 
@@ -34,10 +34,25 @@ Keep defaults until these hold on staging (or a narrow production allowlist):
 
 - Shared fixtures green on text: ack, yes-after-offer, how-are-you, greeting+ask, overview, off-topic (no invite-loop phrasing).
 - Evidence: Layer B rejects bad citations; Layer C fail-closed when unavailable; unsupported-but-cited claims do not ship as verified.
-- Purpose: suggested / instructions-derived / unconfigured still enforce; uncertain → domain limitation, not the contested draft.
+- Purpose: suggested / instructions-derived / unconfigured still enforce; high-confidence out-of-scope → domain limitation; uncertain with verified evidence keeps the draft.
 - Billing: one production reservation settle per turn; shadow rows never increment customer hosted balance under `HOSTED_USAGE_ENFORCEMENT=enforce`.
 - Voice: no factual commentary append before validation; social path unchanged; widget visitors still legacy until `VOICE_AGENT_VISITOR_RELEASE`.
 - Metrics present on agent turns: `t_agent_draft_ms`, `t_verify_ms`, `t_purpose_ms`, `t_validated_ready_ms` (debug / internal).
+
+## Playground Voice mic soak checklist
+
+With `ANSWER_OWNER_TEXT=agent`, `ANSWER_OWNER_VOICE=agent`, and visitor release still `false`, run once on a real mic in the owner playground. Store the conversation, then **Dashboard → Conversations → Export JSON**.
+
+1. Connect Voice → hear the assistant welcome once (no double-speak on reattach).
+2. Say “Hey, what’s good” and “How is it going first of all” → short social replies; no domain-limitation redirect loop.
+3. Ask a missing in-domain fact (e.g. “How old is he” when age is not in sources) → not-in-knowledge wording; no “Feel free to ask…”.
+4. Ask “Okay, what’s their latest” then quickly “the new project” (same breath or short continuation) → one knowledge turn (or a rewritten query that includes the Purpose subject / project sense); when the KB has project docs, answer cites projects/ChatAI — not a domain-limitation line with sources attached.
+5. Export JSON on that agent turn shows `modality: "voice"`, `debug.answerOwner: "agent"`, and rewritten `debug.question` / slim `debug.searchQueries` (strings only).
+6. Ask “Help me bake a cake” → domain limitation; no cake recipe; outcome stays out of scope.
+7. Soft ASR noise alone (e.g. inhale/laugh tags) → no redirect turn / no canned help spam.
+8. Confirm widget/API visitors still use legacy while `VOICE_AGENT_VISITOR_RELEASE` / `TEXT_AGENT_VISITOR_RELEASE` remain `false`.
+
+Do not flip visitor release until this checklist passes on staging (or a narrow production allowlist).
 
 ## GPT-Live transport exit criteria
 

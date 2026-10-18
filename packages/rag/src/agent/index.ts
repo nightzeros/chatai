@@ -5,6 +5,7 @@ export {
   checkPurpose,
   domainLimitation,
   parsePurposeJudge,
+  type ApplyPurposeDecisionOptions,
   type PurposeDeliveryAction,
   type PurposeJudgeResult,
 } from "./check-purpose";
@@ -18,6 +19,11 @@ export {
   type AssistantAgentResult,
   type RunAssistantAgentDeps,
 } from "./run-assistant-agent";
+export {
+  parseRewriteQuery,
+  rewriteRetrievalQuery,
+  type RewriteRetrievalQueryResult,
+} from "./rewrite-retrieval-query";
 export {
   executeSearchKnowledge,
   searchKnowledgeToolDefinition,

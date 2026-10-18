@@ -7,8 +7,11 @@ export type TextAcceptanceFixtureId =
   | "ack"
   | "yes_after_offer"
   | "how_are_you"
+  | "slang_greeting"
+  | "chitchat_going"
   | "greeting_plus_ask"
   | "overview"
+  | "unknown_age"
   | "off_topic";
 
 export type TextAcceptanceFixture = {
@@ -19,9 +22,10 @@ export type TextAcceptanceFixture = {
   /**
    * Expected production behavior class for the agent path.
    * `social` may skip Layer C / Purpose; `factual` must pass evidence gates;
-   * `redirect` must not deliver the contested factual draft.
+   * `redirect` must not deliver the contested factual draft;
+   * `not_in_knowledge` must refuse missing facts without a Purpose invite.
    */
-  expect: "social" | "factual" | "redirect";
+  expect: "social" | "factual" | "redirect" | "not_in_knowledge";
 };
 
 export const TEXT_ACCEPTANCE_FIXTURES: TextAcceptanceFixture[] = [
@@ -33,12 +37,15 @@ export const TEXT_ACCEPTANCE_FIXTURES: TextAcceptanceFixture[] = [
     expect: "factual",
   },
   { id: "how_are_you", message: "Hi there, how are you doing today", expect: "social" },
+  { id: "slang_greeting", message: "Hey, what's good", expect: "social" },
+  { id: "chitchat_going", message: "How is it going first of all", expect: "social" },
   {
     id: "greeting_plus_ask",
     message: "Hi — tell me about him",
     expect: "factual",
   },
   { id: "overview", message: "Tell me about him", expect: "factual" },
+  { id: "unknown_age", message: "How old is he", expect: "not_in_knowledge" },
   { id: "off_topic", message: "Help me bake a cake", expect: "redirect" },
 ];
 

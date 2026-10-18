@@ -149,7 +149,7 @@ describe("checker", () => {
       outcome: "fallback_no_context",
     });
     expect(guardReplacement(plan({ decision: "unknown" }))).toEqual({
-      text: `${FALLBACK_MESSAGE} ${REDIRECT}`,
+      text: FALLBACK_MESSAGE,
       outcome: "fallback_no_context",
     });
   });
@@ -251,7 +251,8 @@ describe("generateGuardedAnswer", () => {
       });
     const unknown = await run({ decision: "unknown", reasons: ["unknown"] });
     expect(unknown.guard).toMatchObject({ unavailable: true, failClosed: true, replaced: true });
-    expect(unknown.text).toBe(`${FALLBACK_MESSAGE} ${REDIRECT}`);
+    expect(unknown.text).toBe(FALLBACK_MESSAGE);
+    expect(unknown.text).not.toMatch(/feel free to ask|help you with/i);
 
     const injection = await run({ injectionSuspected: true, reasons: ["injection"] });
     expect(injection.guard).toMatchObject({ failClosed: true, replaced: true });

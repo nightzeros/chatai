@@ -47,6 +47,11 @@ vi.mock("./search-knowledge", () => ({
       additionalProperties: false,
     },
     execute: async ({ query }: { query: string }) => {
+      // Age / birthday asks: no passages (unknown in-domain fact).
+      if (/\b(age|old|birthday|born)\b/i.test(query)) {
+        opts.onPassages([], []);
+        return { passages: [], meta: { retrieveMs: 1 } };
+      }
       const text = /cake|bake|cook/i.test(query)
         ? "A chocolate cake needs flour and sugar."
         : "Ada built a booking app for clinics.";
@@ -85,6 +90,13 @@ const embedding = {
 };
 const emptyUsage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, totalTokens: 0 };
 
+const passthroughRewrite = async ({ message }: { message: string }) => ({
+  query: message,
+  rawQuery: message,
+  rewritten: false,
+  usage: emptyUsage,
+});
+
 describe("M5 text acceptance fixtures", () => {
   beforeEach(() => {
     vi.mocked(generateAgentText).mockReset();
@@ -92,7 +104,17 @@ describe("M5 text acceptance fixtures", () => {
 
   it("covers the required shared fixture set", () => {
     expect(TEXT_ACCEPTANCE_FIXTURES.map((fixture) => fixture.id).sort()).toEqual(
-      ["ack", "greeting_plus_ask", "how_are_you", "off_topic", "overview", "yes_after_offer"].sort(),
+      [
+        "ack",
+        "chitchat_going",
+        "greeting_plus_ask",
+        "how_are_you",
+        "off_topic",
+        "overview",
+        "slang_greeting",
+        "unknown_age",
+        "yes_after_offer",
+      ].sort(),
     );
   });
 
@@ -120,6 +142,7 @@ describe("M5 text acceptance fixtures", () => {
         chat,
         embedding,
         deps: {
+          rewriteRetrievalQuery: passthroughRewrite,
           verifyAgentSemanticSupport: async () => ({
             passed: true,
             unavailable: false,
@@ -149,6 +172,51 @@ describe("M5 text acceptance fixtures", () => {
     },
   );
 
+  it.each(TEXT_ACCEPTANCE_FIXTURES.filter((fixture) => fixture.expect === "not_in_knowledge"))(
+    "answers missing in-domain fact %s without Purpose invite",
+    async (fixture) => {
+      vi.mocked(generateAgentText).mockImplementation(async (opts) => {
+        await opts.tools.searchKnowledge!.execute({ query: fixture.message });
+        return {
+          text: "I am not sure about that.",
+          usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+          stepUsages: [],
+          steps: 1,
+        };
+      });
+
+      const result = await runAssistantAgent({
+        turnId: `m5_${fixture.id}`,
+        db: {} as never,
+        assistantId: "asst_1",
+        message: fixture.message,
+        history: [],
+        chat,
+        embedding,
+        deps: {
+          rewriteRetrievalQuery: passthroughRewrite,
+          verifyAgentSemanticSupport: async () => ({
+            passed: true,
+            unavailable: false,
+            reason: "ok",
+            usage: emptyUsage,
+          }),
+          checkPurpose: async () => ({
+            decision: "out_of_scope",
+            confidence: "high",
+            rationale: "should not invite",
+            usage: emptyUsage,
+            unavailable: false,
+          }),
+        },
+      });
+
+      expect(result.answer).toMatch(/available knowledge|verified sources/i);
+      expect(result.answer).not.toMatch(/feel free to ask/i);
+      expect(result.outcome).toBe("fallback_no_context");
+    },
+  );
+
   it("redirects off-topic without invite-loop phrasing", async () => {
     const fixture = TEXT_ACCEPTANCE_FIXTURES.find((entry) => entry.id === "off_topic")!;
     vi.mocked(generateAgentText).mockImplementation(async (opts) => {
@@ -170,6 +238,7 @@ describe("M5 text acceptance fixtures", () => {
       chat,
       embedding,
       deps: {
+        rewriteRetrievalQuery: passthroughRewrite,
         verifyAgentSemanticSupport: async () => ({
           passed: true,
           unavailable: false,
@@ -188,6 +257,8 @@ describe("M5 text acceptance fixtures", () => {
 
     expect(result.answer).not.toMatch(/cake recipe/i);
     expect(result.answer).not.toMatch(/feel free to ask/i);
+    expect(result.outcome).toBe("out_of_scope");
+    expect(result.sources).toEqual([]);
     expect(result.debug.timings).toBeDefined();
   });
 
@@ -216,6 +287,7 @@ describe("M5 text acceptance fixtures", () => {
         chat,
         embedding,
         deps: {
+          rewriteRetrievalQuery: passthroughRewrite,
           verifyAgentSemanticSupport: verify,
           checkPurpose: async () => ({
             decision: "in_scope",
@@ -253,6 +325,7 @@ describe("M5 text acceptance fixtures", () => {
       chat,
       embedding,
       deps: {
+        rewriteRetrievalQuery: passthroughRewrite,
         verifyAgentSemanticSupport: async () => ({
           passed: false,
           unavailable: false,
@@ -278,7 +351,7 @@ describe("M5 text acceptance fixtures", () => {
     expect(result.debug.verify).toMatchObject({ passed: false });
   });
 
-  it("limits delivery when Purpose judge is uncertain", async () => {
+  it("keeps a verified draft when Purpose judge is uncertain (evidence-backed)", async () => {
     vi.mocked(generateAgentText).mockImplementation(async (opts) => {
       await opts.tools.searchKnowledge!.execute({ query: "maybe cooking" });
       return {
@@ -298,6 +371,7 @@ describe("M5 text acceptance fixtures", () => {
       chat,
       embedding,
       deps: {
+        rewriteRetrievalQuery: passthroughRewrite,
         verifyAgentSemanticSupport: async () => ({
           passed: true,
           unavailable: false,
@@ -315,8 +389,13 @@ describe("M5 text acceptance fixtures", () => {
       },
     });
 
+    expect(result.answer).toMatch(/booking app/i);
     expect(result.answer).not.toMatch(/feel free to ask/i);
-    expect(result.debug.purpose).toMatchObject({ decision: "uncertain", action: "limit" });
+    expect(result.debug.purpose).toMatchObject({
+      decision: "uncertain",
+      action: "deliver",
+      evidenceSupported: true,
+    });
   });
 
   it("fail-closes factual delivery when Layer C is unavailable", async () => {
@@ -339,6 +418,7 @@ describe("M5 text acceptance fixtures", () => {
       chat,
       embedding,
       deps: {
+        rewriteRetrievalQuery: passthroughRewrite,
         verifyAgentSemanticSupport: async () => ({
           passed: false,
           unavailable: true,

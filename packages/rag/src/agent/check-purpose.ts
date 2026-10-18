@@ -38,6 +38,8 @@ export async function checkPurpose(opts: {
   chat: ChatConfig;
   generate?: GenerateChatFn;
   abortSignal?: AbortSignal;
+  /** Titles of retrieved passages for this turn (topic signal only — not bodies). */
+  passageTitles?: Array<string | null | undefined>;
 }): Promise<PurposeJudgeResult> {
   if (opts.abortSignal?.aborted) {
     return {
@@ -49,6 +51,11 @@ export async function checkPurpose(opts: {
     };
   }
 
+  const titles = (opts.passageTitles ?? [])
+    .map((title) => (typeof title === "string" ? title.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 12);
+
   const generate = opts.generate ?? generateChat;
   try {
     const { text: raw, usage } = await runGenerateChat(generate, {
@@ -58,11 +65,15 @@ export async function checkPurpose(opts: {
         'Return ONLY JSON: {"decision":"in_scope"|"out_of_scope"|"uncertain","confidence":"high"|"low","rationale":"...","mixed":false}',
         "Never write a user-facing reply or invitation. decision is about commercial topic fit, not auth/privacy.",
         "mixed=true when part of the request is in scope and part is not.",
+        "When retrieved passage titles clearly serve the Purpose subject (e.g. projects, about, products, portfolio)",
+        "and the draft's claims are about that subject, decide in_scope — even if the user phrasing was incomplete.",
+        "Cooking, recipes, sports, or other off-topic titles stay out_of_scope with high confidence when the draft engages them.",
       ].join("\n"),
       prompt: [
         `Judge reason: ${opts.reason}`,
         `Purpose:\n${renderPurposeBlock(opts.profile).slice(0, 2000)}`,
         `User request:\n${opts.request}`,
+        ...(titles.length > 0 ? [`Retrieved passage titles:\n${titles.map((title, i) => `${i + 1}. ${title}`).join("\n")}`] : []),
         ...(opts.draft ? [`Draft answer:\n${opts.draft.slice(0, 4000)}`] : []),
       ].join("\n\n"),
     });
@@ -111,6 +122,15 @@ export type PurposeDeliveryAction =
   | { action: "redirect"; text: string }
   | { action: "limit"; text: string };
 
+export type ApplyPurposeDecisionOptions = {
+  /**
+   * Draft already passed citation bind + Layer C and has knowledge/profile evidence.
+   * Uncertain / unavailable / low-confidence OOS then keep the draft instead of
+   * replacing it with a domain limitation.
+   */
+  evidenceSupported?: boolean;
+};
+
 /**
  * Decision table for Purpose judge outcomes (commercial topic only).
  * Never auto-injects the legacy Purpose invitation string.
@@ -118,17 +138,18 @@ export type PurposeDeliveryAction =
 export function applyPurposeDecision(
   result: Pick<PurposeJudgeResult, "decision" | "confidence" | "unavailable">,
   profile: ScopeProfile,
+  opts?: ApplyPurposeDecisionOptions,
 ): PurposeDeliveryAction {
-  if (result.unavailable) {
-    return { action: "limit", text: domainLimitation(profile) };
-  }
-  if (result.decision === "in_scope") {
+  if (result.decision === "in_scope" && !result.unavailable) {
     return { action: "deliver" };
   }
-  if (result.decision === "out_of_scope" && result.confidence === "high") {
+  if (result.decision === "out_of_scope" && result.confidence === "high" && !result.unavailable) {
     return { action: "redirect", text: domainLimitation(profile) };
   }
-  // out_of_scope low confidence, or uncertain → short domain limitation (not the contested draft)
+  // uncertain, unavailable, or low-confidence OOS: keep a verified evidence-backed draft.
+  if (opts?.evidenceSupported) {
+    return { action: "deliver" };
+  }
   return { action: "limit", text: domainLimitation(profile) };
 }
 

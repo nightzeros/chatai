@@ -23,13 +23,12 @@ import {
   ANSWER_SCOPE_POLICY,
   buildScopeProfile,
   renderPurposeBlock,
-  templateRedirect,
 } from "../answer/scope";
 import type { RetrievedChunk } from "../answer/retrieve";
 import {
   boundHistory,
   CONVERSATION_HISTORY_WINDOW,
-  isConversationalMessage,
+  isChitchatMessage,
   toChatMessages,
   type ChatHistoryMessage,
 } from "../answer/turn-plan";
@@ -43,6 +42,7 @@ import {
 import { assertAgentCompatible } from "./compatibility";
 import { bindCitationsToTurnEvidence } from "./citation-bind";
 import { shouldRunPurposePreOutput } from "./purpose-pre-output";
+import { rewriteRetrievalQuery } from "./rewrite-retrieval-query";
 import { searchKnowledgeToolDefinition, type KnowledgePassage } from "./search-knowledge";
 import { createUsageLedger } from "./usage-ledger";
 import { verifyAgentSemanticSupport, verifyUsageRecord } from "./verify-agent-output";
@@ -70,6 +70,7 @@ export type RunAssistantAgentDeps = {
   generateChat?: GenerateChatFn;
   checkPurpose?: typeof checkPurpose;
   verifyAgentSemanticSupport?: typeof verifyAgentSemanticSupport;
+  rewriteRetrievalQuery?: typeof rewriteRetrievalQuery;
 };
 
 export async function runAssistantAgent(opts: {
@@ -105,6 +106,7 @@ export async function runAssistantAgent(opts: {
   const generate = opts.deps?.generateChat ?? generateChat;
   const runPurpose = opts.deps?.checkPurpose ?? checkPurpose;
   const runVerify = opts.deps?.verifyAgentSemanticSupport ?? verifyAgentSemanticSupport;
+  const runRewrite = opts.deps?.rewriteRetrievalQuery ?? rewriteRetrievalQuery;
 
   const context = await loadAssistantContext(opts.db, opts.assistantId);
   const profile = buildScopeProfile({
@@ -143,7 +145,8 @@ export async function runAssistantAgent(opts: {
     usedProfileEvidenceOnly = true;
   }
 
-  const searchKnowledge = searchKnowledgeToolDefinition({
+  const searchQueries: Array<{ raw: string; rewritten: string }> = [];
+  const baseSearchKnowledge = searchKnowledgeToolDefinition({
     db: opts.db,
     assistantId: opts.assistantId,
     embedding: opts.embedding,
@@ -159,6 +162,32 @@ export async function runAssistantAgent(opts: {
       chunks.splice(0, chunks.length, ...nextChunks);
     },
   });
+  const searchKnowledge = {
+    ...baseSearchKnowledge,
+    execute: async (input: Record<string, unknown>) => {
+      const rawQuery = typeof input.query === "string" ? input.query : "";
+      const rewrite = await runRewrite({
+        message: rawQuery,
+        history: opts.history,
+        chat: opts.chat,
+        profile,
+        generate,
+        abortSignal: opts.abortSignal,
+      });
+      if (rewrite.usage.totalTokens > 0) {
+        onUsage({
+          kind: "chat_completion",
+          provider: opts.chat.provider,
+          model: opts.chat.model,
+          usage: rewrite.usage,
+          step: "rewrite_retrieval_query",
+          eventId: `${opts.turnId}:rewrite_retrieval_query:${searchQueries.length}`,
+        });
+      }
+      searchQueries.push({ raw: rewrite.rawQuery || rawQuery, rewritten: rewrite.query || rawQuery });
+      return baseSearchKnowledge.execute({ ...input, query: rewrite.query || rawQuery });
+    },
+  };
 
   const system = [
     opts.instructions?.trim() || "You are a helpful AI assistant.",
@@ -198,6 +227,7 @@ export async function runAssistantAgent(opts: {
   let text = "";
   let steps = 0;
   const debugExtras: Record<string, unknown> = {};
+  let purposeDeliveryAction: "deliver" | "redirect" | "limit" | undefined;
   let tAgentDraftMs = 0;
   let tVerifyMs = 0;
   let tPurposeMs = 0;
@@ -261,7 +291,7 @@ export async function runAssistantAgent(opts: {
   }
 
   if (!text) {
-    text = passages.length === 0 ? SAFE_LIMITATION : templateRedirect(profile);
+    text = SAFE_LIMITATION;
   }
 
   // Layer B — deterministic citation binding
@@ -273,8 +303,13 @@ export async function runAssistantAgent(opts: {
 
   const socialOnly =
     searchCalls === 0 &&
-    isConversationalMessage(opts.message) &&
+    isChitchatMessage(opts.message) &&
     extractCitationIndexes(text).length === 0;
+
+  // Searched but found nothing: in-domain missing fact — never a Purpose invite.
+  if (!socialOnly && searchCalls > 0 && passages.length === 0 && !usedProfileEvidenceOnly) {
+    text = SAFE_LIMITATION;
+  }
 
   const profileOverview =
     usedProfileEvidenceOnly &&
@@ -386,21 +421,40 @@ export async function runAssistantAgent(opts: {
       chat: opts.chat,
       generate,
       abortSignal: opts.abortSignal,
+      passageTitles: passages.map((passage) => passage.title).filter((title): title is string => Boolean(title)),
     });
     tPurposeMs = Date.now() - purposeStarted;
     if (purposeResult.usage.totalTokens > 0) {
       onUsage(purposeUsageRecord(opts.chat, purposeResult.usage, opts.turnId));
     }
-    const delivery = applyPurposeDecision(purposeResult, profile);
+    const verifyPassed = Boolean(
+      debugExtras.verify && (debugExtras.verify as { passed?: boolean }).passed === true,
+    );
+    const evidenceSupported =
+      bind.ok &&
+      verifyPassed &&
+      text !== SAFE_LIMITATION &&
+      (passages.length > 0 || profileOverview);
+    const delivery = applyPurposeDecision(purposeResult, profile, { evidenceSupported });
+    purposeDeliveryAction = delivery.action;
     debugExtras.purpose = {
       decision: purposeResult.decision,
       confidence: purposeResult.confidence,
       unavailable: purposeResult.unavailable,
       action: delivery.action,
+      evidenceSupported,
     };
     if (delivery.action === "redirect" || delivery.action === "limit") {
-      text = delivery.text;
+      // Empty retrieval for an in-domain ask stays not-in-knowledge (not an invite).
+      text =
+        searchCalls > 0 && passages.length === 0 && !usedProfileEvidenceOnly
+          ? SAFE_LIMITATION
+          : delivery.text;
     }
+  }
+
+  if (searchQueries.length > 0) {
+    debugExtras.searchQueries = searchQueries;
   }
 
   debugExtras.timings = {
@@ -411,13 +465,18 @@ export async function runAssistantAgent(opts: {
   };
 
   const bestScore = chunks[0]?.similarity ?? 0;
-  const limited = text === SAFE_LIMITATION || Boolean(debugExtras.purpose && (debugExtras.purpose as { action?: string }).action !== "deliver");
-  const outcome: MessageOutcome =
-    limited && passages.length === 0
-      ? "fallback_no_context"
-      : limited && debugExtras.verify && !(debugExtras.verify as { passed?: boolean }).passed
-        ? "fallback_no_context"
-        : "answered_with_context";
+  const purposeRedirected =
+    purposeDeliveryAction === "redirect" || purposeDeliveryAction === "limit";
+  const limited = text === SAFE_LIMITATION || purposeRedirected;
+  const outcome: MessageOutcome = (() => {
+    if (purposeRedirected && text !== SAFE_LIMITATION) return "out_of_scope";
+    if (limited && passages.length === 0) return "fallback_no_context";
+    if (limited && debugExtras.verify && !(debugExtras.verify as { passed?: boolean }).passed) {
+      return "fallback_no_context";
+    }
+    if (limited) return "fallback_no_context";
+    return "answered_with_context";
+  })();
 
   return buildResult({
     turnId: opts.turnId,
@@ -425,12 +484,13 @@ export async function runAssistantAgent(opts: {
     answer: text,
     chunks,
     confidence: bestScore,
-    outcome: bind.ok && !limited ? outcome : text === SAFE_LIMITATION ? "fallback_no_context" : outcome,
+    outcome,
     usages: ledger.records(),
     started,
     steps,
     searchCalls,
     debugExtras,
+    lastRewrittenQuery: searchQueries.at(-1)?.rewritten,
   });
 }
 
@@ -475,9 +535,12 @@ function buildResult(opts: {
   searchCalls: number;
   error?: string;
   debugExtras?: Record<string, unknown>;
+  lastRewrittenQuery?: string;
 }): AssistantAgentResult {
   const sources: MessageSource[] =
-    opts.outcome === "fallback_no_context" || opts.outcome === "model_failure"
+    opts.outcome === "fallback_no_context" ||
+    opts.outcome === "model_failure" ||
+    opts.outcome === "out_of_scope"
       ? []
       : sourcesFromAnswer(opts.answer, opts.chunks);
 
@@ -488,7 +551,7 @@ function buildResult(opts: {
     outcome: opts.outcome,
     providerUsages: opts.usages,
     debug: {
-      question: opts.turnId,
+      question: opts.lastRewrittenQuery?.trim() || opts.turnId,
       turn: { kind: "knowledge", retrieval: opts.searchCalls > 0 ? "performed" : "skipped" },
       retrieval: opts.chunks.map((chunk) => ({
         chunkId: chunk.chunkId,

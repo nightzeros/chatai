@@ -129,6 +129,15 @@ const SMALL_TALK_PHRASES = [
   "'sup",
   "whats up",
   "what's up",
+  "whats good",
+  "what's good",
+  "what is going on",
+  "whats going on",
+  "what's going on",
+  "first of all",
+  "first off",
+  "by the way",
+  "anyway",
   "good morning",
   "good afternoon",
   "good evening",
@@ -181,31 +190,71 @@ const SMALL_TALK_PHRASES = [
   "no",
 ].sort((a, b) => b.length - a.length);
 
+/** Mild how-are-you / what-are-you-up-to lines that are not knowledge asks. */
+const CHITCHAT_PHRASES = [
+  "what are you doing today",
+  "what are you doing",
+  "what are you up to today",
+  "what are you up to",
+  "whats going on today",
+  "what's going on today",
+  "what is going on today",
+  "how is everything",
+  "how's everything",
+  "hows everything",
+].sort((a, b) => b.length - a.length);
+
+const SOCIAL_PHRASE_POOL = [...SMALL_TALK_PHRASES, ...CHITCHAT_PHRASES].sort((a, b) => b.length - a.length);
+
+/** Words that mean the utterance is about org/knowledge content, not chitchat. */
+const CHITCHAT_SUBSTANCE =
+  /\b(project|projects|price|pricing|cost|costs|document|documents|latest|oldest|how old|birthday|install|configure|api|sdk|plan|plans|refund|hours|phone|email|address|overview|background|experience|resume|cv)\b/i;
+
+const TRAILING_FILLER = /^(so|again|everyone|all|friend|mate|buddy|there|then|too|today|now)$/;
+
+function normalizeSocialText(message: string): string {
+  return message
+    .toLowerCase()
+    .replace(/[’`]/g, "'")
+    .replace(/[^a-z' ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function peelsToSocialPhrases(rest: string, phrases: string[]): boolean {
+  if (!rest || rest.split(" ").length > 14) return false;
+  let matched = false;
+  while (rest) {
+    const phrase = phrases.find((p) => rest === p || rest.startsWith(`${p} `));
+    if (!phrase) {
+      // Tolerate a trailing assistant name or filler word ("thanks chatai", "hi so").
+      if (matched && rest.split(" ").length === 1 && !phrases.includes(rest) && TRAILING_FILLER.test(rest)) {
+        return true;
+      }
+      return false;
+    }
+    matched = true;
+    rest = rest.slice(phrase.length).trim();
+  }
+  return matched;
+}
+
 /**
  * Deterministic small-talk check: the whole message must be made of greeting /
  * thanks / acknowledgement / goodbye phrases. Anything else ("hi, what does Pro
  * cost?") is not small talk.
  */
 export function isConversationalMessage(message: string): boolean {
-  let rest = message
-    .toLowerCase()
-    .replace(/[’`]/g, "'")
-    .replace(/[^a-z' ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!rest || rest.split(" ").length > 12) return false;
-  let matched = false;
-  while (rest) {
-    const phrase = SMALL_TALK_PHRASES.find((p) => rest === p || rest.startsWith(`${p} `));
-    if (!phrase) return false;
-    matched = true;
-    rest = rest.slice(phrase.length).trim();
-    // Tolerate a trailing assistant name or filler word ("thanks chatai", "hi so").
-    if (rest && rest.split(" ").length === 1 && !SMALL_TALK_PHRASES.includes(rest)) {
-      return /^(so|again|everyone|all|friend|mate|buddy|there|then|too)$/.test(rest);
-    }
-  }
-  return matched;
+  return peelsToSocialPhrases(normalizeSocialText(message), SMALL_TALK_PHRASES);
+}
+
+/**
+ * Greeting / how-are-you / mild "what's going on today" without org or knowledge asks.
+ * Used by Voice gate and agent social-only so chitchat never hits knowledge fallback.
+ */
+export function isChitchatMessage(message: string): boolean {
+  if (CHITCHAT_SUBSTANCE.test(message)) return false;
+  return peelsToSocialPhrases(normalizeSocialText(message), SOCIAL_PHRASE_POOL);
 }
 
 /**
@@ -216,7 +265,7 @@ export function isConversationalMessage(message: string): boolean {
 export function isSocialProtocolTurn(message: string, history: ChatHistoryMessage[]): boolean {
   const last = boundHistory(history, CONVERSATION_HISTORY_WINDOW.plannerMessages).at(-1);
   const answersAssistantQuestion = last?.role === "assistant" && isContextualAcknowledgement(message, last.content);
-  return isConversationalMessage(message) && !answersAssistantQuestion;
+  return isChitchatMessage(message) && !answersAssistantQuestion;
 }
 
 /** Only an acknowledgement can implicitly accept an earlier offer; a fresh greeting cannot. */
@@ -297,6 +346,7 @@ const FOCUSED_EXAMPLES = [
   '- "What projects has she built? Also, what\'s the capital of France?" -> {"route":"knowledge","scope":"partial","query":"projects she has built"}',
   '- "What does full-stack mean in her profile?" -> scope "in" (explaining a term the visitor needs to understand her work).',
   '- "Is she available for freelance work?" -> scope "in" (even if no document mentions availability).',
+  '- "How old is she?" / "How old is he?" -> scope "in" (a question about the represented person; if sources lack age, the answer says the fact is not in the knowledge — never scope "out" with an invite).',
   '- "Tell me about her." -> {"route":"knowledge","scope":"in","query":"overview of the portfolio owner, background, experience and projects"}',
   '- After an invitation to ask about her: "I said, tell me about her" -> route "knowledge", scope "in"; resolve her to the represented person and search for an overview.',
   '- "Can you hear me? I said, tell me about her" -> route "knowledge", scope "in"; the information request takes priority over the conversational preface.',

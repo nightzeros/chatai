@@ -474,13 +474,12 @@ describe("prepareAnswer scope enforcement", () => {
     expect(strong.system).toContain("Do not use general world knowledge");
     expect(strong.system).not.toMatch(/common knowledge|general model knowledge/);
 
-    // Balanced mode would still generate (common knowledge) with no chunks; restricted falls back + redirects.
+    // Balanced mode would still generate (common knowledge) with no chunks; restricted falls back without invite.
     retrieveChunks.mockResolvedValue([]);
     const weak = await runScoped("Tell me about whitening", [], model).prepared;
     expect(weak).toMatchObject({ outcome: "fallback_no_context", shouldGenerate: false });
-    expect(weak.fallbackText).toBe(
-      `${FALLBACK_MESSAGE} I can help with appointments, services and opening hours. Is there something about Bright Smile Dental Clinic I can help you with?`,
-    );
+    expect(weak.fallbackText).toBe(FALLBACK_MESSAGE);
+    expect(weak.fallbackText).not.toMatch(/feel free to ask|is there something about/i);
   });
 
   it("unparseable or scope-less classifier output is unknown too", async () => {

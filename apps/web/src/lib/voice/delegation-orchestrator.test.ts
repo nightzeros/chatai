@@ -44,9 +44,13 @@ import { serializeVoiceDebug } from "./debug-snapshot";
 import {
   ALREADY_ANSWERED_COMMENTARY,
   finalizeAnsweredTurns,
+  isNonContentUtterance,
+  looksIncompleteSubstance,
+  looksNounPhraseContinuation,
   isPreScopeEngagement,
   SCOPE_REMINDER_INSTRUCTIONS,
   isBackchannel,
+  sanitizeVoiceTranscript,
   setVoiceOrchestratorDepsForTests,
   SUPERSEDED_COMMENTARY,
   TIMEOUT_COMMENTARY,
@@ -58,7 +62,7 @@ import {
 import { terminateVoiceSession } from "./lifecycle";
 import type { VoiceRuntimeSession } from "./session-runtime";
 import { superviseSideband } from "./sideband-supervisor";
-import { endVoiceGate, subscribeVoiceGate } from "./turn-gate";
+import { endVoiceGate, setVoiceGate, subscribeVoiceGate } from "./turn-gate";
 
 /** GPT-Live-like channel: supersedes on delegation.created and gates appends. */
 class FakeLiveChannel implements VoiceControlChannel {
@@ -331,6 +335,37 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     expect(logs.some((entry) => entry.event === "turn.answered" && entry.fields.answerOwner === "agent")).toBe(
       true,
     );
+  });
+
+  it("records rewrittenQuery from agent debug.question", async () => {
+    envMock.ANSWER_OWNER_VOICE = "agent";
+    const { session, channel, runAssistantAgent } = setup({
+      runAssistantAgent: async () => ({
+        answer: "ChatAI is the latest NightZeros project [1].",
+        sources: [{ documentId: "d1", documentName: "Projects", chunkId: "c1", excerpt: "ChatAI" }],
+        confidence: 0.9,
+        outcome: "answered_with_context" as const,
+        providerUsages: [],
+        debug: {
+          answerOwner: "agent",
+          question: "NightZeros latest project ChatAI",
+          searchQueries: [{ raw: "what's their latest", rewritten: "NightZeros latest project ChatAI" }],
+          timings: { t_validated_ready_ms: 12 },
+        },
+        turnSnapshot: {
+          turnId: "id_1",
+          answerOwner: "agent" as const,
+          chatProvider: "openai",
+          chatModel: "gpt",
+        },
+      }),
+    });
+    channel.userSays("what's their latest", 1_000);
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+
+    expect(runAssistantAgent).toHaveBeenCalledOnce();
+    expect(session.turns[0]?.rewrittenQuery).toBe("NightZeros latest project ChatAI");
   });
 
   it("keeps widget visitors on legacy until VOICE_AGENT_VISITOR_RELEASE", async () => {
@@ -885,6 +920,75 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     expect(session.turns[0]!.metrics.bargeInHoldMs).toBeLessThan(2_000);
   });
 
+  it("incomplete soft speech after an answer does not mute playback", async () => {
+    const { session, channel, prepareAnswer } = setup({
+      settings: {
+        hearRecoveryMs: 0,
+        forceBackendAfterMs: 5_000,
+        incompleteSubstanceHoldMs: 300,
+      },
+    });
+    channel.userSays("What is the Pro plan", 1_000);
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+    expect(session.turns[0]?.status).toBe("answered");
+    expect(session.gate?.decision).toMatchObject({ state: "open", reason: "backend_answer" });
+
+    channel.userSays(" what's their", 2_200, 2_600);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(prepareAnswer).toHaveBeenCalledTimes(1);
+    expect(
+      session.gate?.decision.state === "open" || session.gate?.pendingOpen?.reason === "backend_answer",
+    ).toBe(true);
+  });
+
+  it("filler during deferred backend open keeps playback approval", async () => {
+    const { session, channel, prepareAnswer } = setup({
+      settings: { withheldQuietMs: 5_000, hearRecoveryMs: 0, forceBackendAfterMs: 5_000 },
+    });
+    channel.userSays("What is the Pro plan", 1_000, 1_400);
+    channel.assistantSays(" One moment.", 1_450, 1_700);
+    expect(session.outputFragments.at(-1)).toMatchObject({ withheld: true });
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+
+    expect(prepareAnswer).toHaveBeenCalledTimes(1);
+    expect(session.turns[0]?.status).toBe("answered");
+    expect(
+      session.gate?.pendingOpen?.reason === "backend_answer" ||
+        (session.gate?.decision.state === "open" && session.gate.decision.reason === "backend_answer"),
+    ).toBe(true);
+
+    channel.userSays(" mm", 2_200, 2_400);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(prepareAnswer).toHaveBeenCalledTimes(1);
+    expect(
+      session.gate?.pendingOpen?.reason === "backend_answer" ||
+        (session.gate?.decision.state === "open" && session.gate.decision.reason === "backend_answer"),
+    ).toBe(true);
+  });
+
+  it("hear recovery re-opens the gate when an answered turn was never heard", async () => {
+    const { session, channel, logs } = setup({
+      settings: { hearRecoveryMs: 40, forceBackendAfterMs: 5_000 },
+    });
+    channel.userSays("What is the Pro plan", 1_000);
+    channel.delegate("del_1", 1_500);
+    await waitForVoiceTurnsIdle(session);
+    expect(session.turns[0]?.status).toBe("answered");
+
+    setVoiceGate(session, "closed", "user_speaking");
+    expect(session.gate?.decision.state).toBe("closed");
+
+    await vi.waitFor(() => {
+      expect(logs.some((entry) => entry.event === "gate.hear_recovery")).toBe(true);
+      expect(session.gate?.decision).toMatchObject({ state: "open", reason: "backend_answer" });
+    });
+    expect(channel.commentary).toHaveLength(1);
+  });
+
   it("speech that arrived while collecting and already is a barge-in supersedes before RAG", async () => {
     const { session, channel, prepareAnswer } = setup({ settings: { utteranceSettleMaxMs: 0 } });
     channel.userSays("What is the refund policy", 1_000, 1_400);
@@ -961,12 +1065,13 @@ describe("voice delegation → prepareAnswer → commentary", () => {
     expect(session.history).toEqual([]);
   });
 
-  it("empty utterance: asks the user to repeat without calling RAG", async () => {
+  it("empty utterance: skips RAG and does not speak a repeat prompt", async () => {
     const { session, channel, prepareAnswer } = setup();
     channel.delegate("del_1", 1_500);
     await waitForVoiceTurnsIdle(session);
     expect(prepareAnswer).not.toHaveBeenCalled();
-    expect(channel.commentary[0]?.content).toMatch(/repeat/i);
+    expect(session.turns[0]).toMatchObject({ status: "failed", error: "empty_utterance" });
+    expect(channel.commentary).toEqual([]);
   });
 });
 
@@ -1159,6 +1264,17 @@ describe("toSpeakableCommentary", () => {
     const spoken = toSpeakableCommentary(long, 1_800);
     expect(spoken.length).toBeLessThanOrEqual(1_800);
     expect(spoken.endsWith(".")).toBe(true);
+  });
+});
+
+describe("sanitizeVoiceTranscript", () => {
+  it("strips ASR noise tags and truncated brackets", () => {
+    expect(sanitizeVoiceTranscript("[laugh] So, what's going on")).toBe("So, what's going on");
+    expect(sanitizeVoiceTranscript("[inhale")).toBe("");
+    expect(sanitizeVoiceTranscript("[sigh] okay")).toBe("okay");
+    expect(isNonContentUtterance("[laugh]")).toBe(true);
+    expect(isNonContentUtterance("[inhale")).toBe(true);
+    expect(isNonContentUtterance("What's the latest project")).toBe(false);
   });
 });
 
@@ -1587,6 +1703,80 @@ describe("playback gate: ChatAI decides who answers each utterance", () => {
     await waitForVoiceTurnsIdle(session);
     expect(prepareAnswer.mock.calls[0]?.[0].message).toBe("I'm bored");
     expect(channel.commentary).toEqual([{ delegationId: null, content: "Answer to: I'm bored" }]);
+  });
+
+  it("fragmented deltas in one quiet window become one backend userText", async () => {
+    const { session, channel, prepareAnswer } = setup({
+      settings: { forceBackendAfterMs: 40, utteranceQuietMs: 20, utteranceSettleMaxMs: 200 },
+    });
+    channel.userSays(" What's the", 1_000, 1_300);
+    channel.userSays(" latest project", 1_320, 1_700);
+    await vi.waitFor(() => expect(session.turns[0]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
+    expect(prepareAnswer).toHaveBeenCalledTimes(1);
+    expect(prepareAnswer.mock.calls[0]?.[0].message).toBe("What's the latest project");
+    expect(session.turns).toHaveLength(1);
+  });
+
+  it("holds an incomplete substance ask until a short continuation arrives as one turn", async () => {
+    const { session, channel, prepareAnswer } = setup({
+      settings: {
+        forceBackendAfterMs: 40,
+        utteranceQuietMs: 30,
+        incompleteSubstanceHoldMs: 200,
+        incompleteContinuationGapMs: 1_000,
+      },
+    });
+    channel.userSays(" what's their latest", 1_000, 1_400);
+    await sleep(80);
+    expect(prepareAnswer).not.toHaveBeenCalled();
+    channel.userSays(" the new project", 1_580, 2_000);
+    await vi.waitFor(() => expect(session.turns[0]?.origin).toBe("server"));
+    await waitForVoiceTurnsIdle(session);
+    expect(prepareAnswer).toHaveBeenCalledTimes(1);
+    expect(prepareAnswer.mock.calls[0]?.[0].message.toLowerCase()).toMatch(/latest/);
+    expect(prepareAnswer.mock.calls[0]?.[0].message.toLowerCase()).toMatch(/project/);
+    expect(session.turns).toHaveLength(1);
+  });
+
+  it("detects incomplete substance and noun-phrase continuations", () => {
+    expect(looksIncompleteSubstance("what's their latest")).toBe(true);
+    expect(looksIncompleteSubstance("What's the latest project")).toBe(false);
+    expect(looksNounPhraseContinuation("the new project")).toBe(true);
+    expect(looksNounPhraseContinuation("yes please")).toBe(false);
+  });
+
+  it("ASR noise alone does not force a backend turn", async () => {
+    const { session, channel, prepareAnswer } = setup({ settings: { forceBackendAfterMs: 40 } });
+    channel.userSays(" [inhale", 1_000, 1_200);
+    channel.userSays(" [laugh]", 1_250, 1_500);
+    await sleep(120);
+    expect(prepareAnswer).not.toHaveBeenCalled();
+    expect(session.turns).toEqual([]);
+    expect(channel.commentary).toEqual([]);
+  });
+
+  it("a second hand-off for the same collecting utterance is closed without a second lookup", async () => {
+    const slow = deferred<PreparedAnswer>();
+    const { session, channel, prepareAnswer } = setup({
+      prepare: async () => slow.promise,
+    });
+    channel.userSays(" What's the latest project", 1_000, 1_800);
+    channel.delegate("del_1", 1_800);
+    await vi.waitFor(() => expect(session.turns[0]?.status).toBe("retrieving"));
+    // Same breath: create del_2 alongside del_1 (do not supersede the active hand-off).
+    channel.delegations.create("del_2", 1_900);
+    channel.emit({ type: "delegation.created", delegationId: "del_2", offsetMs: 1_900 });
+    slow.resolve(prepared("What's the latest project"));
+    await waitForVoiceTurnsIdle(session);
+    expect(session.turns).toHaveLength(1);
+    expect(prepareAnswer).toHaveBeenCalledTimes(1);
+    expect(channel.commentary).toEqual(
+      expect.arrayContaining([
+        { delegationId: "del_1", content: "Answer to: What's the latest project" },
+        { delegationId: "del_2", content: ALREADY_ANSWERED_COMMENTARY },
+      ]),
+    );
   });
 
   it.each(["Hey, what's up", "Thanks so much", "okay", "got it", "mhm", "Hi there, how are you doing today"])(
