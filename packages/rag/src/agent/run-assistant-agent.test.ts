@@ -254,7 +254,7 @@ describe("runAssistantAgent", () => {
       };
     });
 
-    const checkPurpose = vi.fn(async (opts: { passageTitles?: Array<string | null> }) => {
+    const checkPurpose = vi.fn(async (opts: { passageTitles?: Array<string | null | undefined> }) => {
       expect(opts.passageTitles).toContain("Doc");
       return {
         decision: "in_scope" as const,

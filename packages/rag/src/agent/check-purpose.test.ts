@@ -114,10 +114,10 @@ describe("checkPurpose passage titles", () => {
   });
 
   it("includes retrieved titles in the judge prompt so on-topic evidence can stay in_scope", async () => {
-    const generate = vi.fn(async ({ prompt }: { prompt: string }) => {
-      expect(prompt).toContain("Retrieved passage titles:");
-      expect(prompt).toContain("Projects — ChatAI");
-      expect(prompt).toContain("About NightZeros");
+    const generate = vi.fn(async (opts: { prompt?: string }) => {
+      expect(opts.prompt).toContain("Retrieved passage titles:");
+      expect(opts.prompt).toContain("Projects — ChatAI");
+      expect(opts.prompt).toContain("About NightZeros");
       return {
         text: '{"decision":"in_scope","confidence":"high","rationale":"project titles serve Purpose"}',
         usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
@@ -139,8 +139,8 @@ describe("checkPurpose passage titles", () => {
   });
 
   it("still allows high-confidence out_of_scope for cooking drafts", async () => {
-    const generate = vi.fn(async ({ prompt }: { prompt: string }) => {
-      expect(prompt).toContain("Cake recipes");
+    const generate = vi.fn(async (opts: { prompt?: string }) => {
+      expect(opts.prompt).toContain("Cake recipes");
       return {
         text: '{"decision":"out_of_scope","confidence":"high","rationale":"cooking"}',
         usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
