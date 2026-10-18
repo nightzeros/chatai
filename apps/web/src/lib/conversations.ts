@@ -114,6 +114,7 @@ export async function getOwnedConversationTranscript(
       content: messages.content,
       sources: messages.sources,
       outcome: messages.outcome,
+      debug: messages.debug,
       feedback: messages.feedback,
       confidence: messages.confidence,
       modality: messages.modality,

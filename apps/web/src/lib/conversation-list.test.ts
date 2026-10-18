@@ -189,7 +189,7 @@ describe("groupConversationsByDay", () => {
 });
 
 describe("toTranscriptMessages", () => {
-  it("omits system messages and never exposes debug payloads", () => {
+  it("omits system messages and keeps debug for export sanitization", () => {
     const transcript = toTranscriptMessages([
       message({
         id: "sys",
@@ -225,8 +225,8 @@ describe("toTranscriptMessages", () => {
       feedback: "negative",
       confidence: 0.12,
       sources: [{ documentId: "d1", documentName: "Policy" }],
+      debug: { question: "refunds rewritten" },
     });
-    expect(transcript[1]).not.toHaveProperty("debug");
   });
 });
 

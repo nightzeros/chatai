@@ -4,6 +4,7 @@ export type { PreparedAnswer, FinalAnswer, ChatHistoryMessage, TurnKind, ScopeRe
 export {
   boundHistory,
   CONVERSATION_HISTORY_WINDOW,
+  isChitchatMessage,
   isConversationalMessage,
   isSocialProtocolTurn,
   planTurn,
@@ -50,6 +51,11 @@ export {
   isOverviewOrIdentityRequest,
 } from "./overview";
 export type { ActiveOverviewClaim } from "./overview";
+export {
+  overviewFromEditedClaims,
+  parseOverviewClaims,
+  suggestOverview,
+} from "./overview-generate";
 export { isBasicProfileQuestion } from "./profile-answer";
 export {
   dropConflicts,

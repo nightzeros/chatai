@@ -5,6 +5,7 @@ export {
   checkPurpose,
   domainLimitation,
   parsePurposeJudge,
+  type ApplyPurposeDecisionOptions,
   type PurposeDeliveryAction,
   type PurposeJudgeResult,
 } from "./check-purpose";
@@ -19,6 +20,11 @@ export {
   type RunAssistantAgentDeps,
 } from "./run-assistant-agent";
 export {
+  parseRewriteQuery,
+  rewriteRetrievalQuery,
+  type RewriteRetrievalQueryResult,
+} from "./rewrite-retrieval-query";
+export {
   executeSearchKnowledge,
   searchKnowledgeToolDefinition,
   type KnowledgePassage,
@@ -29,3 +35,9 @@ export {
   verifyAgentSemanticSupport,
   type AgentVerifyResult,
 } from "./verify-agent-output";
+export {
+  TEXT_ACCEPTANCE_FIXTURES,
+  textAcceptanceFixture,
+  type TextAcceptanceFixture,
+  type TextAcceptanceFixtureId,
+} from "./text-acceptance-fixtures";

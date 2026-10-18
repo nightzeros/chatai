@@ -53,6 +53,8 @@ export type TranscriptMessage = {
   confidence: number | null;
   modality: "text" | "voice";
   wasInterrupted: boolean;
+  /** Raw message debug when loaded for export/review; sanitized before Export JSON. */
+  debug?: unknown;
   createdAt: Date;
 };
 
@@ -205,6 +207,7 @@ export function toTranscriptMessages(messages: ConversationMessageRecord[]): Tra
       confidence: row.confidence ?? null,
       modality: row.modality ?? "text",
       wasInterrupted: row.wasInterrupted ?? false,
+      ...(row.debug !== undefined && row.debug !== null ? { debug: row.debug } : {}),
       createdAt: row.createdAt,
     }));
 }

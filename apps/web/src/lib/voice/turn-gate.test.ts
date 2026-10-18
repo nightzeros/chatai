@@ -120,8 +120,21 @@ describe("voice gate state", () => {
 });
 
 describe("greetings after an assistant question", () => {
-  it.each(["How are you", "Yo, 'sup", "Hey, what's up", "Thanks"])("allows %s through the social gate", (text) => {
+  it.each([
+    "How are you",
+    "Yo, 'sup",
+    "Hey, what's up",
+    "Hey, what's good",
+    "yo what's going on",
+    "what's going on today",
+    "How is it going first of all",
+    "Thanks",
+  ])("allows %s through the social gate", (text) => {
     expect(classifyVoiceTurn(text, "Hey! What's up?")).toBe("social");
+  });
+
+  it("keeps substance asks on the backend path", () => {
+    expect(classifyVoiceTurn("what's the latest project")).toBe("backend");
   });
   it("keeps an information request after a greeting on the backend path", () => {
     expect(classifyVoiceTurn("Yo, sup, tell me about him", "Hey! What's up?")).toBe("backend");

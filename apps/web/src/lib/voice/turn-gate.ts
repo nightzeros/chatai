@@ -1,4 +1,4 @@
-import { isConversationalMessage, isContextualAcknowledgement } from "@chatai/rag/answer";
+import { isChitchatMessage, isContextualAcknowledgement } from "@chatai/rag/answer";
 
 import type { VoiceRuntimeSession, VoiceTurn } from "./session-runtime";
 
@@ -118,11 +118,11 @@ function normalize(text: string): string {
 
 /** Every word is small talk: voice acknowledgements and closings, plus the shared phrases. */
 function isVoiceSmallTalk(text: string): boolean {
-  if (isConversationalMessage(text)) return true;
+  if (isChitchatMessage(text)) return true;
   const normalized = normalize(text).replace(/'/g, "");
   const rest = normalized.replace(ACKNOWLEDGEMENT, " ").replace(/\s+/g, " ").trim();
   if (normalized === "" || rest === normalized) return false;
-  return rest === "" || isConversationalMessage(rest);
+  return rest === "" || isChitchatMessage(rest);
 }
 
 /**

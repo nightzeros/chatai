@@ -6,6 +6,7 @@ import {
   buildHistoryAnswerPrompt,
   buildVoiceUnavailablePrompt,
   CONVERSATION_HISTORY_WINDOW,
+  isChitchatMessage,
   isConversationalMessage,
   isHistoryLookupSentinel,
   planTurn,
@@ -37,10 +38,34 @@ const zenithHistory: ChatHistoryMessage[] = [
 ];
 
 describe("isConversationalMessage", () => {
-  it.each(["Hi", "hello there!", "Thanks", "thank you so much!", "ok thanks", "Good morning", "bye", "Hi, how are you?"])(
-    "treats %j as small talk",
+  it.each([
+    "Hi",
+    "hello there!",
+    "Thanks",
+    "thank you so much!",
+    "ok thanks",
+    "Good morning",
+    "bye",
+    "Hi, how are you?",
+    "Hey, what's good",
+    "yo what's going on",
+    "Yo, what is going on",
+    "How is it going first of all",
+  ])("treats %j as small talk", (message) => {
+    expect(isConversationalMessage(message)).toBe(true);
+  });
+
+  it.each(["what's going on today", "What are you doing today", "How is it going first of all"])(
+    "treats %j as chitchat",
     (message) => {
-      expect(isConversationalMessage(message)).toBe(true);
+      expect(isChitchatMessage(message)).toBe(true);
+    },
+  );
+
+  it.each(["what's the latest project", "How old is he", "Tell me about the documents"])(
+    "does not treat %j as chitchat",
+    (message) => {
+      expect(isChitchatMessage(message)).toBe(false);
     },
   );
 
