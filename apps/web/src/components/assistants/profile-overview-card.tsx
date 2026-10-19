@@ -12,6 +12,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -84,6 +86,74 @@ function toDraft(overview: OverviewView | null): DraftClaim[] {
   }));
 }
 
+function ClaimFactPicker({
+  facts,
+  selected,
+  onToggle,
+}: {
+  facts: FactOption[];
+  selected: string[];
+  onToggle: (factId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const selectedFacts = facts.filter((f) => selected.includes(f.id));
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return facts;
+    return facts.filter((f) => f.text.toLowerCase().includes(q));
+  }, [facts, query]);
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">Supported by key facts</p>
+        <Button type="button" size="sm" variant="ghost" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Done" : selectedFacts.length ? `Edit sources (${selectedFacts.length})` : "Link facts"}
+        </Button>
+      </div>
+      {!expanded ? (
+        <ul className="space-y-1 text-sm text-muted-foreground">
+          {selectedFacts.length === 0 ? (
+            <li>No facts linked yet.</li>
+          ) : (
+            selectedFacts.map((fact) => (
+              <li key={fact.id} className="line-clamp-2">
+                · {fact.text}
+              </li>
+            ))
+          )}
+        </ul>
+      ) : (
+        <div className="rounded-md border border-border p-2">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search facts…"
+            className="mb-2 h-8"
+          />
+          <div className="flex max-h-40 flex-col gap-2 overflow-y-auto">
+            {filtered.map((fact) => (
+              <label key={fact.id} className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={selected.includes(fact.id)}
+                  onChange={() => onToggle(fact.id)}
+                />
+                <span className="text-muted-foreground">{fact.text}</span>
+              </label>
+            ))}
+            {filtered.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No facts match.</p>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProfileOverviewCard({ assistantId, version, overview, facts }: Props) {
   const [claims, setClaims] = useState<DraftClaim[]>(() => toDraft(overview));
   const overviewKey = overview
@@ -94,6 +164,9 @@ export function ProfileOverviewCard({ assistantId, version, overview, facts }: P
     // overviewKey captures status/version/claim ids from the server payload.
   }, [overviewKey]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally keyed by overview identity
   const claimsJson = useMemo(() => JSON.stringify(claims), [claims]);
+  const savedJson = useMemo(() => JSON.stringify(toDraft(overview)), [overview]);
+  const dirty = claimsJson !== savedJson;
+
   const [suggestState, suggestAction, suggesting] = useActionState<ProfileActionState, FormData>(
     requestOverviewSuggestion,
     null,
@@ -138,7 +211,7 @@ export function ProfileOverviewCard({ assistantId, version, overview, facts }: P
   };
 
   return (
-    <Card>
+    <Card className="shadow-none">
       <CardHeader>
         <CardTitle>Overview</CardTitle>
         <CardDescription>
@@ -160,8 +233,12 @@ export function ProfileOverviewCard({ assistantId, version, overview, facts }: P
           ) : (
             <Badge variant="secondary">None yet</Badge>
           )}
+          {dirty ? <Badge variant="outline">Unsaved edits</Badge> : null}
           {!canDraft ? (
             <span className="text-muted-foreground">Publish key facts first to draft an overview.</span>
+          ) : null}
+          {claims.length >= 4 ? (
+            <span className="text-muted-foreground">Maximum 4 claims.</span>
           ) : null}
         </div>
 
@@ -186,22 +263,11 @@ export function ProfileOverviewCard({ assistantId, version, overview, facts }: P
                   onChange={(event) => updateClaim(index, { text: event.target.value })}
                   placeholder="Ada builds booking products for clinics."
                 />
-                <div className="mt-3">
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">Supported by key facts</p>
-                  <div className="flex flex-col gap-2">
-                    {facts.map((fact) => (
-                      <label key={fact.id} className="flex items-start gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="mt-1"
-                          checked={claim.factIds.includes(fact.id)}
-                          onChange={() => toggleFact(index, fact.id)}
-                        />
-                        <span className="text-muted-foreground">{fact.text}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                <ClaimFactPicker
+                  facts={facts}
+                  selected={claim.factIds}
+                  onToggle={(factId) => toggleFact(index, factId)}
+                />
               </div>
             ))}
           </div>
@@ -213,16 +279,33 @@ export function ProfileOverviewCard({ assistantId, version, overview, facts }: P
           </Button>
           <form action={saveAction}>
             <Hidden assistantId={assistantId} version={version} claimsJson={claimsJson} />
-            <Button type="submit" size="sm" variant="outline" disabled={saving || claims.length === 0}>
-              {saving ? "Saving…" : "Save draft"}
+            <Button type="submit" size="sm" variant={dirty ? "default" : "outline"} disabled={saving || claims.length === 0}>
+              {saving ? "Saving…" : dirty ? "Save draft" : "Draft saved"}
             </Button>
           </form>
-          <form action={approveAction}>
-            <Hidden assistantId={assistantId} version={version} claimsJson={claimsJson} />
-            <Button type="submit" size="sm" disabled={approving || claims.length === 0}>
-              {approving ? "Approving…" : "Approve overview"}
-            </Button>
-          </form>
+          {dirty ? (
+            <p className="text-xs text-muted-foreground">Save your draft before approving.</p>
+          ) : (
+            <form action={approveAction} id={`approve-overview-${assistantId}`}>
+              <Hidden assistantId={assistantId} version={version} claimsJson={claimsJson} />
+              <ConfirmDialog
+                title="Approve overview?"
+                description={`This makes ${claims.length} claim${claims.length === 1 ? "" : "s"} live for Text and Voice.`}
+                confirmLabel="Approve"
+                trigger={
+                  <Button type="button" size="sm" disabled={approving || claims.length === 0}>
+                    {approving ? "Approving…" : "Approve overview"}
+                  </Button>
+                }
+                onConfirm={() => {
+                  const form = document.getElementById(
+                    `approve-overview-${assistantId}`,
+                  ) as HTMLFormElement | null;
+                  form?.requestSubmit();
+                }}
+              />
+            </form>
+          )}
           <Feedback state={saveState} />
           <Feedback state={approveState} />
         </div>
@@ -235,11 +318,25 @@ export function ProfileOverviewCard({ assistantId, version, overview, facts }: P
             </Button>
           </form>
           {overview ? (
-            <form action={clearAction}>
+            <form action={clearAction} id={`clear-overview-${assistantId}`}>
               <Hidden assistantId={assistantId} version={version} />
-              <Button type="submit" variant="ghost" size="sm" disabled={clearing}>
-                Clear overview
-              </Button>
+              <ConfirmDialog
+                destructive
+                title="Clear overview?"
+                description="Removes the overview. Overviews fall back to key facts or retrieval until you draft again."
+                confirmLabel="Clear"
+                trigger={
+                  <Button type="button" variant="ghost" size="sm" disabled={clearing}>
+                    Clear overview
+                  </Button>
+                }
+                onConfirm={() => {
+                  const form = document.getElementById(
+                    `clear-overview-${assistantId}`,
+                  ) as HTMLFormElement | null;
+                  form?.requestSubmit();
+                }}
+              />
             </form>
           ) : null}
           <Feedback state={suggestState} />

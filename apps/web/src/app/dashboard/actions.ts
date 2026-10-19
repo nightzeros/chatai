@@ -238,6 +238,7 @@ export async function updateAssistantSettings(
   revalidatePath(`/dashboard/assistants/${existing.id}`);
   revalidatePath(`/dashboard/assistants/${existing.id}/customize`);
   revalidatePath(`/dashboard/assistants/${existing.id}/install`);
+  revalidatePath(`/dashboard/assistants/${existing.id}/widget`);
   return { saved: true };
 }
 

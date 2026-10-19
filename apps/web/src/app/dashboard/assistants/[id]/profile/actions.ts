@@ -121,6 +121,7 @@ async function audit(userId: string, assistantId: string, change: string, metada
 }
 
 function done(assistantId: string, message?: string): ProfileActionState {
+  revalidatePath(`/dashboard/assistants/${assistantId}/identity`);
   revalidatePath(`/dashboard/assistants/${assistantId}/profile`);
   return { saved: true, ...(message ? { message } : {}) };
 }

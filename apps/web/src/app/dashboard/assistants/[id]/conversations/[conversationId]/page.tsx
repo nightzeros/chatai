@@ -25,7 +25,14 @@ export default async function ConversationTranscriptPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <ConversationPrivacyActions assistantId={assistant.id} conversationId={conversationId} />
+      <ConversationPrivacyActions
+        assistantId={assistant.id}
+        conversationId={conversationId}
+        sourceLabel={review.conversation.sourceLabel}
+        visitorLabel={review.conversation.visitorLabel}
+        hasRecording={review.conversation.hasRecording}
+        modalityHint={review.conversation.modalityHint}
+      />
       <ConversationTranscript
         assistantId={assistant.id}
         sourceLabel={review.conversation.sourceLabel}

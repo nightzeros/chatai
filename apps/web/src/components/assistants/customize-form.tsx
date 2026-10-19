@@ -15,7 +15,16 @@ import type { Assistant } from "@/lib/assistants";
 const QUESTION_SLOTS = 5;
 const PREVIEW_DEBOUNCE_MS = 350;
 
-export function CustomizeForm({ assistant, apiUrl }: { assistant: Assistant; apiUrl: string }) {
+export function CustomizeForm({
+  assistant,
+  apiUrl,
+  embedded = false,
+}: {
+  assistant: Assistant;
+  apiUrl: string;
+  /** When true, omit page header (used inside Widget hub). */
+  embedded?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(updateAssistantSettings, null);
   const [draft, setDraft] = useState<AssistantSettingsInput>(() => ({
     ...assistant.settings,
@@ -42,10 +51,12 @@ export function CustomizeForm({ assistant, apiUrl }: { assistant: Assistant; api
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Customize"
-        description="Tune appearance and suggested questions. The live preview updates after a short pause while you type."
-      />
+      {embedded ? null : (
+        <PageHeader
+          title="Customize"
+          description="Tune appearance and suggested questions. The live preview updates after a short pause while you type."
+        />
+      )}
       <div className="grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Card className="shadow-none">
           <CardHeader>

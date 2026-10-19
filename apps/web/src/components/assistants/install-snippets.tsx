@@ -12,18 +12,22 @@ import type { InstallSnippets } from "@/lib/install-snippets";
 export function InstallSnippetsPanel({
   snippets,
   requireWidgetSigning,
+  embedded = false,
 }: {
   snippets: InstallSnippets;
   requireWidgetSigning?: boolean;
+  embedded?: boolean;
 }) {
   const [done, setDone] = useState(false);
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <PageHeader
-        title="Install"
-        description="Copy the snippet, paste it before </body>, then open your site and confirm the launcher appears."
-      />
+      {embedded ? null : (
+        <PageHeader
+          title="Install"
+          description="Copy the snippet, paste it before </body>, then open your site and confirm the launcher appears."
+        />
+      )}
 
       <Alert variant="info">
         <AlertTitle>Copy → Paste → Done</AlertTitle>
@@ -67,7 +71,7 @@ export function InstallSnippetsPanel({
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Signed embed (optional)</h3>
               <p className="text-sm text-muted-foreground">
-                Only needed when you turn on widget signing under Configure → Security.
+                Only needed when you turn on widget signing under Settings → Security.
               </p>
               <CodeBlock code={snippets.signedHtml} language="html" />
             </div>

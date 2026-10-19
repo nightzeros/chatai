@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 
 import { ProviderSecretsCard } from "@/components/assistants/provider-secrets-card";
 import { SettingsForm } from "@/components/assistants/settings-form";
-import { PageHeader } from "@/components/ui/page-header";
 import { getOwnedAssistant } from "@/lib/assistants";
 import { env } from "@/lib/env";
 import { redactAssistantForClient } from "@/lib/redact-assistant";
@@ -22,10 +21,6 @@ export default async function ModelsSettingsPage({ params }: { params: Promise<{
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Models & providers"
-        description="Choose providers and store encrypted API keys for this assistant only."
-      />
       <SettingsForm
         section="models"
         assistant={redactAssistantForClient(assistant)}

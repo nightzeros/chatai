@@ -9,11 +9,13 @@ An **assistant** is the unit you customize, give knowledge to, and embed. Each a
 
 1. Sign up / sign in
 2. Open **Dashboard** → create an assistant (name, description, welcome message, instructions)
-3. Configure **Settings**, **Knowledge**, **Customize**, and **Install**
+3. Configure **Identity**, **Knowledge**, **Widget** (appearance + embed), and **Settings**
 
 `publicId` is a **public capability**, not a secret. Anyone who knows it can open the widget and chat against that assistant unless you restrict it with the domain allowlist, visitor rate limits or signed widgets (assistant **Settings → Security**).
 
 ## Instructions and welcome
+
+Basics (name, welcome, instructions, answer mode) live on the **Identity** page.
 
 | Field | Role |
 | --- | --- |
@@ -22,9 +24,9 @@ An **assistant** is the unit you customize, give knowledge to, and embed. Each a
 
 Keep instructions concrete (“Answer only from the knowledge base. Cite with [1].”) rather than vague.
 
-## Scope and Profile
+## Scope and Identity (Profile)
 
-The assistant's **Profile** page defines what the assistant helps with and the facts it can always rely on. Text chat and Voice (preview) share the same profile.
+The assistant's **Identity** page (formerly Profile) defines what the assistant helps with and the facts it can always rely on. Text chat and Voice (preview) share the same profile.
 
 ### Purpose
 
@@ -66,7 +68,7 @@ As a second line of defense, a selective output check re-reads risky replies (pa
 
 Published Key facts help the assistant recognize terms and answer accurately. A separate optimization that answers basic identity, contact and hours questions straight from Key facts without retrieval is controlled by `PROFILE_ANSWER_ROUTE`, which is **off by default**; leave it off unless you have evaluated it for your model.
 
-The Profile page and its background worker can be turned off instance-wide with `ASSISTANT_PROFILE=false`.
+The Identity / Profile UI and its background worker can be turned off instance-wide with `ASSISTANT_PROFILE=false`.
 
 ## Hallucination modes
 
@@ -76,11 +78,11 @@ The Profile page and its background worker can be turned off instance-wide with 
 | **Balanced** | Default middle ground |
 | **Flexible** | Allow more extrapolation when retrieval is weak |
 
-Tune with RAG guardrails on Settings (require context, verify citations, refuse on low confidence).
+Tune with RAG guardrails under **Settings → Retrieval** (require context, verify citations, refuse on low confidence).
 
 ## Model overrides (v0.6+)
 
-Instance defaults come from env (`AI_PROVIDER`, `AI_MODEL`, `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`). Per assistant you can override **chat** and **embedding** provider/model in Settings when credentials exist on the instance.
+Instance defaults come from env (`AI_PROVIDER`, `AI_MODEL`, `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`). Per assistant you can override **chat** and **embedding** provider/model under **Settings → Models** when credentials exist on the instance.
 
 Constraints:
 

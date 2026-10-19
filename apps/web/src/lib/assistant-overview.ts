@@ -64,11 +64,13 @@ export async function getAssistantOverview(userId: string, assistantId: string) 
 
   const [metricsRow] = await db().execute<{
     totalConversations: number | string;
+    playgroundConversations: number | string;
     answered: number | string;
     unanswered: number | string;
   }>(sql`
     SELECT
       (SELECT cast(count(*) AS int) FROM conversations WHERE assistant_id = ${assistant.id}) AS "totalConversations",
+      (SELECT cast(count(*) AS int) FROM conversations WHERE assistant_id = ${assistant.id} AND source = 'playground') AS "playgroundConversations",
       cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome IN ('answered_with_context', 'answered_from_history')) AS int) AS answered,
       cast(count(*) FILTER (WHERE m.role = 'assistant' AND m.outcome IN ('fallback_no_context', 'low_confidence')) AS int) AS unanswered
     FROM messages AS m
@@ -90,6 +92,7 @@ export async function getAssistantOverview(userId: string, assistantId: string) 
     sourceCounts,
     knowledgeTotal,
     conversationTotal: toCount(metricsRow?.totalConversations),
+    playgroundConversationTotal: toCount(metricsRow?.playgroundConversations),
     answered: toCount(metricsRow?.answered),
     unanswered: toCount(metricsRow?.unanswered),
     recentConversations,
