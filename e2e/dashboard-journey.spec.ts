@@ -28,7 +28,7 @@ test("dashboard journey covers Overview through Configure", async ({ page }) => 
   await expect(heading(page, "Widget")).toBeVisible();
   await expect(page.getByLabel("Accent color")).toBeVisible();
 
-  await page.getByRole("link", { name: "Embed", exact: true }).click();
+  await page.getByRole("tab", { name: "Embed", exact: true }).click();
   await expect(page.getByText("Copy → Paste → Done")).toBeVisible();
   await expect(heading(page, "Hosted script")).toBeVisible();
 
