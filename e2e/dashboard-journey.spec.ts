@@ -15,25 +15,28 @@ test("dashboard journey covers Overview through Configure", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Playground" })).toBeVisible();
   await expect(page.getByText("Public chat API")).toBeVisible();
 
-  await page.getByRole("link", { name: "Customize" }).first().click();
-  await expect(page.getByRole("heading", { name: "Customize" })).toBeVisible();
+  await page.getByRole("link", { name: "Widget" }).first().click();
+  await expect(page.getByRole("heading", { name: "Widget" })).toBeVisible();
+  await expect(page.getByLabel("Accent color")).toBeVisible();
 
-  await page.getByRole("link", { name: "Install" }).first().click();
+  await page.getByRole("link", { name: "Embed" }).first().click();
   await expect(page.getByText("Copy → Paste → Done")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Hosted script" })).toBeVisible();
 
   await page.getByRole("link", { name: "Conversations" }).first().click();
   await expect(page.getByRole("heading", { name: "Conversations" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Analytics" }).first().click();
+  await page.getByRole("link", { name: "Insights" }).first().click();
+  await expect(page.getByRole("heading", { name: "Insights" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Unanswered questions" })).toBeVisible();
 
+  await page.getByRole("link", { name: "Settings" }).first().click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+
   await page.getByRole("link", { name: "Security" }).first().click();
-  await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
   await expect(page.getByLabel("Allowed domains")).toBeVisible();
 
   await page.getByRole("link", { name: "Privacy" }).first().click();
-  await expect(page.getByRole("heading", { level: 1, name: "Privacy" })).toBeVisible();
   await expect(page.getByText("Store visitor conversations")).toBeVisible();
 });
 
