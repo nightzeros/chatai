@@ -65,10 +65,12 @@ export function EvalPanel({
   assistantId,
   initialSets,
   initialRuns,
+  embedded = false,
 }: {
   assistantId: string;
   initialSets: EvalSetRow[];
   initialRuns: EvalRunRow[];
+  embedded?: boolean;
 }) {
   const [sets, setSets] = useState(initialSets);
   const [runs, setRuns] = useState(initialRuns);
@@ -235,10 +237,12 @@ export function EvalPanel({
 
   return (
     <div className="flex flex-col gap-8">
-      <PageHeader
-        title="Evals"
-        description="Store Q/A pairs and run offline regressions against the current knowledge base."
-      />
+      {embedded ? null : (
+        <PageHeader
+          title="Evals"
+          description="Store Q/A pairs and run offline regressions against the current knowledge base."
+        />
+      )}
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

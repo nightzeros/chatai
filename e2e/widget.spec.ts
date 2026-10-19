@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { assistantId } from "./fixtures";
 
 test("draft preview updates and settings save", async ({ page }) => {
-  await page.goto(`/dashboard/assistants/${assistantId}/customize`);
+  await page.goto(`/dashboard/assistants/${assistantId}/widget?tab=appearance`);
   await page.getByLabel("Accent color").fill("#112233");
 
   const previewAside = page.locator("aside").filter({ hasText: "Draft preview" });
