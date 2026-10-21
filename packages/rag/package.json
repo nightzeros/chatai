@@ -28,6 +28,6 @@
     "turndown": "^7.2.0",
     "robots-parser": "^3.0.1",
     "nanoid": "^6.0.2",
-    "unpdf": "^1.8.1"
+    "unpdf": "^1.9.0"
   }
 }
