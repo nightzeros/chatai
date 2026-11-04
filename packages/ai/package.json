@@ -17,11 +17,11 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.78",
-    "@ai-sdk/cohere": "^4.0.59",
-    "@ai-sdk/google": "^4.0.93",
-    "@ai-sdk/openai": "^4.0.91",
-    "@ai-sdk/voyage": "^2.0.58",
-    "ai": "^7.0.136"
+    "@ai-sdk/anthropic": "^4.0.94",
+    "@ai-sdk/cohere": "^4.0.73",
+    "@ai-sdk/google": "^4.0.109",
+    "@ai-sdk/openai": "^4.0.106",
+    "@ai-sdk/voyage": "^2.0.72",
+    "ai": "^7.0.159"
   }
 }
