@@ -102,7 +102,7 @@ export function ChatWidget({
     } catch (error) {
       callbacksRef.current.onError?.(errorFrom(error));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- presentation updates via the effect below
+    // Intentionally omit presentation props — they update via the effect below.
   }, [
     assistantId,
     apiUrl,
