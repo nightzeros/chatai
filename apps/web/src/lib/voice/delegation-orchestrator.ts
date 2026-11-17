@@ -1,4 +1,5 @@
 import { generateChat } from "@chatai/ai";
+import { runAssistantAgent } from "@chatai/rag/agent";
 import {
   finalizeAnswer,
   generateGuardedAnswer,
@@ -12,15 +13,18 @@ import {
 import type { AppendResult, VoiceControlEvent } from "@chatai/voice";
 
 import { resolveAssistantModels } from "@/lib/ai-config";
+import { parseAssistantAllowlist, resolveVoiceAnswerOwner } from "@/lib/answer-owner";
 import { isGroundedOutcome } from "@/lib/conversation-history";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import { recordShadowUsages } from "@/lib/hosting/shadow-meter";
 import {
   abortChatUsageReservation,
   beginChatUsageReservation,
   finishChatUsageReservation,
 } from "@/lib/hosting/usage-gate";
 import { createId } from "@/lib/ids";
+import { isPublicVisitor } from "@/lib/policies/chat-source";
 import {
   insertVoiceAssistantMessage,
   insertVoiceLiveExchange,
@@ -65,11 +69,18 @@ import {
 
 export const VOICE_ORCHESTRATION_DEFAULTS = {
   /** Max wait for lagging input transcript after delegation.created. */
-  utteranceSettleMaxMs: 700,
+  utteranceSettleMaxMs: 1_200,
   /** Input fragments starting this long after the delegation offset still belong to it. */
-  utteranceTailGraceMs: 300,
+  utteranceTailGraceMs: 500,
   /** Speech running past the delegation offset is complete once no fragment arrived for this long. */
-  utteranceQuietMs: 150,
+  utteranceQuietMs: 350,
+  /**
+   * Extra quiet hold before forcing a backend turn when the assembled text still
+   * looks like an incomplete substance ask (e.g. ends with "latest" / "the").
+   */
+  incompleteSubstanceHoldMs: 400,
+  /** Max gap to adopt a short noun-phrase continuation onto an incomplete prior ask. */
+  incompleteContinuationGapMs: 1_000,
   /**
    * Assistant speech this long between two user fragments is a reply, so the
    * fragments belong to different turns. Shorter output is a barge-in cut-off.
@@ -106,13 +117,18 @@ export const VOICE_ORCHESTRATION_DEFAULTS = {
    * A non-social utterance GPT-Live has not delegated after this much transcript
    * quiet gets a server-forced backend turn (sooner if GPT-Live starts replying).
    */
-  forceBackendAfterMs: 400,
+  forceBackendAfterMs: 900,
   /** Words GPT-Live may speak in reply to small talk before the gate closes. */
   socialReplyMaxWords: 30,
   /** An approval waits until withheld speech has been quiet this long… */
   withheldQuietMs: 300,
   /** …or its own speech starts, or at most this long (backend and system speech). */
   pendingOpenMaxMs: 3_000,
+  /**
+   * After commentary is accepted, re-open the playback gate once if the answer
+   * was never heard (deferred open cancelled by filler / soft barge-in).
+   */
+  hearRecoveryMs: 1_000,
 };
 
 /** Precedes server-approved speech when GPT-Live already spoke an unapproved reply. */
@@ -142,24 +158,28 @@ export function isPreScopeEngagement(text: string): boolean {
 
 export type VoiceOrchestratorDeps = {
   prepareAnswer: typeof prepareAnswer;
+  runAssistantAgent: typeof runAssistantAgent;
   generateChat: typeof generateChat;
   generateVerifiedAnswer: typeof generateVerifiedAnswer;
   resolveAssistantModels: typeof resolveAssistantModels;
   beginChatUsageReservation: typeof beginChatUsageReservation;
   finishChatUsageReservation: typeof finishChatUsageReservation;
   abortChatUsageReservation: typeof abortChatUsageReservation;
+  recordShadowUsages: typeof recordShadowUsages;
   settings: typeof VOICE_ORCHESTRATION_DEFAULTS;
   log: (event: string, fields: Record<string, unknown>) => void;
 };
 
 const defaultDeps: VoiceOrchestratorDeps = {
   prepareAnswer,
+  runAssistantAgent,
   generateChat,
   generateVerifiedAnswer,
   resolveAssistantModels,
   beginChatUsageReservation,
   finishChatUsageReservation,
   abortChatUsageReservation,
+  recordShadowUsages,
   settings: VOICE_ORCHESTRATION_DEFAULTS,
   log: (event, fields) => console.info(`[voice] ${event}`, fields),
 };
@@ -206,8 +226,6 @@ const VOICE_ANSWER_STYLE = [
   "Answer in one to three short sentences. No markdown, headings, tables, or URLs.",
 ].join("\n");
 
-const EMPTY_UTTERANCE_COMMENTARY =
-  "I didn't catch the question. Ask the user to repeat it briefly.";
 const LIMIT_COMMENTARY =
   "The assistant can't look that up right now because a usage limit was reached. Apologize briefly.";
 const FAILURE_COMMENTARY =
@@ -231,6 +249,27 @@ const BACKCHANNEL = new RegExp(
 export function isBackchannel(text: string): boolean {
   const normalized = text.toLowerCase().replace(/[’']/g, "").replace(/[^a-z\s]/g, " ");
   return normalized.replace(BACKCHANNEL, " ").trim() === "";
+}
+
+/** ASR stage directions / non-speech tags (OpenAI-style bracket annotations). */
+const ASR_NOISE_TAG =
+  /\[(?:laugh(?:ter)?|inhale|exhale|sigh|cough|music|applause|noise|blank_audio|inaudible)[^\]]*\]?/gi;
+
+/**
+ * Strip ASR noise tags and collapse whitespace. Empty result means the fragment
+ * carried no visitor content (do not start a backend turn).
+ */
+export function sanitizeVoiceTranscript(text: string): string {
+  return text
+    .replace(ASR_NOISE_TAG, " ")
+    .replace(/\[[^\]]{0,40}$/g, " ") // truncated tag at end of a fragment, e.g. "[inhale"
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** True when the assembled utterance has nothing worth answering (ASR tags only). */
+export function isNonContentUtterance(text: string): boolean {
+  return !sanitizeVoiceTranscript(text);
 }
 
 /** Strip citation markers and markdown so commentary reads naturally aloud. */
@@ -261,7 +300,11 @@ function wordCount(text: string): number {
 
 /** Speech during a lookup supersedes it only when it is a new request, not an acknowledgement. */
 function supersedesLookup(text: string): boolean {
-  return wordCount(text) >= deps.settings.bargeInMinWords && !isBackchannel(text);
+  return (
+    wordCount(text) >= deps.settings.bargeInMinWords &&
+    !isBackchannel(text) &&
+    !looksIncompleteSubstance(text)
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -363,7 +406,12 @@ function discardLateResult(session: VoiceRuntimeSession, turn: VoiceTurn, stage:
  * claim the unassigned fragments that belong to this utterance.
  */
 async function collectUtterance(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<string> {
-  const { utteranceSettleMaxMs, utteranceTailGraceMs, utteranceQuietMs } = deps.settings;
+  const {
+    utteranceSettleMaxMs,
+    utteranceTailGraceMs,
+    utteranceQuietMs,
+    incompleteSubstanceHoldMs,
+  } = deps.settings;
   const deadline = Date.now() + utteranceSettleMaxMs;
   let fragmentCount = session.inputFragments.length;
   let lastArrivalAt = Date.now();
@@ -374,7 +422,15 @@ async function collectUtterance(session: VoiceRuntimeSession, turn: VoiceTurn): 
   // Delegation can fire mid-utterance: speech past the offset may still be transcribing.
   const settled = () => {
     const last = session.inputFragments.at(-1);
-    return !last || last.endMs <= turn.offsetMs || Date.now() - lastArrivalAt >= utteranceQuietMs;
+    if (!last || last.endMs <= turn.offsetMs) return true;
+    const quietForMs = Date.now() - lastArrivalAt;
+    if (quietForMs < utteranceQuietMs) return false;
+    const pending = session.inputFragments.slice(session.consumedInputIndex);
+    const assembled = joinFragments(pending.filter((fragment) => fragment.startMs <= turn.offsetMs + utteranceTailGraceMs));
+    if (looksIncompleteSubstance(assembled) && quietForMs < utteranceQuietMs + incompleteSubstanceHoldMs) {
+      return false;
+    }
+    return true;
   };
   while ((!caughtUp() || !settled()) && Date.now() < deadline && !turn.abort.signal.aborted) {
     await sleep(Math.min(40, Math.max(0, deadline - Date.now())));
@@ -647,11 +703,44 @@ export function pendingLiveExchanges(session: VoiceRuntimeSession): VoiceLiveExc
 }
 
 function joinFragments(fragments: TranscriptFragment[]): string {
-  return fragments
-    .map((fragment) => fragment.text)
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
+  return sanitizeVoiceTranscript(
+    fragments
+      .map((fragment) => fragment.text)
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+}
+
+/** Incomplete substance ask that likely has a same-breath continuation coming. */
+export function looksIncompleteSubstance(text: string): boolean {
+  const cleaned = text.trim().replace(/[.?!…]+$/u, "").trim();
+  if (!cleaned || isNonContentUtterance(cleaned)) return false;
+  // Leading filler alone, or filler + a still-truncated tail — never a full ask
+  // that merely starts with "okay" / "and" ("and what about shipping").
+  const leading = cleaned.match(/^(?:um+|uh+|okay|ok|so|and|well)\b[\s,]*(.*)$/i);
+  if (leading) {
+    const rest = (leading[1] ?? "").trim();
+    if (!rest) return true;
+    return looksTrailingIncomplete(rest);
+  }
+  return looksTrailingIncomplete(cleaned);
+}
+
+function looksTrailingIncomplete(text: string): boolean {
+  return /(?:\b(?:latest|recent|new|their|his|her|its|the|a|an|my|your|our)\s*$|\b(?:um+|uh+|okay|ok)\s*$)/i.test(
+    text,
+  );
+}
+
+/** Short noun-phrase continuation for an incomplete prior ask. */
+export function looksNounPhraseContinuation(text: string): boolean {
+  const cleaned = text.trim().replace(/^[,\-–—:;]+/, "").trim();
+  if (!cleaned) return false;
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 6) return false;
+  if (/^(yes|no|yeah|yep|nope|thanks|thank you|okay|ok|hi|hello)\b/i.test(cleaned)) return false;
+  return !/[.?!]$/.test(cleaned);
 }
 
 /** Split user fragments wherever the assistant replied in between. */
@@ -731,7 +820,10 @@ async function appendCommentary(
     if (turn.abort.signal.aborted) return { ok: false, reason: "superseded" };
   }
   const result = await channel.appendCommentary(turn.delegationId, content);
-  if (result.ok) approveTurnSpeech(session, turn, approval);
+  if (result.ok) {
+    approveTurnSpeech(session, turn, approval);
+    if (approval === "backend_answer") scheduleHearRecovery(session, turn);
+  }
   return result;
 }
 
@@ -769,11 +861,13 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
     turn.bargeInAt = Date.now();
   }
 
-  if (!turn.userText) {
+  if (!turn.userText || isNonContentUtterance(turn.userText)) {
     turn.status = "failed";
     turn.error = "empty_utterance";
+    turn.userText = "";
     deps.log("turn.empty_utterance", metricFields(session, turn));
-    await sendFallbackCommentary(session, turn, EMPTY_UTTERANCE_COMMENTARY);
+    // ASR noise / empty collect: close the delegation quietly — do not speak or persist.
+    if (turn.delegationId) session.delegations.complete(turn.delegationId);
     return;
   }
 
@@ -791,6 +885,15 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
   });
   const rag = resolveRagSettings(assistant.ragSettings);
   const requestId = createId();
+  // Snapshot at turn start — mid-turn flag flips must not switch paths.
+  const visitor = isPublicVisitor({ apiKey: false, source: session.source });
+  const answerOwner = resolveVoiceAnswerOwner({
+    answerOwnerVoice: env.ANSWER_OWNER_VOICE ?? "legacy",
+    allowlistAssistantIds: parseAssistantAllowlist(env.ANSWER_OWNER_VOICE_ASSISTANTS),
+    assistantId: assistant.id,
+    visitor,
+    visitorRelease: env.VOICE_AGENT_VISITOR_RELEASE === true,
+  });
 
   const gate = await deps.beginChatUsageReservation({
     account: assistant.hostingAccount,
@@ -846,92 +949,162 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
       ragStartMs: turn.metrics.ragStartMs,
     }).catch(() => undefined);
 
-    const ragStarted = Date.now();
-    let prepared: PreparedAnswer = await deps.prepareAnswer({
-      db: db(),
-      assistantId: assistant.id,
-      assistantName: assistant.name ?? null,
-      assistantDescription: assistant.description ?? null,
-      instructions: assistant.instructions,
-      mode: assistant.hallucinationMode,
-      message: turn.userText,
-      history,
-      embedding: models.embedding,
-      chat: models.chat,
-      ragSettings: assistant.ragSettings,
-      cohereApiKey: env.COHERE_API_KEY ?? null,
-      responseStyle: VOICE_ANSWER_STYLE,
-      outputGuard: env.OUTPUT_SCOPE_CHECK,
-      profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
-    });
-    turn.metrics.ragDurationMs = Date.now() - ragStarted;
-    if (prepared.scope) {
-      turn.metrics.scopeDecision = prepared.scope.decision;
-      if (prepared.scope.plannerMs !== undefined) turn.metrics.plannerMs = prepared.scope.plannerMs;
-      if (prepared.scope.plannerWaitMs !== undefined) turn.metrics.plannerWaitMs = prepared.scope.plannerWaitMs;
-      if (prepared.scope.profileVersion !== undefined) turn.metrics.profileVersion = prepared.scope.profileVersion;
-    }
-    turn.rewrittenQuery = prepared.query;
-    turn.retrieval = {
-      action: prepared.decision.action,
-      contextSufficient: prepared.decision.contextSufficient,
-      chunks: prepared.retrieved.slice(0, 8).map((chunk) => ({
-        documentName: chunk.documentName,
-        similarity: Math.round(chunk.similarity * 1000) / 1000,
-        preview: chunk.content.replace(/\s+/g, " ").trim().slice(0, 240),
-      })),
+    let debug: Record<string, unknown> = {
+      answerOwner: answerOwner.production,
+      shadowAgent: answerOwner.shadowAgent,
     };
-    usages = [...prepared.providerUsages];
 
-    if (turn.abort.signal.aborted) {
-      discardLateResult(session, turn, "after_prepare");
+    if (answerOwner.production === "agent") {
+      const agentStarted = Date.now();
+      turn.status = "generating";
+      const agentResult = await deps.runAssistantAgent({
+        turnId: requestId,
+        db: db(),
+        assistantId: assistant.id,
+        assistantName: assistant.name ?? null,
+        assistantDescription: assistant.description ?? null,
+        instructions: [assistant.instructions?.trim(), VOICE_ANSWER_STYLE].filter(Boolean).join("\n\n"),
+        message: turn.userText,
+        history,
+        embedding: models.embedding,
+        chat: models.chat,
+        ragSettings: assistant.ragSettings,
+        cohereApiKey: env.COHERE_API_KEY ?? null,
+        maxOutputTokens:
+          models.billing.chat === "hosted" ? env.HOSTED_USAGE_MAX_OUTPUT_TOKENS : undefined,
+        abortSignal: turn.abort.signal,
+      });
+      usages = agentResult.providerUsages;
+      turn.metrics.ragDurationMs = Date.now() - agentStarted;
+      turn.metrics.generateDurationMs = Date.now() - agentStarted;
+      turn.retrieval = {
+        action: "generate",
+        contextSufficient: agentResult.sources.length > 0,
+        chunks: agentResult.sources.slice(0, 8).map((source) => ({
+          documentName: source.documentName,
+          similarity: 0,
+          preview: (source.excerpt ?? "").replace(/\s+/g, " ").trim().slice(0, 240),
+        })),
+      };
       await finishUsage();
-      return;
+
+      if (turn.abort.signal.aborted) {
+        discardLateResult(session, turn, "after_generate");
+        return;
+      }
+
+      turn.outcome = agentResult.outcome;
+      turn.sources = agentResult.sources;
+      turn.confidence = agentResult.confidence;
+      turn.groundedAnswer = agentResult.answer;
+      turn.answerText = toSpeakableCommentary(agentResult.answer, deps.settings.commentaryMaxChars);
+      const rewritten =
+        typeof agentResult.debug.question === "string" && agentResult.debug.question.trim()
+          ? agentResult.debug.question.trim()
+          : null;
+      if (rewritten && rewritten !== requestId) {
+        turn.rewrittenQuery = rewritten;
+      }
+      debug = {
+        ...agentResult.debug,
+        ...debug,
+        provider: models.chat.provider,
+        timings: agentResult.debug.timings,
+      };
+    } else {
+      const ragStarted = Date.now();
+      let prepared: PreparedAnswer = await deps.prepareAnswer({
+        db: db(),
+        assistantId: assistant.id,
+        assistantName: assistant.name ?? null,
+        assistantDescription: assistant.description ?? null,
+        instructions: assistant.instructions,
+        mode: assistant.hallucinationMode,
+        message: turn.userText,
+        history,
+        embedding: models.embedding,
+        chat: models.chat,
+        ragSettings: assistant.ragSettings,
+        cohereApiKey: env.COHERE_API_KEY ?? null,
+        responseStyle: VOICE_ANSWER_STYLE,
+        outputGuard: env.OUTPUT_SCOPE_CHECK,
+        profileAnswerRoute: env.PROFILE_ANSWER_ROUTE,
+      });
+      turn.metrics.ragDurationMs = Date.now() - ragStarted;
+      if (prepared.scope) {
+        turn.metrics.scopeDecision = prepared.scope.decision;
+        if (prepared.scope.plannerMs !== undefined) turn.metrics.plannerMs = prepared.scope.plannerMs;
+        if (prepared.scope.plannerWaitMs !== undefined) turn.metrics.plannerWaitMs = prepared.scope.plannerWaitMs;
+        if (prepared.scope.profileVersion !== undefined) turn.metrics.profileVersion = prepared.scope.profileVersion;
+      }
+      turn.rewrittenQuery = prepared.query;
+      turn.retrieval = {
+        action: prepared.decision.action,
+        contextSufficient: prepared.decision.contextSufficient,
+        chunks: prepared.retrieved.slice(0, 8).map((chunk) => ({
+          documentName: chunk.documentName,
+          similarity: Math.round(chunk.similarity * 1000) / 1000,
+          preview: chunk.content.replace(/\s+/g, " ").trim().slice(0, 240),
+        })),
+      };
+      usages = [...prepared.providerUsages];
+
+      if (turn.abort.signal.aborted) {
+        discardLateResult(session, turn, "after_prepare");
+        await finishUsage();
+        return;
+      }
+
+      turn.status = "generating";
+      const generateStarted = Date.now();
+      // Buffered (never streamed): the output scope check runs before appendCommentary.
+      const generated = await generateGuardedAnswer({
+        prepared,
+        question: turn.userText,
+        chat: models.chat,
+        verifyCitations: rag.guardrails.verifyCitations,
+        outputGuard: env.OUTPUT_SCOPE_CHECK,
+        systemSuffix: VOICE_ANSWER_STYLE,
+        generate: async ({ system, messages }) => {
+          const result = await deps.generateChat({
+            config: models.chat,
+            system,
+            messages,
+            ...(models.billing.chat === "hosted" ? { maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS } : {}),
+          });
+          return { text: result.text, usage: result.usage };
+        },
+        generateVerified: deps.generateVerifiedAnswer,
+        deps: { generateChat: deps.generateChat },
+      });
+      prepared = generated.prepared;
+      usages = generated.usages;
+      const answer = generated.text;
+      if (generated.guard?.replaced) turn.metrics.outputGuardReplaced = true;
+      turn.metrics.generateDurationMs = Date.now() - generateStarted;
+      await finishUsage();
+
+      if (turn.abort.signal.aborted) {
+        discardLateResult(session, turn, "after_generate");
+        return;
+      }
+
+      const final = finalizeAnswer(answer, { ...prepared, providerUsages: usages });
+      turn.outcome = final.outcome;
+      turn.sources = final.sources;
+      turn.confidence = final.confidence;
+      turn.groundedAnswer = final.answer;
+      turn.answerText = toSpeakableCommentary(final.answer, deps.settings.commentaryMaxChars);
+      debug = {
+        ...final.debug,
+        ...debug,
+        provider: models.chat.provider,
+      };
     }
-
-    turn.status = "generating";
-    const generateStarted = Date.now();
-    // Buffered (never streamed): the output scope check runs before appendCommentary.
-    const generated = await generateGuardedAnswer({
-      prepared,
-      question: turn.userText,
-      chat: models.chat,
-      verifyCitations: rag.guardrails.verifyCitations,
-      outputGuard: env.OUTPUT_SCOPE_CHECK,
-      systemSuffix: VOICE_ANSWER_STYLE,
-      generate: async ({ system, messages }) => {
-        const result = await deps.generateChat({
-          config: models.chat,
-          system,
-          messages,
-          ...(models.billing.chat === "hosted" ? { maxOutputTokens: env.HOSTED_USAGE_MAX_OUTPUT_TOKENS } : {}),
-        });
-        return { text: result.text, usage: result.usage };
-      },
-      generateVerified: deps.generateVerifiedAnswer,
-      deps: { generateChat: deps.generateChat },
-    });
-    prepared = generated.prepared;
-    usages = generated.usages;
-    const answer = generated.text;
-    if (generated.guard?.replaced) turn.metrics.outputGuardReplaced = true;
-    turn.metrics.generateDurationMs = Date.now() - generateStarted;
-    await finishUsage();
-
-    if (turn.abort.signal.aborted) {
-      discardLateResult(session, turn, "after_generate");
-      return;
-    }
-
-    const final = finalizeAnswer(answer, { ...prepared, providerUsages: usages });
-    turn.outcome = final.outcome;
-    turn.sources = final.sources;
-    turn.confidence = final.confidence;
-    turn.groundedAnswer = final.answer;
-    turn.answerText = toSpeakableCommentary(final.answer, deps.settings.commentaryMaxChars);
 
     const outputIndex = session.outputFragments.length;
     auditPreResultOutput(session, turn, outputIndex);
+    // Gate opens only after validated speakable text (legacy or agent).
     const appended = await appendCommentary(session, turn, turn.answerText, "backend_answer");
     if (!appended.ok) {
       turn.rejectReason = appended.reason;
@@ -968,8 +1141,7 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
     });
 
     await insertVoiceAssistantMessage(session, turn, {
-      ...final.debug,
-      provider: models.chat.provider,
+      ...debug,
       voice: {
         delegationId: turn.delegationId,
         turnId: turn.id,
@@ -985,13 +1157,31 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
       outcome: turn.outcome,
       sourceCount: turn.sources.length,
       historyTurns: history.length,
+      answerOwner: answerOwner.production,
     });
     void writeLifecycleVoiceEvent(session, "rag.completed", {
       delegationId: turn.delegationId,
       outcome: turn.outcome,
       sourceCount: turn.sources.length,
       metrics: { ...turn.metrics, delegationReceivedAt: undefined },
+      answerOwner: answerOwner.production,
     }).catch(() => undefined);
+
+    if (answerOwner.shadowAgent) {
+      void runShadowVoiceAgent({
+        turnId: requestId,
+        session,
+        assistant,
+        message: turn.userText,
+        history,
+        models,
+      }).catch((shadowError: unknown) => {
+        deps.log("turn.shadow_agent_failed", {
+          ...metricFields(session, turn),
+          error: shadowError instanceof Error ? shadowError.message : String(shadowError),
+        });
+      });
+    }
   } catch (error) {
     if (!finished) {
       if (usages.length > 0) {
@@ -1007,6 +1197,54 @@ async function runTurn(session: VoiceRuntimeSession, turn: VoiceTurn): Promise<v
     }
     await failTurn(session, turn, error);
   }
+}
+
+/**
+ * Comparison-only Voice agent. Never opens the gate, never writes history, always
+ * meters as status=shadow (no customer charge).
+ */
+async function runShadowVoiceAgent(opts: {
+  turnId: string;
+  session: VoiceRuntimeSession;
+  assistant: NonNullable<VoiceRuntimeSession["assistant"]>;
+  message: string;
+  history: VoiceRuntimeSession["history"];
+  models: Awaited<ReturnType<typeof resolveAssistantModels>>;
+}): Promise<void> {
+  const shadowTurnId = `${opts.turnId}:shadow_agent`;
+  const result = await deps.runAssistantAgent({
+    turnId: shadowTurnId,
+    db: db(),
+    assistantId: opts.assistant.id,
+    assistantName: opts.assistant.name ?? null,
+    assistantDescription: opts.assistant.description ?? null,
+    instructions: [opts.assistant.instructions?.trim(), VOICE_ANSWER_STYLE].filter(Boolean).join("\n\n"),
+    message: opts.message,
+    history: opts.history,
+    embedding: opts.models.embedding,
+    chat: opts.models.chat,
+    ragSettings: opts.assistant.ragSettings,
+    cohereApiKey: env.COHERE_API_KEY ?? null,
+    maxOutputTokens:
+      opts.models.billing.chat === "hosted" ? env.HOSTED_USAGE_MAX_OUTPUT_TOKENS : undefined,
+  });
+  await deps.recordShadowUsages({
+    accountId: opts.assistant.hostingAccount.id,
+    assistantId: opts.assistant.id,
+    requestId: shadowTurnId,
+    source: opts.session.source === "playground" || opts.session.source === "widget" || opts.session.source === "api"
+      ? opts.session.source
+      : "api",
+    visitorId: opts.session.visitorId,
+    records: result.providerUsages,
+    billingModeFor: (kind) => {
+      if (kind === "embedding") return opts.models.billing.embedding;
+      if (kind === "rerank") return opts.models.billing.rerank;
+      return opts.models.billing.chat;
+    },
+    shadowPath: "shadow_agent",
+    turnId: opts.turnId,
+  });
 }
 
 /** The lookup threw: fail the turn and give the live model the neutral apology. */
@@ -1103,6 +1341,7 @@ function handleDelegationCreated(
   }
   if (session.turns.some((turn) => turn.delegationId === event.delegationId)) return;
   if (adoptLateDelegation(session, event)) return;
+  if (adoptSameUtteranceDelegation(session, event)) return;
 
   void finalizeAnsweredTurns(session);
   for (const turn of session.turns) {
@@ -1153,6 +1392,59 @@ function startTurn(session: VoiceRuntimeSession, turn: VoiceTurn): void {
  * already-answered one closes it without a second answer. A delegation placed
  * after the forced answer was heard belongs to newer speech and starts normally.
  */
+/**
+ * A second hand-off for the same ongoing utterance must not supersede the first
+ * turn (that would create a second user row and a second lookup).
+ */
+function adoptSameUtteranceDelegation(
+  session: VoiceRuntimeSession,
+  event: { delegationId: string; offsetMs: number },
+): boolean {
+  const utterance = session.gate?.utterance;
+  const current = utterance?.turn;
+  if (!utterance || !current || !isTurnInFlight(current)) return false;
+  if (event.offsetMs < utterance.firstStartMs - 50) return false;
+  if (event.offsetMs > utterance.lastEndMs + deps.settings.utteranceTailGraceMs) return false;
+
+  session.counters.delegations += 1;
+  if (!current.delegationId) {
+    // Assign without superseding — this is the first hand-off for a server-forced turn.
+    if (!session.delegations.get(event.delegationId) && session.delegations.isSessionOpen()) {
+      session.delegations.create(event.delegationId, event.offsetMs);
+    }
+    current.delegationId = event.delegationId;
+    deps.log("delegation.adopted", {
+      ...metricFields(session, current),
+      offsetMs: event.offsetMs,
+      reason: "same_utterance",
+    });
+    return true;
+  }
+  // Duplicate hand-off: create alongside the active one (do not supersede) and close it.
+  if (!session.delegations.get(event.delegationId) && session.delegations.isSessionOpen()) {
+    session.delegations.create(event.delegationId, event.offsetMs);
+  }
+  const channel = session.channel;
+  if (channel) {
+    track(
+      session,
+      channel
+        .appendCommentary(event.delegationId, ALREADY_ANSWERED_COMMENTARY)
+        .then((result) => {
+          if (result.ok) session.delegations.complete(event.delegationId);
+          deps.log("delegation.closed", {
+            sessionId: session.sessionId,
+            delegationId: event.delegationId,
+            reason: "same_utterance",
+            ok: result.ok,
+          });
+        })
+        .catch(() => undefined),
+    );
+  }
+  return true;
+}
+
 function adoptLateDelegation(
   session: VoiceRuntimeSession,
   event: { delegationId: string; offsetMs: number },
@@ -1367,6 +1659,20 @@ function continuesUtterance(
   if (assistantSpokeBetween(session, utterance.lastStartMs, fragment.startMs)) return false;
   const turn = utterance.turn;
   if (!turn || turn.status === "collecting") return true;
+
+  const priorText = joinFragments(
+    session.inputFragments.slice(utterance.startIndex, utterance.lastIndex + 1),
+  );
+  const gapMs = fragment.startMs - utterance.lastEndMs;
+  if (
+    looksIncompleteSubstance(priorText) &&
+    gapMs >= 0 &&
+    gapMs <= deps.settings.incompleteContinuationGapMs &&
+    looksNounPhraseContinuation(fragment.text)
+  ) {
+    return true;
+  }
+
   // Transcript of the same breath that lagged past the turn's claim: not a new request.
   return fragment.startMs < turn.offsetMs + deps.settings.bargeInGraceMs;
 }
@@ -1405,6 +1711,21 @@ function trackUtterance(session: VoiceRuntimeSession, fragment: TranscriptFragme
   const text = joinFragments(session.inputFragments.slice(utterance.startIndex, utterance.lastIndex + 1));
   utterance.kind = classifyVoiceTurn(text, recentAssistantText(session, utterance.firstStartMs));
   clearForceTimer(gate);
+
+  // Filler / incomplete soft speech must not cancel a deferred backend_answer open
+  // or mute an answer that just landed in chat but has not been heard yet.
+  const awaitingHear = latestAnswerAwaitingHear(session);
+  if (
+    awaitingHear &&
+    (utterance.kind === "social" || isBackchannel(text) || looksIncompleteSubstance(text))
+  ) {
+    preserveBackendPlayback(session, awaitingHear);
+    if (utterance.kind === "backend" && !utterance.turn && looksIncompleteSubstance(text)) {
+      armForceTimer(session, utterance);
+    }
+    return;
+  }
+
   if (utterance.kind === "social") {
     utterance.socialReplyWords = 0;
     const latest = session.turns.at(-1);
@@ -1436,6 +1757,22 @@ function armForceTimer(
     gate.forceTimer = null;
     gate.forceDueAt = null;
     if (gate.utterance !== utterance || utterance.turn || utterance.kind !== "backend") return;
+    // Wait until the visitor has been quiet; mid-breath pauses must not force a turn.
+    const quietForMs = Date.now() - utterance.lastInputAt;
+    if (quietForMs < deps.settings.utteranceQuietMs) {
+      armForceTimer(session, utterance, trigger, deps.settings.utteranceQuietMs - quietForMs);
+      return;
+    }
+    const assembled = joinFragments(
+      session.inputFragments.slice(utterance.startIndex, utterance.lastIndex + 1),
+    );
+    const neededQuiet = looksIncompleteSubstance(assembled)
+      ? deps.settings.utteranceQuietMs + deps.settings.incompleteSubstanceHoldMs
+      : deps.settings.utteranceQuietMs;
+    if (quietForMs < neededQuiet) {
+      armForceTimer(session, utterance, trigger, neededQuiet - quietForMs);
+      return;
+    }
     // A delegated turn still collecting may claim this speech; decide once it has.
     if (session.turns.some((turn) => turn.status === "collecting")) {
       armForceTimer(session, utterance, trigger);
@@ -1463,6 +1800,18 @@ function forceBackendTurn(
   if (utterance.turn || gate.ended || !isSessionLive(session)) return;
   // Already claimed by a delegated turn's collect.
   if (session.consumedInputIndex > utterance.lastIndex) return;
+
+  const assembled = joinFragments(
+    session.inputFragments.slice(utterance.startIndex, utterance.lastIndex + 1),
+  );
+  if (isNonContentUtterance(assembled)) {
+    deps.log("turn.force_skipped", {
+      sessionId: session.sessionId,
+      trigger,
+      reason: "non_content",
+    });
+    return;
+  }
 
   void finalizeAnsweredTurns(session);
   for (const turn of session.turns) {
@@ -1524,23 +1873,136 @@ function openVoiceGate(session: VoiceRuntimeSession, reason: VoiceGateOpenReason
 
 /**
  * Approve a turn's server-authored speech unless the visitor has moved on to a
- * new request (small talk during the lookup does not count as moving on).
+ * new request (small talk / filler / incomplete ASR during the lookup does not
+ * count as moving on — those used to skip approval and leave chat-only answers).
  */
 function approveTurnSpeech(
   session: VoiceRuntimeSession,
   turn: VoiceTurn,
   reason: Exclude<VoiceGateOpenReason, "social">,
 ): void {
-  const utterance = session.gate?.utterance;
-  const current =
-    !utterance ||
-    utterance.turn === turn ||
-    (utterance.kind === "social" && !utterance.turn && session.turns.at(-1) === turn);
-  if (!current) {
+  if (!shouldApproveTurnSpeech(session, turn)) {
     deps.log("gate.approval_skipped", { sessionId: session.sessionId, turnId: turn.id, reason });
     return;
   }
   openVoiceGate(session, reason, turn);
+}
+
+function shouldApproveTurnSpeech(session: VoiceRuntimeSession, turn: VoiceTurn): boolean {
+  const newerInFlight = session.turns.some(
+    (other) => other !== turn && other.offsetMs > turn.offsetMs && isTurnInFlight(other),
+  );
+  if (newerInFlight) return false;
+
+  const utterance = session.gate?.utterance;
+  if (!utterance) return true;
+  if (utterance.turn === turn) return true;
+  if (utterance.kind === "social") return true;
+
+  if (utterance.turn && utterance.turn !== turn) {
+    return !isTurnInFlight(utterance.turn);
+  }
+
+  // New backend speech not yet forced: approve unless it is already a clear barge-in.
+  if (!utterance.turn && utterance.kind === "backend") {
+    const text = joinFragments(
+      session.inputFragments.slice(utterance.startIndex, utterance.lastIndex + 1),
+    );
+    if (!text || isBackchannel(text) || looksIncompleteSubstance(text)) return true;
+    return !supersedesLookup(text);
+  }
+
+  return true;
+}
+
+/** Latest answered turn whose commentary was accepted but not yet heard (short window only). */
+function latestAnswerAwaitingHear(session: VoiceRuntimeSession): VoiceTurn | null {
+  const windowMs = Math.max(deps.settings.hearRecoveryMs, 1) * 3;
+  for (let index = session.turns.length - 1; index >= 0; index -= 1) {
+    const turn = session.turns[index]!;
+    if (turn.status !== "answered" || !turn.answerText) continue;
+    if (!withinHearWindow(turn, windowMs)) return null;
+    if (turnHeard(session, turn)) return null;
+    return turn;
+  }
+  return null;
+}
+
+function commentaryWallClock(turn: VoiceTurn): number | null {
+  if (turn.metrics.firstCommentaryMs == null) return null;
+  return turn.metrics.delegationReceivedAt + turn.metrics.firstCommentaryMs;
+}
+
+function withinHearWindow(turn: VoiceTurn, windowMs: number): boolean {
+  const at = commentaryWallClock(turn);
+  if (at == null) return false;
+  return Date.now() - at <= windowMs;
+}
+
+function turnHeard(session: VoiceRuntimeSession, turn: VoiceTurn): boolean {
+  if (turn.spokenText.trim()) return true;
+  const start = turn.outputIndexAtCommentary;
+  if (start == null) return false;
+  return session.outputFragments
+    .slice(start)
+    .some((fragment) => !fragment.withheld && fragment.text.trim().length > 0);
+}
+
+function hasNewerSubstanceAsk(session: VoiceRuntimeSession, turn: VoiceTurn): boolean {
+  const utterance = session.gate?.utterance;
+  if (!utterance || utterance.turn === turn) return false;
+  if (utterance.firstStartMs <= turn.offsetMs) return false;
+  if (utterance.kind === "social") return false;
+  const text = joinFragments(
+    session.inputFragments.slice(utterance.startIndex, utterance.lastIndex + 1),
+  );
+  if (!text || isBackchannel(text) || looksIncompleteSubstance(text)) return false;
+  if (utterance.turn && utterance.turn !== turn) return true;
+  return supersedesLookup(text);
+}
+
+function preserveBackendPlayback(session: VoiceRuntimeSession, turn: VoiceTurn): void {
+  const gate = voiceGateOf(session);
+  if (gate.ended) return;
+  if (gate.pendingOpen?.reason === "backend_answer" && gate.pendingOpen.turn === turn) return;
+  if (gate.decision.state === "open" && gate.decision.reason === "backend_answer") return;
+  openVoiceGate(session, "backend_answer", turn);
+}
+
+/**
+ * Recovery when commentary was accepted but the gate never delivered audio
+ * (deferred open cancelled by filler, or approval raced with soft barge-in).
+ * Retries a few times while still open/pending so a later mute can still recover.
+ */
+function scheduleHearRecovery(session: VoiceRuntimeSession, turn: VoiceTurn, attempt = 0): void {
+  const delayMs = deps.settings.hearRecoveryMs;
+  if (delayMs <= 0) return;
+  const timer = setTimeout(() => {
+    if (!isSessionLive(session) || turn.status !== "answered" || !turn.answerText) return;
+    if (!withinHearWindow(turn, delayMs * 3)) return;
+    if (turnHeard(session, turn)) return;
+    if (session.turns.some((other) => other !== turn && other.offsetMs > turn.offsetMs && isTurnInFlight(other))) {
+      return;
+    }
+    if (hasNewerSubstanceAsk(session, turn)) return;
+    const gate = session.gate;
+    const delivering =
+      (gate?.decision.state === "open" && gate.decision.reason === "backend_answer") ||
+      gate?.pendingOpen?.reason === "backend_answer";
+    if (delivering) {
+      if (attempt < 2) scheduleHearRecovery(session, turn, attempt + 1);
+      return;
+    }
+    deps.log("gate.hear_recovery", {
+      sessionId: session.sessionId,
+      turnId: turn.id,
+      gateState: gate?.decision.state ?? null,
+      gateReason: gate?.decision.reason ?? null,
+      attempt,
+    });
+    openVoiceGate(session, "backend_answer", turn);
+  }, delayMs);
+  timer.unref?.();
 }
 
 /**

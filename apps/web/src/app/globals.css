@@ -30,7 +30,7 @@
   --ring: oklch(0.48 0.09 195);
   --radius: 0.5rem;
   --spacing-page: 1rem;
-  --content-max: 64rem;
+  --content-max: 72rem;
   --surface-elevated: oklch(1 0 0 / 72%);
   --atmosphere-a: oklch(0.92 0.04 195);
   --atmosphere-b: oklch(0.94 0.02 230);

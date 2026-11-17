@@ -592,13 +592,12 @@ async function prepareTurn(opts: PrepareAnswerOptions, speculativeUsage: Specula
           : "answered_with_context";
 
   const shouldGenerate = decision.action === "generate" && !retrievalError;
+  // Unknown / missing in-domain facts: say we don't know — never append a Purpose invite.
   const fallbackText = shouldGenerate
     ? FALLBACK_MESSAGE
     : turn.partial
       ? `${FALLBACK_MESSAGE} ${PARTIAL_REDIRECT_SENTENCE}`
-      : turn.decision === "unknown"
-        ? `${FALLBACK_MESSAGE} ${templateRedirect(profile)}`
-        : FALLBACK_MESSAGE;
+      : FALLBACK_MESSAGE;
 
   const guard: OutputGuardPlan | undefined = opts.outputGuard
     ? {

@@ -150,6 +150,30 @@ export async function insertVoiceLiveExchange(
 /** Debug written with each delegated answer, so the spoken update merges instead of replacing it. */
 const insertedDebug = new WeakMap<VoiceTurn, MessageDebug>();
 
+/** Server-spoken welcome (no user turn); only when transcripts are persisted. */
+export async function insertVoiceWelcomeMessage(
+  session: VoiceRuntimeSession,
+  content: string,
+): Promise<void> {
+  if (!canPersistVoiceContent(session) || !content.trim() || !session.conversationId) return;
+  await db().insert(messages).values({
+    id: createId(),
+    conversationId: session.conversationId,
+    role: "assistant",
+    content,
+    sources: [],
+    outcome: "conversational",
+    debug: { voice: { welcome: true, answeredBy: "server" } },
+    modality: "voice",
+    voiceSessionId: session.durableRowInserted ? session.sessionId : null,
+    createdAt: new Date(),
+  });
+  await db()
+    .update(conversations)
+    .set({ updatedAt: new Date() })
+    .where(eq(conversations.id, session.conversationId));
+}
+
 export async function insertVoiceAssistantMessage(
   session: VoiceRuntimeSession,
   turn: VoiceTurn,

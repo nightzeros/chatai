@@ -91,11 +91,13 @@ export function AnalyticsDashboard({
   metrics,
   topUnanswered,
   quality,
+  embedded = false,
 }: {
   assistantId: string;
   metrics: AnalyticsMetrics;
   topUnanswered: TopUnansweredQuestion[];
   quality: EvalQuality;
+  embedded?: boolean;
 }) {
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
@@ -152,10 +154,12 @@ export function AnalyticsDashboard({
 
   return (
     <div className="flex flex-col gap-8">
-      <PageHeader
-        title="Analytics"
-        description="All-time performance across your playground, widget, and API chats."
-      />
+      {embedded ? null : (
+        <PageHeader
+          title="Analytics"
+          description="All-time performance across your playground, widget, and API chats."
+        />
+      )}
 
       <section>
         <div className="mb-4">
@@ -280,7 +284,7 @@ export function AnalyticsDashboard({
             </p>
           </div>
           <Link
-            href={`/dashboard/assistants/${assistantId}/evals`}
+            href={`/dashboard/assistants/${assistantId}/insights/evals`}
             className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
           >
             Manage test sets

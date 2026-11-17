@@ -36,6 +36,10 @@ Work through this list before pointing real traffic at a ChatAI instance. Every 
 - [ ] With `enforce`, plans are assigned or Polar is connected; otherwise every account gets Free limits.
 - [ ] With Polar: `POLAR_SERVER=production`, production Product IDs, and the webhook registered at `/api/webhooks/polar` with `POLAR_WEBHOOK_SECRET`.
 
+## Answer owner (agent rollout)
+
+Defaults stay on the legacy answer path. Before flipping `ANSWER_OWNER_TEXT` / `ANSWER_OWNER_VOICE` or visitor release flags, follow [Answer owner rollout](/docs/self-hosting/answer-owner-rollout).
+
 ## Voice (preview)
 
 Skip this section to run without Voice; text chat is unaffected.

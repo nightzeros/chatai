@@ -1,4 +1,4 @@
-import { isConversationalMessage } from "@chatai/rag/answer";
+import { isChitchatMessage, isContextualAcknowledgement } from "@chatai/rag/answer";
 
 import type { VoiceRuntimeSession, VoiceTurn } from "./session-runtime";
 
@@ -118,25 +118,25 @@ function normalize(text: string): string {
 
 /** Every word is small talk: voice acknowledgements and closings, plus the shared phrases. */
 function isVoiceSmallTalk(text: string): boolean {
-  if (isConversationalMessage(text)) return true;
+  if (isChitchatMessage(text)) return true;
   const normalized = normalize(text).replace(/'/g, "");
   const rest = normalized.replace(ACKNOWLEDGEMENT, " ").replace(/\s+/g, " ").trim();
   if (normalized === "" || rest === normalized) return false;
-  return rest === "" || isConversationalMessage(rest);
+  return rest === "" || isChitchatMessage(rest);
 }
 
 /**
  * Who may answer an utterance. Only greetings, thanks, goodbyes and short
  * acknowledgements are `social`; everything else (statements, single words,
  * feelings, "what do you mean?", requests to repeat, unclear speech) goes to
- * the backend. Any reply to an assistant question accepts or answers it, so it
+ * the backend. A short acceptance of an assistant question answers it, so it
  * is a backend turn too ("yes" after "Want to hear about our plans?").
  */
 export function classifyVoiceTurn(text: string, lastAssistantText?: string | null): VoiceTurnClass {
   const trimmed = text.trim();
   if (!trimmed) return "backend";
   if (normalize(trimmed).split(" ").length > MAX_SOCIAL_WORDS) return "backend";
-  if (lastAssistantText && /\?["')\s]*$/.test(lastAssistantText.trim())) return "backend";
+  if (isContextualAcknowledgement(trimmed, lastAssistantText)) return "backend";
   return isVoiceSmallTalk(trimmed) ? "social" : "backend";
 }
 

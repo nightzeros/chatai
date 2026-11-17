@@ -440,12 +440,14 @@ async function mintVoiceSession(request: Request) {
         id: assistant.id,
         name: assistant.name,
         description: assistant.description,
+        welcomeMessage: assistant.welcomeMessage,
         instructions: assistant.instructions,
         hallucinationMode: assistant.hallucinationMode,
         ragSettings: assistant.ragSettings,
         modelSettings: assistant.modelSettings,
         hostingAccount,
       },
+      welcomeSpoken: false,
       delegations:
         "delegations" in channel && channel.delegations instanceof DelegationTracker
           ? channel.delegations

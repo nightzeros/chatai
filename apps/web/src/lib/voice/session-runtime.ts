@@ -201,6 +201,8 @@ export type VoiceAssistantContext = {
   name?: string | null;
   /** Owner-written description (domain statement when no Purpose or Instructions exist). */
   description?: string | null;
+  /** Owner welcome; spoken once by the server after session.started when non-empty. */
+  welcomeMessage?: string | null;
   instructions: string | null;
   hallucinationMode: (typeof assistants.$inferSelect)["hallucinationMode"];
   ragSettings: RagSettings | null;
@@ -248,6 +250,8 @@ export type VoiceRuntimeSession = {
   liveExchanges: VoiceLiveExchange[];
   counters: VoiceSessionCounters;
   assistant: VoiceAssistantContext | null;
+  /** Server spoken welcome already attempted for this session (once only). */
+  welcomeSpoken?: boolean;
   delegations: DelegationTracker;
   channel: VoiceControlChannel | null;
   provider: RealtimeVoiceProvider;

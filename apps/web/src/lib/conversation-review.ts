@@ -23,6 +23,8 @@ export type ConversationReview = {
     visitorLabel: string;
     createdAt: Date;
     updatedAt: Date;
+    hasRecording: boolean;
+    modalityHint: string | null;
   };
   entries: TimelineEntry[];
 };
@@ -129,6 +131,9 @@ export async function getOwnedConversationReview(
     return view ? [{ ...view, sessionId: row.sessionId }] : [];
   });
 
+  const hasVoiceModality = messageRows.some((row) => row.modality === "voice");
+  const hasRecording = recordings.length > 0;
+
   return {
     conversation: {
       id: conversation.id,
@@ -136,6 +141,8 @@ export async function getOwnedConversationReview(
       visitorLabel: conversationVisitorLabel(conversation.source, conversation.visitorId),
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
+      hasRecording,
+      modalityHint: hasVoiceModality || hasRecording || callRows.length > 0 ? "Includes voice" : null,
     },
     entries: buildConversationTimeline({ messages: messageRows, calls: callRows, recordings }),
   };

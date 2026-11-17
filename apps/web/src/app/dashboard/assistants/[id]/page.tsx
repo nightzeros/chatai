@@ -29,6 +29,7 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
     documentCounts,
     sourceCounts,
     conversationTotal,
+    playgroundConversationTotal,
     answered,
     unanswered,
     recentConversations,
@@ -61,7 +62,7 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
       hint: "Upload documents or crawl a website",
     },
     {
-      done: conversationTotal > 0,
+      done: playgroundConversationTotal > 0,
       label: "Try the playground",
       href: `/dashboard/assistants/${assistant.id}/playground`,
       hint: "Ask a question and inspect retrieval",
@@ -69,14 +70,14 @@ export default async function AssistantOverviewPage({ params }: { params: Promis
     {
       done: customized,
       label: "Customize the widget",
-      href: `/dashboard/assistants/${assistant.id}/customize`,
+      href: `/dashboard/assistants/${assistant.id}/widget?tab=appearance`,
       hint: "Colors, theme, and suggested questions",
     },
     {
       done: false,
       optional: true,
       label: "Copy the install snippet",
-      href: `/dashboard/assistants/${assistant.id}/install`,
+      href: `/dashboard/assistants/${assistant.id}/widget?tab=embed`,
       hint: "Embed on your site when you are ready",
     },
     {

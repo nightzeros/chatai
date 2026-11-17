@@ -177,7 +177,8 @@ export function guardReplacement(plan: OutputGuardPlan): { text: string; outcome
     return { text: `${FALLBACK_MESSAGE} ${PARTIAL_REDIRECT_SENTENCE}`, outcome: "fallback_no_context" };
   }
   if (plan.decision === "unknown") {
-    return { text: `${FALLBACK_MESSAGE} ${plan.redirect}`, outcome: "fallback_no_context" };
+    // Missing / uncertain in-domain facts: not-in-knowledge only — never Purpose invite.
+    return { text: FALLBACK_MESSAGE, outcome: "fallback_no_context" };
   }
   return { text: plan.redirect, outcome: "out_of_scope" };
 }

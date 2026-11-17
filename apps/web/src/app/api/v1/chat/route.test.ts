@@ -61,6 +61,10 @@ vi.mock("@/lib/hosting/usage-gate", () => ({
   finishChatUsageReservation: (...args: unknown[]) => finishChatUsageReservation(...args),
   abortChatUsageReservation: (...args: unknown[]) => abortChatUsageReservation(...args),
 }));
+const recordShadowUsages = vi.fn();
+vi.mock("@/lib/hosting/shadow-meter", () => ({
+  recordShadowUsages: (...args: unknown[]) => recordShadowUsages(...args),
+}));
 const enforceWidgetRequest = vi.fn();
 vi.mock("@/lib/policies/security-policy", () => ({
   SecurityPolicy: { fromAssistant: () => ({ enforceWidgetRequest }) },
@@ -92,6 +96,10 @@ const prepareAnswer = vi.fn();
 vi.mock("@chatai/rag/answer", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@chatai/rag/answer")>()),
   prepareAnswer: (...args: unknown[]) => prepareAnswer(...args),
+}));
+const runAssistantAgent = vi.fn();
+vi.mock("@chatai/rag/agent", () => ({
+  runAssistantAgent: (...args: unknown[]) => runAssistantAgent(...args),
 }));
 
 function prepared(overrides: Partial<PreparedAnswer>): PreparedAnswer {
@@ -148,6 +156,9 @@ describe("POST /api/v1/chat conversation history", () => {
     idSeq = 0;
     apiKeyRequest = false;
     sessionUserId = "user_1";
+    runAssistantAgent.mockReset();
+    recordShadowUsages.mockReset();
+    recordShadowUsages.mockResolvedValue(0);
     resolveBillableAccountForAssistant.mockImplementation(async () => ({ id: "acct_1", status: "active" }));
     checkHostingAccountAccess.mockImplementation(() => ({ ok: true }));
     beginChatUsageReservation.mockImplementation(async () => ({ ok: true, reservation: null }));
@@ -155,6 +166,9 @@ describe("POST /api/v1/chat conversation history", () => {
     abortChatUsageReservation.mockImplementation(async () => undefined);
     enforceWidgetRequest.mockImplementation(async () => null);
     delete envMock.OUTPUT_SCOPE_CHECK;
+    envMock.ANSWER_OWNER_TEXT = "legacy";
+    envMock.ANSWER_OWNER_TEXT_ASSISTANTS = "";
+    envMock.TEXT_AGENT_VISITOR_RELEASE = false;
     assistantRow = {
       id: "asst_internal",
       publicId: "asst_public",
@@ -704,6 +718,124 @@ describe("POST /api/v1/chat conversation history", () => {
       await vi.waitFor(() =>
         expect(messageRows()[1]).toMatchObject({ role: "assistant", content: "Zenith has 17 members." }),
       );
+    });
+  });
+
+  describe("ANSWER_OWNER_TEXT agent path", () => {
+    it("uses the agent for playground when ANSWER_OWNER_TEXT=agent", async () => {
+      envMock.ANSWER_OWNER_TEXT = "agent";
+      runAssistantAgent.mockResolvedValueOnce({
+        answer: "They built a booking app [1].",
+        sources: [{ documentId: "d1", documentName: "Doc", chunkId: "c1", excerpt: "Built a booking app." }],
+        confidence: 0.9,
+        outcome: "answered_with_context",
+        providerUsages: [
+          {
+            kind: "chat_completion",
+            usage: { inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, totalTokens: 2 },
+            step: "agent_step_1",
+            eventId: "trn:agent_step_1",
+          },
+        ],
+        debug: { answerOwner: "agent" },
+        turnSnapshot: {
+          turnId: "id_1",
+          answerOwner: "agent",
+          chatProvider: "openai",
+          chatModel: "gpt",
+        },
+      });
+
+      const result = await post({ message: "Tell me about him", source: "playground" });
+
+      expect(runAssistantAgent).toHaveBeenCalledOnce();
+      expect(prepareAnswer).not.toHaveBeenCalled();
+      expect(result.text).toContain("booking app");
+      expect(finishChatUsageReservation).toHaveBeenCalledOnce();
+    });
+
+    it("keeps visitors on the legacy path while TEXT_AGENT_VISITOR_RELEASE is false", async () => {
+      envMock.ANSWER_OWNER_TEXT = "agent";
+      envMock.TEXT_AGENT_VISITOR_RELEASE = false;
+      sessionUserId = null;
+      prepareAnswer.mockResolvedValueOnce(
+        prepared({
+          shouldGenerate: false,
+          fallbackText: "Legacy visitor answer.",
+          outcome: "conversational",
+        }),
+      );
+
+      const result = await post({ message: "Hello", source: "widget", visitorId: "visitor01" });
+
+      expect(runAssistantAgent).not.toHaveBeenCalled();
+      expect(prepareAnswer).toHaveBeenCalledOnce();
+      expect(result.text).toBe("Legacy visitor answer.");
+    });
+
+    it("rolls back to legacy when ANSWER_OWNER_TEXT=legacy", async () => {
+      envMock.ANSWER_OWNER_TEXT = "legacy";
+      prepareAnswer.mockResolvedValueOnce(
+        prepared({
+          shouldGenerate: false,
+          fallbackText: "Legacy default.",
+          outcome: "conversational",
+        }),
+      );
+
+      await post({ message: "Hello", source: "playground" });
+
+      expect(runAssistantAgent).not.toHaveBeenCalled();
+      expect(prepareAnswer).toHaveBeenCalledOnce();
+    });
+
+    it("keeps legacy production and meters shadow_agent separately", async () => {
+      envMock.ANSWER_OWNER_TEXT = "shadow_agent";
+      prepareAnswer.mockResolvedValueOnce(
+        prepared({
+          shouldGenerate: false,
+          fallbackText: "Legacy production answer.",
+          outcome: "conversational",
+        }),
+      );
+      runAssistantAgent.mockResolvedValueOnce({
+        answer: "Shadow-only answer that must not reach the visitor.",
+        sources: [],
+        confidence: 0.5,
+        outcome: "answered_with_context",
+        providerUsages: [
+          {
+            kind: "chat_completion",
+            usage: { inputTokens: 2, outputTokens: 2, cachedInputTokens: 0, totalTokens: 4 },
+            step: "agent_step_1",
+            eventId: "shadow:agent_step_1",
+          },
+        ],
+        debug: { answerOwner: "agent" },
+        turnSnapshot: {
+          turnId: "id_1:shadow_agent",
+          answerOwner: "agent",
+          chatProvider: "openai",
+          chatModel: "gpt",
+        },
+      });
+
+      const result = await post({ message: "Tell me about him", source: "playground" });
+
+      expect(result.text).toBe("Legacy production answer.");
+      expect(result.text).not.toContain("Shadow-only");
+      expect(prepareAnswer).toHaveBeenCalledOnce();
+      expect(finishChatUsageReservation).toHaveBeenCalledOnce();
+
+      await vi.waitFor(() => {
+        expect(runAssistantAgent).toHaveBeenCalledOnce();
+        expect(recordShadowUsages).toHaveBeenCalledWith(
+          expect.objectContaining({
+            shadowPath: "shadow_agent",
+            requestId: expect.stringContaining(":shadow_agent"),
+          }),
+        );
+      });
     });
   });
 });

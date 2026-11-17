@@ -32,6 +32,13 @@ export type RecordShadowUsagesInput = {
   records: ProviderUsageRecord[];
   /** Per-kind billing mode; defaults to hosted. */
   billingModeFor: (kind: UsageOperation) => UsageBillingMode;
+  /**
+   * Comparison-only agent path. Always persists `status=shadow` and never counts
+   * toward customer hosted balance, even when HOSTED_USAGE_ENFORCEMENT=enforce.
+   */
+  shadowPath?: "shadow_agent";
+  /** Production turn id for correlating shadow_agent rows (safe metadata only). */
+  turnId?: string;
   /** Inject catalog in tests. */
   catalog?: ModelPricingRow[];
   /** Inject insert for tests. */
@@ -116,9 +123,14 @@ export async function recordShadowUsages(input: RecordShadowUsagesInput): Promis
       ...(record.step ? { step: record.step } : {}),
       ...(input.source === "ingest" || input.source === "eval" ? { worker: input.source } : {}),
       ...(billingMode === "byok" && costMicros > 0 ? { byokProviderCostMicros: costMicros } : {}),
+      ...(input.shadowPath ? { path: input.shadowPath } : {}),
+      ...(input.turnId ? { turnId: input.turnId } : {}),
     };
 
-    const eventStatus = env.HOSTED_USAGE_ENFORCEMENT === "enforce" ? "completed" : "shadow";
+    const eventStatus =
+      input.shadowPath === "shadow_agent" || env.HOSTED_USAGE_ENFORCEMENT !== "enforce"
+        ? "shadow"
+        : "completed";
 
     return {
       id: createId(),

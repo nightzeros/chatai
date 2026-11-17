@@ -14,6 +14,8 @@ export {
 export {
   finalizeAnsweredTurns,
   handleVoiceControlEvent,
+  isNonContentUtterance,
+  sanitizeVoiceTranscript,
   setVoiceOrchestratorDepsForTests,
   toSpeakableCommentary,
   VOICE_ORCHESTRATION_DEFAULTS,
@@ -94,6 +96,7 @@ export {
   writeLifecycleVoiceEvent,
 } from "./persist";
 export { cleanupFailedMint, superviseSideband } from "./sideband-supervisor";
+export { speakVoiceWelcome } from "./voice-welcome";
 export {
   classifyVoiceTurn,
   subscribeVoiceGate,

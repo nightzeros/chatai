@@ -68,8 +68,14 @@ Changing embedding width on an existing database requires a full reprocess strat
 | `OUTPUT_SCOPE_CHECK` | `true` | Selective output scope check: risky turns (partial, classifier fallback, injection signal, weak grounding, flexible mode, recent redirect) are buffered and checked against the assistant's Purpose before delivery. `false` disables it |
 | `ASSISTANT_PROFILE` | `true` | Assistant Profile page (Purpose and owner-reviewed Key facts) and the background Key facts refresh worker. Requires migration `0020` |
 | `PROFILE_ANSWER_ROUTE` | `false` | Answer basic identity, contact and hours questions from published Key facts without retrieval. Keep off until its evaluation gate passes for your model |
+| `ANSWER_OWNER_TEXT` | `legacy` | Who owns substantive text answers: `legacy` (prepareAnswer), `agent` (shared tool-calling agent), or `shadow_agent` (legacy production + comparison-only agent). Keep `legacy` until soak acceptance |
+| `ANSWER_OWNER_TEXT_ASSISTANTS` | empty | Comma-separated assistant ids allowed when text owner is `agent` or `shadow_agent`. Empty = all assistants (still subject to visitor release) |
+| `TEXT_AGENT_VISITOR_RELEASE` | `false` | Allow public visitors onto the text agent. Keep `false` until evidence + Purpose soak passes |
+| `ANSWER_OWNER_VOICE` | `legacy` | Who owns substantive Voice answers (independent of text). Same values as `ANSWER_OWNER_TEXT` |
+| `ANSWER_OWNER_VOICE_ASSISTANTS` | empty | Allowlist for Voice agent / shadow_agent |
+| `VOICE_AGENT_VISITOR_RELEASE` | `false` | Allow public visitors onto the Voice agent. Keep `false` until Voice gate/fidelity soak passes |
 
-See [Scope and Profile](/docs/assistants#scope-and-profile).
+See [Scope and Profile](/docs/assistants#scope-and-profile) and [Answer owner rollout](/docs/self-hosting/answer-owner-rollout).
 
 ## Security and widget protection
 

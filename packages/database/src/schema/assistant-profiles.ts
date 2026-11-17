@@ -59,11 +59,37 @@ export type KeyFact = {
   origin: "generated" | "owner";
   sources: KeyFactSource[];
   createdAt: string;
+  /**
+   * stable (default): bio/skills. time_sensitive: pricing/availability — prefer retrieval
+   * and avoid absolute currency language when only profile evidence exists.
+   */
+  volatility?: "stable" | "time_sensitive";
 };
 
 export type KeyFactSuggestion = KeyFact & {
   action: "add" | "replace";
   replacesFactId: string | null;
+};
+
+/**
+ * Derived overview narrative. Claims must reference published fact ids so structured
+ * facts remain canonical — never a free-floating bio that can contradict facts.
+ * LLM text is a suggestion until the owner approves.
+ */
+export type OverviewClaim = {
+  id: string;
+  text: string;
+  factIds: string[];
+  sources: KeyFactSource[];
+};
+
+export type AssistantOverview = {
+  status: "suggestion" | "approved" | "invalidated";
+  version: number;
+  claims: OverviewClaim[];
+  suggestedAt?: string;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
 };
 
 export type ProfileConflict = { topic: string; documentIds: string[] };
@@ -85,6 +111,11 @@ export const assistantProfiles = pgTable("assistant_profiles", {
   purpose: jsonb("purpose").$type<AssistantPurpose | null>(),
   purposeSuggestion: jsonb("purpose_suggestion").$type<AssistantPurposeSuggestion | null>(),
   facts: jsonb("facts").$type<KeyFact[]>().notNull().default(sql`'[]'::jsonb`),
+  /**
+   * Owner-approved or suggested overview claims linked to fact ids.
+   * Null when never generated. Invalidated when supporting evidence changes.
+   */
+  overview: jsonb("overview").$type<AssistantOverview | null>(),
   suggestions: jsonb("suggestions").$type<KeyFactSuggestion[]>().notNull().default(sql`'[]'::jsonb`),
   /** Fingerprints of generated facts the owner removed or rejected; never suggested again. */
   dismissed: jsonb("dismissed").$type<string[]>().notNull().default(sql`'[]'::jsonb`),

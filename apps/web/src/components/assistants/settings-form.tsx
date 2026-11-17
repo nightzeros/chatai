@@ -1,17 +1,49 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import { CHAT_PROVIDERS, EMBEDDING_PROVIDERS } from "@chatai/ai";
-
 import { defaultRagSettings } from "@chatai/database/rag-settings";
 
 import { deleteAssistant, updateAssistant } from "@/app/dashboard/actions";
+import { AssistantFormPreserve } from "@/components/assistants/assistant-form-preserve";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { Assistant } from "@/lib/assistants";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
+function DangerZoneCard({ assistant }: { assistant: Assistant }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  return (
+    <Card className="max-w-2xl border-destructive/40 shadow-none">
+      <CardHeader>
+        <CardTitle className="text-destructive">Danger zone</CardTitle>
+        <CardDescription>
+          Delete this assistant and all of its knowledge, conversations, and analytics.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form ref={formRef} action={deleteAssistant}>
+          <input type="hidden" name="id" value={assistant.id} />
+          <ConfirmDialog
+            destructive
+            title={`Delete “${assistant.name}”?`}
+            description="This permanently removes the assistant, knowledge, conversations, and analytics. This cannot be undone."
+            confirmLabel="Delete assistant"
+            trigger={
+              <Button type="button" variant="destructive">
+                Delete assistant
+              </Button>
+            }
+            onConfirm={() => formRef.current?.requestSubmit()}
+          />
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
 
 type InstanceDefaults = {
   chatProvider: string;
@@ -74,14 +106,19 @@ const CHUNKING_MODES = [
   },
 ] as const;
 
+export type SettingsFormSection = "identity" | "retrieval" | "models" | "danger";
+
 export function SettingsForm({
   assistant,
   instanceDefaults,
-  section = "general",
+  section = "identity",
+  knowledgeHref,
 }: {
   assistant: Assistant;
   instanceDefaults: InstanceDefaults;
-  section?: "general" | "models";
+  section?: SettingsFormSection;
+  /** Link to Knowledge for chunking reprocess hint. */
+  knowledgeHref?: string;
 }) {
   const [state, formAction, pending] = useActionState(updateAssistant, null);
   const model = assistant.modelSettings ?? {};
@@ -95,292 +132,299 @@ export function SettingsForm({
     },
   };
 
-  const showGeneral = section === "general";
-  const showModels = section === "models";
+  if (section === "danger") {
+    return <DangerZoneCard assistant={assistant} />;
+  }
+
+  const title =
+    section === "identity"
+      ? "Basics"
+      : section === "retrieval"
+        ? "Retrieval"
+        : "Models & providers";
+  const description =
+    section === "identity"
+      ? "Name, welcome message, instructions, and how freely the assistant may answer."
+      : section === "retrieval"
+        ? "How this assistant searches knowledge and applies guardrails."
+        : "Override chat and embedding models for this assistant.";
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <Card className="shadow-none">
         <CardHeader>
-          <CardTitle>{showModels ? "Models & providers" : "General"}</CardTitle>
-          <CardDescription>
-            {showModels
-              ? "Override chat and embedding models for this assistant."
-              : `Public ID: ${assistant.publicId}`}
-          </CardDescription>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={formAction} className="flex flex-col gap-4">
             <input type="hidden" name="id" value={assistant.id} />
-            {showGeneral ? (
+            <AssistantFormPreserve assistant={assistant} omit={section} />
+
+            {section === "identity" ? (
               <>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" name="name" required maxLength={80} defaultValue={assistant.name} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Input
-                id="description"
-                name="description"
-                maxLength={500}
-                defaultValue={assistant.description ?? ""}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="welcomeMessage">Welcome message</Label>
-              <Input
-                id="welcomeMessage"
-                name="welcomeMessage"
-                maxLength={500}
-                defaultValue={assistant.welcomeMessage}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="instructions">Instructions</Label>
-              <Textarea
-                id="instructions"
-                name="instructions"
-                maxLength={8000}
-                className="min-h-36"
-                defaultValue={assistant.instructions ?? ""}
-              />
-            </div>
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-sm font-medium">Hallucination mode</legend>
-              {MODES.map((mode) => (
-                <label
-                  key={mode.value}
-                  className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground"
-                >
-                  <input
-                    type="radio"
-                    name="hallucinationMode"
-                    value={mode.value}
-                    defaultChecked={assistant.hallucinationMode === mode.value}
-                    className="mt-1"
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input id="name" name="name" required maxLength={80} defaultValue={assistant.name} />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    name="description"
+                    maxLength={500}
+                    defaultValue={assistant.description ?? ""}
                   />
-                  <span>
-                    <span className="block text-sm font-medium">{mode.title}</span>
-                    <span className="block text-sm text-muted-foreground">{mode.description}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-sm font-medium">Retrieval</legend>
-              <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
-                <input type="checkbox" name="hybridSearch" defaultChecked={rag.hybridSearch} className="mt-1" />
-                <span>
-                  <span className="block text-sm font-medium">Hybrid search</span>
-                  <span className="block text-sm text-muted-foreground">
-                    Combine vector search with keyword matching (default on).
-                  </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
-                <input type="checkbox" name="rerank" defaultChecked={rag.rerank} className="mt-1" />
-                <span>
-                  <span className="block text-sm font-medium">Rerank results</span>
-                  <span className="block text-sm text-muted-foreground">
-                    Reorder the top retrieved passages before answering.
-                  </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
-                <input
-                  type="checkbox"
-                  name="queryExpansion"
-                  defaultChecked={rag.queryExpansion}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block text-sm font-medium">Query expansion</span>
-                  <span className="block text-sm text-muted-foreground">
-                    Add alternate phrasings for short questions.
-                  </span>
-                </span>
-              </label>
-            </fieldset>
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-sm font-medium">Guardrails</legend>
-              <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
-                <input
-                  type="checkbox"
-                  name="requireContext"
-                  defaultChecked={Boolean(rag.guardrails.requireContext)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block text-sm font-medium">Require retrieved context</span>
-                  <span className="block text-sm text-muted-foreground">
-                    Refuse when the knowledge base does not support the question.
-                  </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
-                <input
-                  type="checkbox"
-                  name="verifyCitations"
-                  defaultChecked={Boolean(rag.guardrails.verifyCitations)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block text-sm font-medium">Verify answers against sources</span>
-                  <span className="block text-sm text-muted-foreground">
-                    Check claims after generation and regenerate once if they fail.
-                  </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
-                <input
-                  type="checkbox"
-                  name="refuseOnLowConfidence"
-                  defaultChecked={Boolean(rag.guardrails.refuseOnLowConfidence)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block text-sm font-medium">Refuse on low confidence</span>
-                  <span className="block text-sm text-muted-foreground">
-                    Fall back instead of answering when retrieval confidence is low.
-                  </span>
-                </span>
-              </label>
-            </fieldset>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="evalSampleRate">Online eval sample rate</Label>
-              <Input
-                id="evalSampleRate"
-                name="evalSampleRate"
-                type="number"
-                min={0}
-                max={1}
-                step={0.01}
-                defaultValue={rag.evalSampleRate}
-              />
-              <p className="text-sm text-muted-foreground">
-                Fraction of production answers to score asynchronously (0–1). Uses your AI API key.
-              </p>
-            </div>
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-sm font-medium">Chunking mode</legend>
-              <p className="text-sm text-muted-foreground">
-                Changing chunking mode only affects newly processed documents. Use Reprocess in
-                Knowledge to rebuild existing content.
-              </p>
-              {CHUNKING_MODES.map((mode) => (
-                <label
-                  key={mode.value}
-                  className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground"
-                >
-                  <input
-                    type="radio"
-                    name="chunkingMode"
-                    value={mode.value}
-                    defaultChecked={rag.chunkingMode === mode.value}
-                    className="mt-1"
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="welcomeMessage">Welcome message</Label>
+                  <Input
+                    id="welcomeMessage"
+                    name="welcomeMessage"
+                    maxLength={500}
+                    defaultValue={assistant.welcomeMessage}
                   />
-                  <span>
-                    <span className="block text-sm font-medium">{mode.title}</span>
-                    <span className="block text-sm text-muted-foreground">{mode.description}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="instructions">Instructions</Label>
+                  <Textarea
+                    id="instructions"
+                    name="instructions"
+                    maxLength={8000}
+                    className="min-h-36"
+                    defaultValue={assistant.instructions ?? ""}
+                  />
+                </div>
+                <fieldset className="flex flex-col gap-3">
+                  <legend className="text-sm font-medium">Answer mode</legend>
+                  {MODES.map((mode) => (
+                    <label
+                      key={mode.value}
+                      className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground"
+                    >
+                      <input
+                        type="radio"
+                        name="hallucinationMode"
+                        value={mode.value}
+                        defaultChecked={assistant.hallucinationMode === mode.value}
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium">{mode.title}</span>
+                        <span className="block text-sm text-muted-foreground">{mode.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
               </>
             ) : null}
 
-            {showModels ? (
+            {section === "retrieval" ? (
               <>
-                {/* Preserve non-model fields so updateAssistant validation still receives them */}
-                <input type="hidden" name="name" value={assistant.name} />
-                <input type="hidden" name="description" value={assistant.description ?? ""} />
-                <input type="hidden" name="welcomeMessage" value={assistant.welcomeMessage} />
-                <input type="hidden" name="instructions" value={assistant.instructions ?? ""} />
-                <input type="hidden" name="hallucinationMode" value={assistant.hallucinationMode} />
-                <input type="hidden" name="chunkingMode" value={rag.chunkingMode} />
-                <input type="hidden" name="evalSampleRate" value={rag.evalSampleRate} />
-                {rag.hybridSearch ? <input type="hidden" name="hybridSearch" value="on" /> : null}
-                {rag.rerank ? <input type="hidden" name="rerank" value="on" /> : null}
-                {rag.queryExpansion ? <input type="hidden" name="queryExpansion" value="on" /> : null}
-                {rag.guardrails.requireContext ? <input type="hidden" name="requireContext" value="on" /> : null}
-                {rag.guardrails.verifyCitations ? <input type="hidden" name="verifyCitations" value="on" /> : null}
-                {rag.guardrails.refuseOnLowConfidence ? (
-                  <input type="hidden" name="refuseOnLowConfidence" value="on" />
-                ) : null}
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-sm font-medium">Models</legend>
-              <p className="text-sm text-muted-foreground">
-                Leave blank to use instance defaults ({instanceDefaults.chatProvider} /{" "}
-                {instanceDefaults.chatModel} for chat, {instanceDefaults.embeddingProvider} /{" "}
-                {instanceDefaults.embeddingModel} for embeddings). Embeddings must match instance
-                width ({instanceDefaults.embeddingDimensions} dimensions). Changing the embedding
-                model reprocesses all documents.
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="chatProvider">Chat provider</Label>
-                  <select
-                    id="chatProvider"
-                    name="chatProvider"
-                    className={selectClassName}
-                    defaultValue={model.chatProvider ?? ""}
-                  >
-                    <option value="">Instance default ({instanceDefaults.chatProvider})</option>
-                    {CHAT_PROVIDERS.map((provider) => (
-                      <option key={provider} value={provider}>
-                        {CHAT_PROVIDER_LABELS[provider] ?? provider}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="chatModel">Chat model</Label>
-                  <Input
-                    id="chatModel"
-                    name="chatModel"
-                    maxLength={120}
-                    placeholder={instanceDefaults.chatModel}
-                    defaultValue={model.chatModel ?? ""}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="embeddingProvider">Embedding provider</Label>
-                  <select
-                    id="embeddingProvider"
-                    name="embeddingProvider"
-                    className={selectClassName}
-                    defaultValue={model.embeddingProvider ?? ""}
-                  >
-                    <option value="">Instance default ({instanceDefaults.embeddingProvider})</option>
-                    {EMBEDDING_PROVIDERS.map((provider) => (
-                      <option key={provider} value={provider}>
-                        {EMBEDDING_PROVIDER_LABELS[provider] ?? provider}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="embeddingModel">Embedding model</Label>
-                  <Input
-                    id="embeddingModel"
-                    name="embeddingModel"
-                    maxLength={120}
-                    placeholder={instanceDefaults.embeddingModel}
-                    defaultValue={model.embeddingModel ?? ""}
-                  />
-                </div>
-              </div>
-            </fieldset>
+                <fieldset className="flex flex-col gap-3">
+                  <legend className="text-sm font-medium">Search</legend>
+                  <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
+                    <input type="checkbox" name="hybridSearch" defaultChecked={rag.hybridSearch} className="mt-1" />
+                    <span>
+                      <span className="block text-sm font-medium">Hybrid search</span>
+                      <span className="block text-sm text-muted-foreground">
+                        Combine vector search with keyword matching (default on).
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
+                    <input type="checkbox" name="rerank" defaultChecked={rag.rerank} className="mt-1" />
+                    <span>
+                      <span className="block text-sm font-medium">Rerank results</span>
+                      <span className="block text-sm text-muted-foreground">
+                        Reorder the top retrieved passages before answering.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
+                    <input
+                      type="checkbox"
+                      name="queryExpansion"
+                      defaultChecked={rag.queryExpansion}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium">Query expansion</span>
+                      <span className="block text-sm text-muted-foreground">
+                        Add alternate phrasings for short questions.
+                      </span>
+                    </span>
+                  </label>
+                </fieldset>
+                <details className="rounded-lg border border-border">
+                  <summary className="cursor-pointer px-3 py-2.5 text-sm font-medium">Advanced retrieval</summary>
+                  <div className="flex flex-col gap-4 border-t border-border p-3">
+                    <fieldset className="flex flex-col gap-3">
+                      <legend className="text-sm font-medium">Guardrails</legend>
+                      <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
+                        <input
+                          type="checkbox"
+                          name="requireContext"
+                          defaultChecked={Boolean(rag.guardrails.requireContext)}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium">Require retrieved context</span>
+                          <span className="block text-sm text-muted-foreground">
+                            Refuse when the knowledge base does not support the question.
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
+                        <input
+                          type="checkbox"
+                          name="verifyCitations"
+                          defaultChecked={Boolean(rag.guardrails.verifyCitations)}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium">Verify answers against sources</span>
+                          <span className="block text-sm text-muted-foreground">
+                            Check claims after generation and regenerate once if they fail.
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground">
+                        <input
+                          type="checkbox"
+                          name="refuseOnLowConfidence"
+                          defaultChecked={Boolean(rag.guardrails.refuseOnLowConfidence)}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium">Refuse on low confidence</span>
+                          <span className="block text-sm text-muted-foreground">
+                            Fall back instead of answering when retrieval confidence is low.
+                          </span>
+                        </span>
+                      </label>
+                    </fieldset>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="evalSampleRate">Online eval sample rate</Label>
+                      <Input
+                        id="evalSampleRate"
+                        name="evalSampleRate"
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        defaultValue={rag.evalSampleRate}
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        Fraction of production answers to score asynchronously (0–1). Uses your AI API key.
+                      </p>
+                    </div>
+                    <fieldset className="flex flex-col gap-3">
+                      <legend className="text-sm font-medium">Chunking mode</legend>
+                      <p className="text-sm text-muted-foreground">
+                        Changing chunking mode only affects newly processed documents.
+                        {knowledgeHref ? (
+                          <>
+                            {" "}
+                            <a href={knowledgeHref} className="underline underline-offset-2 hover:text-foreground">
+                              Reprocess in Knowledge
+                            </a>{" "}
+                            to rebuild existing content.
+                          </>
+                        ) : (
+                          " Use Reprocess in Knowledge to rebuild existing content."
+                        )}
+                      </p>
+                      {CHUNKING_MODES.map((mode) => (
+                        <label
+                          key={mode.value}
+                          className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground"
+                        >
+                          <input
+                            type="radio"
+                            name="chunkingMode"
+                            value={mode.value}
+                            defaultChecked={rag.chunkingMode === mode.value}
+                            className="mt-1"
+                          />
+                          <span>
+                            <span className="block text-sm font-medium">{mode.title}</span>
+                            <span className="block text-sm text-muted-foreground">{mode.description}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+                  </div>
+                </details>
               </>
-            ) : (
-              <>
-                <input type="hidden" name="chatProvider" value={model.chatProvider ?? ""} />
-                <input type="hidden" name="chatModel" value={model.chatModel ?? ""} />
-                <input type="hidden" name="embeddingProvider" value={model.embeddingProvider ?? ""} />
-                <input type="hidden" name="embeddingModel" value={model.embeddingModel ?? ""} />
-              </>
-            )}
+            ) : null}
+
+            {section === "models" ? (
+              <fieldset className="flex flex-col gap-3">
+                <legend className="text-sm font-medium">Models</legend>
+                <p className="text-sm text-muted-foreground">
+                  Leave blank to use instance defaults ({instanceDefaults.chatProvider} /{" "}
+                  {instanceDefaults.chatModel} for chat, {instanceDefaults.embeddingProvider} /{" "}
+                  {instanceDefaults.embeddingModel} for embeddings). Embeddings must match instance
+                  width ({instanceDefaults.embeddingDimensions} dimensions). Changing the embedding
+                  model reprocesses all documents.
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="chatProvider">Chat provider</Label>
+                    <select
+                      id="chatProvider"
+                      name="chatProvider"
+                      className={selectClassName}
+                      defaultValue={model.chatProvider ?? ""}
+                    >
+                      <option value="">Instance default ({instanceDefaults.chatProvider})</option>
+                      {CHAT_PROVIDERS.map((provider) => (
+                        <option key={provider} value={provider}>
+                          {CHAT_PROVIDER_LABELS[provider] ?? provider}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="chatModel">Chat model</Label>
+                    <Input
+                      id="chatModel"
+                      name="chatModel"
+                      maxLength={120}
+                      placeholder={instanceDefaults.chatModel}
+                      defaultValue={model.chatModel ?? ""}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="embeddingProvider">Embedding provider</Label>
+                    <select
+                      id="embeddingProvider"
+                      name="embeddingProvider"
+                      className={selectClassName}
+                      defaultValue={model.embeddingProvider ?? ""}
+                    >
+                      <option value="">Instance default ({instanceDefaults.embeddingProvider})</option>
+                      {EMBEDDING_PROVIDERS.map((provider) => (
+                        <option key={provider} value={provider}>
+                          {EMBEDDING_PROVIDER_LABELS[provider] ?? provider}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="embeddingModel">Embedding model</Label>
+                    <Input
+                      id="embeddingModel"
+                      name="embeddingModel"
+                      maxLength={120}
+                      placeholder={instanceDefaults.embeddingModel}
+                      defaultValue={model.embeddingModel ?? ""}
+                    />
+                  </div>
+                </div>
+              </fieldset>
+            ) : null}
 
             {state && "error" in state ? <p className="text-sm text-destructive">{state.error}</p> : null}
             {state && "saved" in state ? <p className="text-sm text-muted-foreground">Saved.</p> : null}
@@ -390,32 +434,6 @@ export function SettingsForm({
           </form>
         </CardContent>
       </Card>
-
-      {showGeneral ? (
-      <Card className="border-destructive/40 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-destructive">Danger zone</CardTitle>
-          <CardDescription>
-            Delete this assistant and all of its knowledge, conversations, and analytics.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            action={deleteAssistant}
-            onSubmit={(event) => {
-              if (!window.confirm(`Delete “${assistant.name}”? This cannot be undone.`)) {
-                event.preventDefault();
-              }
-            }}
-          >
-            <input type="hidden" name="id" value={assistant.id} />
-            <Button type="submit" variant="destructive">
-              Delete assistant
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-      ) : null}
     </div>
   );
 }

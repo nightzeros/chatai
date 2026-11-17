@@ -29,6 +29,36 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: WIDGET_ASSET_PATH, headers: widgetAssetHeaders }];
   },
+  async redirects() {
+    // Assistant workspace hubs (keep bookmarks working). Page-level redirects also exist.
+    return [
+      {
+        source: "/dashboard/assistants/:id/profile",
+        destination: "/dashboard/assistants/:id/identity",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/assistants/:id/customize",
+        destination: "/dashboard/assistants/:id/widget?tab=appearance",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/assistants/:id/install",
+        destination: "/dashboard/assistants/:id/widget?tab=embed",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/assistants/:id/analytics",
+        destination: "/dashboard/assistants/:id/insights",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/assistants/:id/evals",
+        destination: "/dashboard/assistants/:id/insights/evals",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

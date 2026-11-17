@@ -154,6 +154,44 @@ describe("recordShadowUsages", () => {
     ]);
   });
 
+  it("keeps shadow_agent rows as status=shadow even when enforcement is on", async () => {
+    envState.HOSTED_USAGE_ENFORCEMENT = "enforce";
+    const { loadSeedPricingCatalog } = await import("@chatai/billing");
+    const { recordShadowUsages } = await import("./shadow-meter");
+
+    await recordShadowUsages({
+      accountId: "acct-1",
+      requestId: "req-1:shadow_agent",
+      turnId: "req-1",
+      shadowPath: "shadow_agent",
+      catalog: loadSeedPricingCatalog(),
+      records: [
+        {
+          kind: "chat_completion",
+          provider: "openai",
+          model: "gpt-4o-mini",
+          usage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            cachedInputTokens: 0,
+            totalTokens: 150,
+          },
+        },
+      ],
+      billingModeFor: () => "hosted",
+    });
+
+    expect(insertValues).toHaveBeenCalledWith([
+      expect.objectContaining({
+        status: "shadow",
+        metadata: expect.objectContaining({
+          path: "shadow_agent",
+          turnId: "req-1",
+        }),
+      }),
+    ]);
+  });
+
   it("swallows insert failures", async () => {
     insertValues.mockRejectedValueOnce(new Error("db down"));
     const { loadSeedPricingCatalog } = await import("@chatai/billing");

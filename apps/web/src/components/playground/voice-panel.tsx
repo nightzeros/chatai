@@ -806,7 +806,7 @@ export function VoicePanel({
       {notice && !error ? <p className="mt-2 text-xs text-muted-foreground">{notice}</p> : null}
 
       {captions.length || snapshot ? (
-        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        <div className="mt-3 flex flex-col gap-3">
           <div className="max-h-44 overflow-y-auto rounded-lg border border-border bg-background p-2 text-xs">
             <p className="mb-1 font-medium text-muted-foreground">Live transcript</p>
             {captions.map((caption) => (
@@ -822,11 +822,18 @@ export function VoicePanel({
               </p>
             ))}
           </div>
-          <div className="max-h-44 overflow-y-auto rounded-lg border border-border bg-background p-2 text-xs">
+          <details className="rounded-lg border border-border bg-background">
+            <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium text-muted-foreground">
+              Developer trace
+              {snapshot
+                ? ` · ${snapshot.counters.delegations ?? 0} delegations · ${snapshot.counters.superseded ?? 0} superseded`
+                : null}
+            </summary>
+          <div className="max-h-44 overflow-y-auto border-t border-border p-2 text-xs">
             <p className="mb-1 font-medium text-muted-foreground">
               Delegations
               {snapshot
-                ? ` · ${snapshot.counters.delegations ?? 0} total · ${snapshot.counters.superseded ?? 0} superseded · ${snapshot.counters.bargeIns ?? 0} server barge-ins · ${browserInterrupts} browser barge-ins · ${snapshot.counters.lateResultsDiscarded ?? 0} late discarded · ${snapshot.counters.providerErrors ?? 0} provider errors`
+                ? ` · ${snapshot.counters.bargeIns ?? 0} server barge-ins · ${browserInterrupts} browser barge-ins · ${snapshot.counters.lateResultsDiscarded ?? 0} late discarded · ${snapshot.counters.providerErrors ?? 0} provider errors`
                 : null}
             </p>
             {snapshot && snapshot.turns.length === 0 && captions.some((caption) => caption.role === "assistant") ? (
@@ -919,6 +926,7 @@ export function VoicePanel({
                 </div>
               ))}
           </div>
+          </details>
         </div>
       ) : null}
     </section>

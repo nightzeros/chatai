@@ -209,6 +209,41 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  /**
+   * Who owns substantive text answers.
+   * `legacy` = prepareAnswer path (default).
+   * `agent` = shared tool-calling agent (playground/owner only until visitor release).
+   * `shadow_agent` = legacy production + background agent for comparison (no visitor output/charge).
+   */
+  ANSWER_OWNER_TEXT: z.enum(["legacy", "agent", "shadow_agent"]).default("legacy"),
+  /**
+   * Comma-separated assistant ids allowed to use ANSWER_OWNER_TEXT=agent|shadow_agent.
+   * Empty = all assistants when the owner flag is agent/shadow_agent (still subject to visitor release).
+   */
+  ANSWER_OWNER_TEXT_ASSISTANTS: z.string().default(""),
+  /**
+   * Allow public visitors onto the text agent. Keep false until evidence verification
+   * and Purpose checks pass acceptance. Does not affect playground/owner sessions.
+   */
+  TEXT_AGENT_VISITOR_RELEASE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /**
+   * Who owns substantive Voice answers (independent of ANSWER_OWNER_TEXT).
+   * `legacy` = prepareAnswer path (default). `agent` / `shadow_agent` mirror text rollout.
+   */
+  ANSWER_OWNER_VOICE: z.enum(["legacy", "agent", "shadow_agent"]).default("legacy"),
+  /** Comma-separated assistant ids allowed when ANSWER_OWNER_VOICE=agent|shadow_agent. */
+  ANSWER_OWNER_VOICE_ASSISTANTS: z.string().default(""),
+  /**
+   * Allow public visitors onto the Voice agent. Keep false until text acceptance and
+   * Voice gate/fidelity checks pass. Does not affect playground/owner sessions.
+   */
+  VOICE_AGENT_VISITOR_RELEASE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -283,6 +318,12 @@ function loadEnv(): Env {
     OUTPUT_SCOPE_CHECK: process.env.OUTPUT_SCOPE_CHECK || undefined,
     ASSISTANT_PROFILE: process.env.ASSISTANT_PROFILE || undefined,
     PROFILE_ANSWER_ROUTE: process.env.PROFILE_ANSWER_ROUTE || undefined,
+    ANSWER_OWNER_TEXT: process.env.ANSWER_OWNER_TEXT || undefined,
+    ANSWER_OWNER_TEXT_ASSISTANTS: process.env.ANSWER_OWNER_TEXT_ASSISTANTS,
+    TEXT_AGENT_VISITOR_RELEASE: process.env.TEXT_AGENT_VISITOR_RELEASE || undefined,
+    ANSWER_OWNER_VOICE: process.env.ANSWER_OWNER_VOICE || undefined,
+    ANSWER_OWNER_VOICE_ASSISTANTS: process.env.ANSWER_OWNER_VOICE_ASSISTANTS,
+    VOICE_AGENT_VISITOR_RELEASE: process.env.VOICE_AGENT_VISITOR_RELEASE || undefined,
   });
 
   if (!parsed.success) {

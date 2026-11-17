@@ -8,6 +8,11 @@ export type ProviderUsageRecord = {
   usage: ProviderUsage;
   /** Free-form step label for debugging (rewrite, expand, answer, etc.). */
   step?: string;
+  /**
+   * Stable id for this provider call. Late settlement and retries key on this:
+   * the same eventId must not charge twice; distinct eventIds for one turn all apply.
+   */
+  eventId?: string;
 };
 
 /**
