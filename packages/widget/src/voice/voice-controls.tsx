@@ -24,13 +24,25 @@ export function VoiceControls({
   const { canStart, canEnd, canMute, canToggleCaptions, canRetry, canDismiss, microphoneMuted } =
     presentation;
 
+  const startAgain = Boolean(presentation.notice || presentation.status === "Voice ended");
+
   return (
     <div className="chatai-voice-controls">
       {canStart ? (
-        <button type="button" className="chatai-voice-primary" onClick={onStart}>
-          {presentation.notice || presentation.status === "Voice ended"
-            ? "Start again"
-            : "Start conversation"}
+        <button
+          type="button"
+          className="chatai-voice-primary"
+          onClick={onStart}
+          aria-label={startAgain ? "Start again" : "Start conversation"}
+        >
+          {startAgain ? (
+            "Start again"
+          ) : (
+            <>
+              <span className="chatai-voice-label-long">Start conversation</span>
+              <span className="chatai-voice-label-short">Start</span>
+            </>
+          )}
         </button>
       ) : null}
       {canEnd ? (
@@ -56,8 +68,10 @@ export function VoiceControls({
           className={`chatai-voice-secondary${captionsOpen ? " is-pressed" : ""}`}
           onClick={onToggleCaptions}
           aria-pressed={captionsOpen}
+          aria-label={captionsOpen ? "Hide captions" : "Show captions"}
         >
-          Captions
+          <span className="chatai-voice-label-long">Captions</span>
+          <span className="chatai-voice-label-short">CC</span>
         </button>
       ) : null}
       {canRetry ? (
@@ -67,7 +81,14 @@ export function VoiceControls({
       ) : null}
       {canDismiss ? (
         <button type="button" className="chatai-voice-secondary" onClick={onDismiss}>
-          {presentation.consentPending ? "Cancel" : "Back to chat"}
+          {presentation.consentPending ? (
+            "Cancel"
+          ) : (
+            <>
+              <span className="chatai-voice-label-long">Back to chat</span>
+              <span className="chatai-voice-label-short">Chat</span>
+            </>
+          )}
         </button>
       ) : null}
     </div>

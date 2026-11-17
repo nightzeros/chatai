@@ -76,8 +76,8 @@ export function CustomizeForm({
           description="Tune appearance and suggested questions. The live preview updates after a short pause while you type."
         />
       )}
-      <div className="grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <Card className="shadow-none">
+      <div className="grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
+        <Card className="order-2 shadow-none lg:order-1">
           <CardHeader>
             <CardTitle>Widget appearance</CardTitle>
             <CardDescription>Choose how your assistant appears on a visitor&apos;s site.</CardDescription>
@@ -181,7 +181,7 @@ export function CustomizeForm({
                   use a voice stage inside the chat panel. Dock adds a Talk control beside the
                   launcher. Captions default applies to those stage experiences — not Classic.
                 </p>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
                   {(
                     [
                       {
@@ -218,7 +218,7 @@ export function CustomizeForm({
                   ).map((option) => (
                     <label
                       key={option.value}
-                      className="flex cursor-pointer flex-col gap-1 rounded-lg border border-border p-3 has-[:checked]:border-foreground"
+                      className="flex cursor-pointer flex-col gap-1 rounded-lg border border-border p-2.5 has-[:checked]:border-foreground sm:p-3"
                     >
                       <span className="flex items-center gap-3">
                         <input
@@ -238,7 +238,7 @@ export function CustomizeForm({
                         />
                         <span className="text-sm font-medium">{option.title}</span>
                       </span>
-                      <span className="pl-7 text-xs text-muted-foreground">{option.blurb}</span>
+                      <span className="pl-7 text-xs leading-snug text-muted-foreground">{option.blurb}</span>
                     </label>
                   ))}
                 </div>
@@ -352,13 +352,15 @@ export function CustomizeForm({
           </CardContent>
         </Card>
 
-        <WidgetPreview
-          assistantId={assistant.publicId}
-          apiUrl={apiUrl}
-          settings={preview}
-          assistantName={assistant.name}
-          playgroundHref={`/dashboard/assistants/${assistant.id}/playground`}
-        />
+        <div className="order-1 lg:order-2">
+          <WidgetPreview
+            assistantId={assistant.publicId}
+            apiUrl={apiUrl}
+            settings={preview}
+            assistantName={assistant.name}
+            playgroundHref={`/dashboard/assistants/${assistant.id}/playground`}
+          />
+        </div>
       </div>
     </div>
   );

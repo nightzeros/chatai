@@ -53,8 +53,10 @@ export function VoiceDockSurface({
   const surfaceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const surface = surfaceRef.current;
-    if (!surface) return;
+    const node = surfaceRef.current;
+    if (!node) return;
+    // Stable non-null binding for the keydown closure (ref.current is mutable to TS).
+    const surface: HTMLDivElement = node;
     const focusables = () => Array.from(surface.querySelectorAll<HTMLElement>(FOCUSABLE));
     focusables()[0]?.focus();
 
@@ -70,9 +72,9 @@ export function VoiceDockSurface({
       const first = nodes[0];
       const last = nodes[nodes.length - 1];
       if (!first || !last) return;
-      const root = surface.getRootNode();
+      const rootNode = surface.getRootNode();
       const active =
-        root instanceof ShadowRoot ? root.activeElement : document.activeElement;
+        rootNode instanceof ShadowRoot ? rootNode.activeElement : document.activeElement;
       if (event.shiftKey && active === first) {
         event.preventDefault();
         last.focus();

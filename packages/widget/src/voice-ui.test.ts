@@ -142,7 +142,7 @@ async function openWidget(
           },
         });
       }
-      return previous(url, init);
+      return (previous as (input: string, init?: RequestInit) => Promise<Response>)(url, init);
     });
   }
   const { media, state } = fakeMedia({ micError: options.micError });
@@ -439,13 +439,16 @@ describe("widget Voice UI", () => {
     });
     await flush();
     expect(root.querySelector(".chatai-voice-stage-status")?.textContent).toBe("I’m listening");
-    expect(
-      Array.from(root.querySelectorAll(".chatai-voice-controls button")).map((b) => b.textContent),
-    ).toEqual(expect.arrayContaining(["End", "Mute", "Captions"]));
+    const controlLabels = Array.from(root.querySelectorAll(".chatai-voice-controls button")).map(
+      (b) => b.getAttribute("aria-label") ?? b.textContent ?? "",
+    );
+    expect(controlLabels).toEqual(
+      expect.arrayContaining(["End voice", "Mute microphone", "Hide captions"]),
+    );
 
     (
       Array.from(root.querySelectorAll(".chatai-voice-controls button")).find(
-        (b) => b.textContent === "End",
+        (b) => b.getAttribute("aria-label") === "End voice",
       ) as HTMLButtonElement
     ).click();
     await flush();
@@ -454,7 +457,7 @@ describe("widget Voice UI", () => {
 
     (
       Array.from(root.querySelectorAll(".chatai-voice-controls button")).find(
-        (b) => b.textContent === "Back to chat",
+        (b) => (b.textContent ?? "").includes("Back to chat"),
       ) as HTMLButtonElement
     ).click();
     await flush();
@@ -572,7 +575,7 @@ describe("widget Voice UI", () => {
 
     (
       Array.from(root.querySelectorAll(".chatai-voice-controls button")).find(
-        (b) => b.textContent === "Start conversation",
+        (b) => b.getAttribute("aria-label") === "Start conversation",
       ) as HTMLButtonElement
     ).click();
     await flush();

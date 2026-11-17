@@ -70,21 +70,21 @@ export function VoiceDesignPreview({
         ? "Side panel"
         : "Live voice";
   const shellClass = sidePanel
-    ? "min-h-[34rem] max-w-[22rem] ml-auto"
+    ? "min-h-[min(28rem,62dvh)] max-w-[22rem] ml-auto sm:min-h-[34rem]"
     : layout === "compact"
-      ? "min-h-[22rem] max-w-sm"
-      : "min-h-[28rem]";
+      ? "min-h-[min(20rem,55dvh)] max-w-sm sm:min-h-[22rem]"
+      : "min-h-[min(24rem,58dvh)] sm:min-h-[28rem]";
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+      <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:text-amber-100">
         Design preview — simulated phases only. No microphone or live session.
         {sidePanel
           ? " Tall edge layout beside the page — no automatic page content."
           : null}
       </p>
       <div
-        className={`flex flex-col items-center gap-3 rounded-lg border border-border bg-background px-4 py-5 text-center ${shellClass}`}
+        className={`flex flex-col items-center gap-2.5 rounded-lg border border-border bg-background px-3 py-4 text-center sm:gap-3 sm:px-4 sm:py-5 ${shellClass}`}
         style={{ ["--sim-accent" as string]: accentColor }}
       >
         <div className="flex flex-col gap-0.5">
@@ -188,17 +188,17 @@ export function VoiceDesignPreview({
             </p>
           </div>
         ) : null}
-        <div className="mt-auto flex flex-wrap justify-center gap-2 pt-2">
+        <div className="mt-auto grid w-full grid-cols-2 gap-2 pt-2 sm:flex sm:flex-wrap sm:justify-center">
           <button
             type="button"
-            className="rounded-lg bg-[var(--sim-accent)] px-3.5 py-2 text-sm font-semibold text-white"
+            className="col-span-2 min-h-11 rounded-lg bg-[var(--sim-accent)] px-3.5 py-2 text-sm font-semibold text-white sm:col-span-1 sm:min-h-0"
             disabled
           >
-            {phase === "idle" ? "Start conversation" : "End"}
+            {phase === "idle" ? "Start" : "End"}
           </button>
           <button
             type="button"
-            className="rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-semibold"
+            className="min-h-11 rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-semibold sm:min-h-0"
             aria-pressed={muted}
             onClick={() => setMuted((value) => !value)}
           >
@@ -206,7 +206,7 @@ export function VoiceDesignPreview({
           </button>
           <button
             type="button"
-            className="rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-semibold"
+            className="min-h-11 rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-semibold sm:min-h-0"
             aria-pressed={captionsOpen}
             onClick={() => setCaptionsOpen((value) => !value)}
           >
@@ -222,7 +222,7 @@ export function VoiceDesignPreview({
               key={entry.id}
               type="button"
               onClick={() => setPhase(entry.id)}
-              className={`rounded-md border px-2 py-1 text-xs ${
+              className={`min-h-8 rounded-md border px-2.5 py-1.5 text-xs ${
                 phase === entry.id ? "border-foreground bg-foreground text-background" : "border-border"
               }`}
             >

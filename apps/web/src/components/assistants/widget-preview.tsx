@@ -46,14 +46,14 @@ export function WidgetPreview({
     mode === "live";
 
   return (
-    <aside className="rounded-xl border border-border bg-muted/30 p-5">
+    <aside className="rounded-xl border border-border bg-muted/30 p-4 sm:p-5 lg:sticky lg:top-4">
       <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
         Draft preview
       </p>
-      <div className="mt-3 flex gap-2" role="group" aria-label="Preview mode">
+      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Preview mode">
         <button
           type="button"
-          className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+          className={`min-h-9 rounded-md border px-3 py-1.5 text-xs font-medium ${
             mode === "design" ? "border-foreground bg-foreground text-background" : "border-border"
           }`}
           onClick={() => setMode("design")}
@@ -62,7 +62,7 @@ export function WidgetPreview({
         </button>
         <button
           type="button"
-          className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+          className={`min-h-9 rounded-md border px-3 py-1.5 text-xs font-medium ${
             mode === "live" ? "border-foreground bg-foreground text-background" : "border-border"
           }`}
           onClick={() => setMode("live")}
@@ -72,7 +72,7 @@ export function WidgetPreview({
       </div>
 
       {showStageSim ? (
-        <div className="mt-5">
+        <div className="mt-4 sm:mt-5">
           <VoiceDesignPreview
             assistantName={assistantName}
             accentColor={accent}
@@ -86,8 +86,12 @@ export function WidgetPreview({
         </div>
       ) : (
         <div
-          className={`relative mt-5 overflow-hidden rounded-lg border border-border bg-background ${
-            tall ? (experience === "side-panel" ? "h-[36rem]" : "h-[32rem]") : "h-96"
+          className={`relative mt-4 overflow-hidden rounded-lg border border-border bg-background sm:mt-5 ${
+            tall
+              ? experience === "side-panel"
+                ? "h-[min(36rem,70dvh)]"
+                : "h-[min(32rem,68dvh)]"
+              : "h-[min(24rem,60dvh)]"
           }`}
         >
           <div className="absolute inset-0" data-testid="widget-preview-mount">

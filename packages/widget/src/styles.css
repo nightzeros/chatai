@@ -9,25 +9,29 @@
   --chatai-panel: #fffef9;
   --chatai-muted: #6d766f;
   --chatai-border: #d9ddd7;
+  --chatai-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --chatai-safe-top: env(safe-area-inset-top, 0px);
+  --chatai-safe-left: env(safe-area-inset-left, 0px);
+  --chatai-safe-right: env(safe-area-inset-right, 0px);
   display: flex;
   width: fit-content;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 32px - var(--chatai-safe-left) - var(--chatai-safe-right));
   flex-direction: column;
   align-items: flex-end;
   position: fixed;
   z-index: 2147483647;
-  bottom: 20px;
+  bottom: max(20px, var(--chatai-safe-bottom));
   font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif;
   color: var(--chatai-ink);
 }
 
 .chatai-widget.position-right {
-  right: 20px;
+  right: max(20px, var(--chatai-safe-right));
   align-items: flex-end;
 }
 
 .chatai-widget.position-left {
-  left: 20px;
+  left: max(20px, var(--chatai-safe-left));
   align-items: flex-start;
 }
 
@@ -59,8 +63,8 @@
 
 /* Side panel — tall edge sheet beside host page content (no page scrape / context claims). */
 .chatai-widget.experience-side-panel .chatai-panel {
-  width: min(360px, calc(100vw - 24px));
-  height: min(calc(100dvh - 88px), 860px);
+  width: min(360px, calc(100vw - 24px - var(--chatai-safe-left) - var(--chatai-safe-right)));
+  height: min(calc(100dvh - 88px - var(--chatai-safe-bottom) - var(--chatai-safe-top)), 860px);
   border-radius: 18px 18px 8px 18px;
 }
 
@@ -139,8 +143,8 @@
 
 .chatai-panel {
   display: flex;
-  width: min(380px, calc(100vw - 32px));
-  height: min(570px, calc(100dvh - 104px));
+  width: min(380px, calc(100vw - 32px - var(--chatai-safe-left) - var(--chatai-safe-right)));
+  height: min(570px, calc(100dvh - 104px - var(--chatai-safe-bottom) - var(--chatai-safe-top)));
   margin-bottom: 14px;
   flex-direction: column;
   flex-shrink: 0;
@@ -768,9 +772,15 @@
   align-items: center;
   gap: 10px;
   min-height: 0;
-  padding: 18px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  padding: 18px 16px calc(14px + var(--chatai-safe-bottom));
   overflow: auto;
+  overscroll-behavior: contain;
   text-align: center;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chatai-voice-label-short {
+  display: none;
 }
 
 .chatai-voice-identity {
@@ -877,16 +887,20 @@
 
 .chatai-voice-captions {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  max-height: 140px;
+  min-height: 0;
+  max-height: min(140px, 28%);
   margin-top: 4px;
   padding: 10px 12px;
   overflow: auto;
+  overscroll-behavior: contain;
   border-radius: 12px;
   background: color-mix(in srgb, var(--chatai-voice-accent), var(--chatai-panel) 92%);
   text-align: left;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chatai-voice-captions.is-empty {
@@ -932,8 +946,10 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
+  width: 100%;
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 10px;
+  flex-shrink: 0;
 }
 
 .chatai-voice-primary,
@@ -950,6 +966,14 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 120ms ease-out, opacity 120ms ease-out;
+}
+
+.chatai-voice-primary:active,
+.chatai-voice-secondary:active,
+.chatai-voice-danger:active {
+  transform: scale(0.97);
 }
 
 .chatai-voice-primary {
@@ -1052,8 +1076,8 @@
 /* Same placement model as .chatai-panel: above the launch row, bottom-anchored. */
 .chatai-dock-surface {
   display: flex;
-  width: min(320px, calc(100vw - 32px));
-  max-height: min(420px, calc(100dvh - 104px));
+  width: min(320px, calc(100vw - 32px - var(--chatai-safe-left) - var(--chatai-safe-right)));
+  max-height: min(420px, calc(100dvh - 104px - var(--chatai-safe-bottom) - var(--chatai-safe-top)));
   margin-bottom: 14px;
   flex-direction: column;
   flex-shrink: 0;
@@ -1401,7 +1425,7 @@
 }
 
 .chatai-voice-stage.layout-compact {
-  padding: 14px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 14px 12px calc(12px + var(--chatai-safe-bottom));
   gap: 8px;
 }
 
@@ -1419,64 +1443,194 @@
   max-height: 96px;
 }
 
+/* Phones — near full-viewport sheet so Voice and chat feel native. */
 @media (max-width: 480px) {
   .chatai-widget {
-    bottom: 12px;
+    bottom: max(10px, var(--chatai-safe-bottom));
+    max-width: calc(100vw - 16px - var(--chatai-safe-left) - var(--chatai-safe-right));
   }
 
   .chatai-widget.position-right {
-    right: 12px;
+    right: max(10px, var(--chatai-safe-right));
   }
 
   .chatai-widget.position-left {
-    left: 12px;
+    left: max(10px, var(--chatai-safe-left));
   }
 
   .chatai-panel {
-    width: calc(100vw - 24px);
-    height: min(600px, calc(100dvh - 88px));
+    width: calc(100vw - 16px - var(--chatai-safe-left) - var(--chatai-safe-right));
+    height: calc(100dvh - 72px - var(--chatai-safe-bottom) - var(--chatai-safe-top));
+    max-height: calc(100dvh - 72px - var(--chatai-safe-bottom) - var(--chatai-safe-top));
+    margin-bottom: 10px;
+    border-radius: 20px 20px 14px 14px;
   }
 
-  .chatai-composer button {
+  .chatai-widget.position-left .chatai-panel {
+    border-radius: 20px 20px 14px 14px;
+  }
+
+  .chatai-launcher {
+    width: 52px;
+    height: 52px;
+  }
+
+  .chatai-composer button,
+  .chatai-composer .chatai-mic {
     min-width: 44px;
     min-height: 44px;
   }
 
   .chatai-composer input {
-    font-size: 16px;
+    font-size: 16px; /* avoid iOS zoom on focus */
   }
 
   .chatai-retry {
-    min-height: 40px;
-  }
-
-  .chatai-voice-stage {
-    padding: 14px 12px calc(12px + env(safe-area-inset-bottom, 0px));
-  }
-
-  .chatai-orb {
-    width: 128px;
-    height: 128px;
-  }
-
-  .chatai-voice-captions {
-    max-height: 120px;
-  }
-
-  .chatai-dock-surface {
-    width: calc(100vw - 24px);
-    max-height: min(380px, calc(100dvh - 88px));
-  }
-
-  .chatai-dock-talk {
-    width: 5.25rem;
     min-height: 44px;
   }
 
+  .chatai-header {
+    padding: 12px 14px;
+  }
+
+  .chatai-header h2 {
+    font-size: 16px;
+  }
+
+  .chatai-voice-stage {
+    gap: 8px;
+    padding: 12px 12px calc(10px + var(--chatai-safe-bottom));
+  }
+
+  .chatai-orb {
+    width: 112px;
+    height: 112px;
+    margin: 4px 0;
+  }
+
+  .chatai-voice-name {
+    font-size: 16px;
+  }
+
+  .chatai-voice-stage-status {
+    font-size: 14px;
+  }
+
+  .chatai-voice-captions {
+    max-height: min(28vh, 112px);
+    padding: 8px 10px;
+  }
+
+  .chatai-voice-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .chatai-voice-primary,
+  .chatai-voice-danger {
+    grid-column: 1 / -1;
+  }
+
+  .chatai-voice-primary,
+  .chatai-voice-secondary,
+  .chatai-voice-danger {
+    min-height: 48px;
+    width: 100%;
+    padding: 0 12px;
+  }
+
+  .chatai-voice-label-long {
+    display: none;
+  }
+
+  .chatai-voice-label-short {
+    display: inline;
+  }
+
+  .chatai-voice-stage .chatai-consent-accept,
+  .chatai-voice-stage .chatai-consent-cancel {
+    min-height: 48px;
+  }
+
+  .chatai-dock-surface {
+    width: calc(100vw - 16px - var(--chatai-safe-left) - var(--chatai-safe-right));
+    max-height: min(52dvh, calc(100dvh - 88px - var(--chatai-safe-bottom)));
+    margin-bottom: 10px;
+    border-radius: 18px 18px 12px 12px;
+  }
+
+  .chatai-widget.position-left .chatai-dock-surface {
+    border-radius: 18px 18px 12px 12px;
+  }
+
+  .chatai-dock-talk {
+    width: auto;
+    min-width: 5rem;
+    min-height: 48px;
+    padding: 0 16px;
+  }
+
   .chatai-widget.experience-side-panel .chatai-panel {
-    width: calc(100vw - 24px);
-    height: min(calc(100dvh - 80px), 860px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    width: calc(100vw - 16px - var(--chatai-safe-left) - var(--chatai-safe-right));
+    height: calc(100dvh - 72px - var(--chatai-safe-bottom) - var(--chatai-safe-top));
+    max-height: none;
+    border-radius: 20px 20px 14px 14px;
+  }
+
+  .chatai-guided,
+  .chatai-companion {
+    padding: 14px 12px 10px;
+    gap: 10px;
+  }
+
+  .chatai-guided-title,
+  .chatai-companion-title {
+    font-size: 20px;
+  }
+
+  .chatai-guided-history,
+  .chatai-companion-history {
+    max-height: 30%;
+  }
+
+  .chatai-guided-speak-hints {
+    padding: 8px 12px 10px;
+  }
+
+  .chatai-voice-bar {
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* Short phones / landscape — keep orb + controls visible without scroll fights. */
+@media (max-height: 640px) {
+  .chatai-orb {
+    width: 96px;
+    height: 96px;
+    margin: 2px 0;
+  }
+
+  .chatai-voice-stage.layout-compact .chatai-orb {
+    width: 88px;
+    height: 88px;
+  }
+
+  .chatai-voice-captions {
+    max-height: min(22vh, 88px);
+  }
+
+  .chatai-voice-identity .chatai-kicker {
+    display: none;
+  }
+
+  .chatai-guided-welcome {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 
@@ -1504,6 +1658,12 @@
     animation: none;
     transition: none;
     transform: scaleY(0.45);
+  }
+
+  .chatai-voice-primary:active,
+  .chatai-voice-secondary:active,
+  .chatai-voice-danger:active {
+    transform: none;
   }
 
   .chatai-orb-core,

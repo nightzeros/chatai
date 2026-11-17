@@ -153,7 +153,7 @@ describe("GET /api/v1/assistants/:publicId/config voice", () => {
     expect(JSON.stringify(await response.json())).not.toContain("voice");
   });
 
-  it("returns a normalized voiceAppearance and drops unfinished experiences", async () => {
+  it("returns a normalized voiceAppearance and drops unknown experiences", async () => {
     env.VOICE_PROVIDER = "mock";
     selectLimit.mockResolvedValueOnce([
       {
@@ -174,6 +174,18 @@ describe("GET /api/v1/assistants/:publicId/config voice", () => {
       {
         ...assistantRow({ enabled: true }),
         settings: { voiceAppearance: { experience: "guided", motion: "reduced" } },
+      },
+    ]);
+    expect((await (await getConfig()).json()).settings.voiceAppearance).toEqual({
+      experience: "guided",
+      motion: "reduced",
+    });
+
+    // Unknown future enum values are dropped; other valid leaves are kept.
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...assistantRow({ enabled: true }),
+        settings: { voiceAppearance: { experience: "holodeck", motion: "reduced" } },
       },
     ]);
     expect((await (await getConfig()).json()).settings.voiceAppearance).toEqual({

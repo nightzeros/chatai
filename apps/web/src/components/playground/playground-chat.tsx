@@ -246,7 +246,7 @@ export function PlaygroundChat({
 
       <VisitorWidgetPanel publicId={publicId} apiUrl={apiUrl} settings={widgetSettings} />
 
-    <div className="flex h-[min(720px,calc(100dvh-9rem))] min-h-[18rem] flex-col overflow-hidden rounded-xl border border-border bg-card sm:min-h-[24rem] md:min-h-[28rem] md:h-[min(720px,calc(100dvh-16rem))]">
+    <div className="flex h-[min(720px,calc(100dvh-8rem))] min-h-[16rem] flex-col overflow-hidden rounded-xl border border-border bg-card sm:min-h-[24rem] md:min-h-[28rem] md:h-[min(720px,calc(100dvh-16rem))]">
       <div className="flex flex-col gap-2 border-b border-border px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4">
         <div className="min-w-0">
           <p className="text-sm font-medium">{name}</p>
