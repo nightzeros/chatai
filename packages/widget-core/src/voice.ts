@@ -116,6 +116,8 @@ export type VoiceSessionSnapshot = {
   notice?: string;
   /** Mock provider: control plane only, no audio. */
   mock: boolean;
+  /** Visitor muted their microphone; assistant output may still play. */
+  microphoneMuted?: boolean;
   turns: VoiceTranscriptTurn[];
 };
 
@@ -295,7 +297,10 @@ export function createVoiceSession(options: VoiceSessionOptions) {
   let health: ControlHealthMonitor | null = null;
   /** Set when the server gates playback: assistant audio and captions only while open. */
   let gate: PlaybackGate | null = null;
+  /** Safety mute from lost control — both directions. */
   let controlMuted = false;
+  /** Visitor intent: mute mic only. Independent of controlMuted / playback gate. */
+  let visitorMicrophoneMuted = false;
   let processingSince = 0;
   let userWasActive = false;
   const levels = { input: 0, output: 0 };
@@ -310,14 +315,20 @@ export function createVoiceSession(options: VoiceSessionOptions) {
     ...(recording !== undefined ? { recording } : {}),
     ...(endReason ? { endReason, notice: VOICE_END_NOTICES[endReason] } : {}),
     mock,
+    ...(visitorMicrophoneMuted ? { microphoneMuted: true } : {}),
     turns: transcript.turns(),
   });
   const emit = () => options.onChange(snapshot());
 
   const gateClosed = () => gate !== null && !gate.isOpen();
-  const applyAudioMute = () => {
+  /** One apply path for startup, mute toggles, reconnect, and track replacement. */
+  const applyTrackMutes = () => {
+    mic?.getTracks().forEach((track) => {
+      track.enabled = !visitorMicrophoneMuted && !controlMuted;
+    });
     if (audio) audio.muted = controlMuted || gateClosed();
   };
+  const applyAudioMute = () => applyTrackMutes();
 
   const refreshPhase = (force = false) => {
     signals.now = now();
@@ -341,10 +352,11 @@ export function createVoiceSession(options: VoiceSessionOptions) {
       refreshPhase();
       return;
     }
-    levels.input = rms(micAnalyser);
+    // Visitor mute: never drive "Hearing you" from residual analyser energy.
+    levels.input = visitorMicrophoneMuted ? 0 : rms(micAnalyser);
     // Withheld speech is neither shown as the assistant talking nor interruptible.
     levels.output = gateClosed() ? 0 : rms(remoteAnalyser);
-    if (levels.input > MIC_RMS_THRESHOLD) signals.userVoiceAt = at;
+    if (!visitorMicrophoneMuted && levels.input > MIC_RMS_THRESHOLD) signals.userVoiceAt = at;
     if (levels.output > REMOTE_RMS_THRESHOLD) signals.assistantVoiceAt = at;
     if (signals.processing && at - processingSince > PROCESSING_TIMEOUT_MS) signals.processing = false;
     signals.now = at;
@@ -433,12 +445,22 @@ export function createVoiceSession(options: VoiceSessionOptions) {
   };
 
   const setMediaMuted = (muted: boolean) => {
-    // Disable (never stop) the mic track: media keeps flowing with packet timing intact.
-    mic?.getTracks().forEach((track) => {
-      track.enabled = !muted;
-    });
+    // Safety mute only — do not clear visitorMicrophoneMuted; unmute restores capture
+    // only when control health permits and the visitor has not muted.
     controlMuted = muted;
-    applyAudioMute();
+    applyTrackMutes();
+  };
+
+  const setMicrophoneMuted = (muted: boolean) => {
+    if (visitorMicrophoneMuted === muted) return;
+    visitorMicrophoneMuted = muted;
+    if (muted) {
+      levels.input = 0;
+      signals.userVoiceAt = null;
+      userWasActive = false;
+    }
+    applyTrackMutes();
+    refreshPhase(true);
   };
 
   const startPlaybackGate = (id: string, token: string) => {
@@ -534,7 +556,7 @@ export function createVoiceSession(options: VoiceSessionOptions) {
         return;
       case "session.input_transcript.delta":
         gate?.noteInput(event.start_ms);
-        signals.userVoiceAt = at;
+        if (!visitorMicrophoneMuted) signals.userVoiceAt = at;
         transcript.input(event.delta ?? "", event.start_ms ?? at);
         refreshPhase(true);
         return;
@@ -571,6 +593,8 @@ export function createVoiceSession(options: VoiceSessionOptions) {
     levels() {
       return { ...levels };
     },
+    /** Visitor mute: disables the mic track only; assistant output follows gate/control mute. */
+    setMicrophoneMuted,
     async start() {
       if (signals.connection !== "idle") return;
       // Created synchronously inside the click so autoplay / audio policies allow playback.
@@ -591,6 +615,7 @@ export function createVoiceSession(options: VoiceSessionOptions) {
         return;
       }
 
+      applyTrackMutes();
       setConnection("connecting");
       void audioCtx?.resume?.().catch(() => undefined);
       micAnalyser = analyse(audioCtx, mic);

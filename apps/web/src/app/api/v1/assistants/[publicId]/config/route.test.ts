@@ -152,4 +152,44 @@ describe("GET /api/v1/assistants/:publicId/config voice", () => {
     expect(response.status).toBe(403);
     expect(JSON.stringify(await response.json())).not.toContain("voice");
   });
+
+  it("returns a normalized voiceAppearance and drops unknown experiences", async () => {
+    env.VOICE_PROVIDER = "mock";
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...assistantRow({ enabled: true }),
+        settings: {
+          primaryColor: "#112233",
+          voiceAppearance: { experience: "orb", captionsDefault: true, accentColor: "#615f23" },
+        },
+      },
+    ]);
+    expect((await (await getConfig()).json()).settings.voiceAppearance).toEqual({
+      experience: "orb",
+      captionsDefault: true,
+      accentColor: "#615F23",
+    });
+
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...assistantRow({ enabled: true }),
+        settings: { voiceAppearance: { experience: "guided", motion: "reduced" } },
+      },
+    ]);
+    expect((await (await getConfig()).json()).settings.voiceAppearance).toEqual({
+      experience: "guided",
+      motion: "reduced",
+    });
+
+    // Unknown future enum values are dropped; other valid leaves are kept.
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...assistantRow({ enabled: true }),
+        settings: { voiceAppearance: { experience: "holodeck", motion: "reduced" } },
+      },
+    ]);
+    expect((await (await getConfig()).json()).settings.voiceAppearance).toEqual({
+      motion: "reduced",
+    });
+  });
 });

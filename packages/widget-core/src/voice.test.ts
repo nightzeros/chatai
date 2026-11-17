@@ -364,4 +364,47 @@ describe("createVoiceSession", () => {
     await flush();
     expect(t.session.snapshot().notice).toMatch(/another tab/i);
   });
+
+  it("visitor mute disables the mic track, clears Hearing you, and leaves assistant audio unmuted", async () => {
+    const t = setup();
+    await t.session.start();
+    t.peer().channel.receive({ type: "session.started" });
+    t.peer().channel.receive({
+      type: "session.input_transcript.delta",
+      delta: "Hello there",
+      start_ms: 0,
+      end_ms: 500,
+    });
+    expect(t.session.snapshot().phase).toBe("user_speaking");
+    expect(t.media.tracks[0]!.enabled).toBe(true);
+
+    t.session.setMicrophoneMuted(true);
+    expect(t.session.snapshot()).toMatchObject({ microphoneMuted: true, phase: "listening" });
+    expect(t.media.tracks[0]!.enabled).toBe(false);
+    expect(t.session.levels().input).toBe(0);
+    expect(t.media.audio[0]!.muted).toBe(false);
+
+    // Stale input events must not put the stage back on Hearing you.
+    t.peer().channel.receive({
+      type: "session.input_transcript.delta",
+      delta: " still talking",
+      start_ms: 600,
+      end_ms: 900,
+    });
+    expect(t.session.snapshot().phase).toBe("listening");
+
+    t.peer().dispatch("track", { streams: [{ id: "remote" }] });
+    t.peer().channel.receive({
+      type: "session.output_transcript.delta",
+      delta: "Hi!",
+      start_ms: 1_000,
+      end_ms: 1_400,
+    });
+    expect(t.session.snapshot().phase).toBe("assistant_speaking");
+    expect(t.media.audio[0]!.muted).toBe(false);
+
+    t.session.setMicrophoneMuted(false);
+    expect(t.session.snapshot().microphoneMuted).toBeUndefined();
+    expect(t.media.tracks[0]!.enabled).toBe(true);
+  });
 });

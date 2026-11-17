@@ -55,6 +55,7 @@ export function SupportChat() {
 | `showSources` | `boolean` | Optional |
 | `layout` | `"fixed" \| "contained"` | Optional |
 | `voice` | `boolean` | Optional — `false` hides the Voice button even when the assistant offers Voice. Voice requires 1.2.0 or later for the playback gate; 1.1.0 is refused with "Voice needs an updated chat widget" ([Voice (preview)](/docs/voice)) |
+| `voiceAppearance` | `{ experience?: "classic" \| "orb" \| "dock" \| "guided" \| "companion" \| "side-panel"; accentColor?: string; captionsDefault?: boolean; motion?: "system" \| "reduced" }` | Optional — overrides Customize for this mount. Presentation updates do not remount an active Voice session. See [Widget](/docs/widget). |
 | `onReady` / `onError` | callbacks | Optional |
 
 Low-level: `mountChatWidget(element, options)` from the same package.

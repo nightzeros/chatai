@@ -57,4 +57,13 @@ export {
   type VoiceConnection,
   type VoicePhase,
 } from "./voice-state";
+export {
+  mergeVoiceAppearance,
+  parseVoiceAppearance,
+  resolveVoiceAppearance,
+  VOICE_EXPERIENCES,
+  type ResolvedVoiceAppearance,
+  type VoiceAppearance,
+  type VoiceExperience,
+} from "./voice-appearance";
 export { BARGE_IN_MIN_WORDS, createVoiceTranscript, type VoiceTranscriptTurn } from "./voice-transcript";

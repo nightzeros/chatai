@@ -31,9 +31,20 @@ export function CustomizeForm({
     position: assistant.settings.position ?? "bottom-right",
     theme: assistant.settings.theme ?? "system",
     showSources: assistant.settings.showSources ?? true,
+    voiceAppearance: {
+      experience: assistant.settings.voiceAppearance?.experience ?? "classic",
+      captionsDefault: assistant.settings.voiceAppearance?.captionsDefault ?? true,
+      motion: assistant.settings.voiceAppearance?.motion ?? "system",
+      ...(assistant.settings.voiceAppearance?.accentColor
+        ? { accentColor: assistant.settings.voiceAppearance.accentColor }
+        : {}),
+    },
   }));
   const [preview, setPreview] = useState(draft);
   const questions = [...(draft.suggestedQuestions ?? []), ...Array(QUESTION_SLOTS)].slice(0, QUESTION_SLOTS);
+  const voiceExperience = draft.voiceAppearance?.experience ?? "classic";
+  const voiceCaptions = draft.voiceAppearance?.captionsDefault ?? true;
+  const voiceMotion = draft.voiceAppearance?.motion ?? "system";
 
   useEffect(() => {
     setDraft({
@@ -41,6 +52,14 @@ export function CustomizeForm({
       position: assistant.settings.position ?? "bottom-right",
       theme: assistant.settings.theme ?? "system",
       showSources: assistant.settings.showSources ?? true,
+      voiceAppearance: {
+        experience: assistant.settings.voiceAppearance?.experience ?? "classic",
+        captionsDefault: assistant.settings.voiceAppearance?.captionsDefault ?? true,
+        motion: assistant.settings.voiceAppearance?.motion ?? "system",
+        ...(assistant.settings.voiceAppearance?.accentColor
+          ? { accentColor: assistant.settings.voiceAppearance.accentColor }
+          : {}),
+      },
     });
   }, [assistant.settings]);
 
@@ -57,8 +76,8 @@ export function CustomizeForm({
           description="Tune appearance and suggested questions. The live preview updates after a short pause while you type."
         />
       )}
-      <div className="grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <Card className="shadow-none">
+      <div className="grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
+        <Card className="order-2 shadow-none lg:order-1">
           <CardHeader>
             <CardTitle>Widget appearance</CardTitle>
             <CardDescription>Choose how your assistant appears on a visitor&apos;s site.</CardDescription>
@@ -156,6 +175,130 @@ export function CustomizeForm({
               </fieldset>
 
               <fieldset className="flex flex-col gap-3">
+                <legend className="text-sm font-medium">Voice experience</legend>
+                <p className="text-sm text-muted-foreground">
+                  Classic keeps the mic-in-composer waveform. Orb, Guided, Companion, and Side panel
+                  use a voice stage inside the chat panel. Dock adds a Talk control beside the
+                  launcher. Captions default applies to those stage experiences — not Classic.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+                  {(
+                    [
+                      {
+                        value: "classic" as const,
+                        title: "Classic",
+                        blurb: "Mic toggle and waveform strip — existing layout.",
+                      },
+                      {
+                        value: "orb" as const,
+                        title: "Orb",
+                        blurb: "Centered sphere stage with mute, captions, and call controls.",
+                      },
+                      {
+                        value: "dock" as const,
+                        title: "Dock",
+                        blurb: "Talk control expands into a compact voice card beside the launcher.",
+                      },
+                      {
+                        value: "guided" as const,
+                        title: "Guided",
+                        blurb: "Welcome canvas with your assistant name and real suggested questions.",
+                      },
+                      {
+                        value: "companion" as const,
+                        title: "Companion",
+                        blurb: "Abstract character stage with your assistant name and welcome speech.",
+                      },
+                      {
+                        value: "side-panel" as const,
+                        title: "Side panel",
+                        blurb: "Tall edge sheet beside the page with transcript and shared voice stage.",
+                      },
+                    ] as const
+                  ).map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex cursor-pointer flex-col gap-1 rounded-lg border border-border p-2.5 has-[:checked]:border-foreground sm:p-3"
+                    >
+                      <span className="flex items-center gap-3">
+                        <input
+                          type="radio"
+                          name="voiceExperience"
+                          value={option.value}
+                          checked={voiceExperience === option.value}
+                          onChange={() =>
+                            setDraft((current) => ({
+                              ...current,
+                              voiceAppearance: {
+                                ...current.voiceAppearance,
+                                experience: option.value,
+                              },
+                            }))
+                          }
+                        />
+                        <span className="text-sm font-medium">{option.title}</span>
+                      </span>
+                      <span className="pl-7 text-xs leading-snug text-muted-foreground">{option.blurb}</span>
+                    </label>
+                  ))}
+                </div>
+                <label
+                  className={`flex items-start gap-3 rounded-lg border border-border p-3 ${
+                    voiceExperience === "classic" ? "opacity-60" : "has-[:checked]:border-foreground"
+                  }`}
+                >
+                  <input
+                    type="hidden"
+                    name="voiceCaptionsDefault"
+                    value={voiceCaptions ? "on" : "off"}
+                  />
+                  <input
+                    type="checkbox"
+                    checked={voiceCaptions}
+                    disabled={voiceExperience === "classic"}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        voiceAppearance: {
+                          ...current.voiceAppearance,
+                          captionsDefault: event.target.checked,
+                        },
+                      }))
+                    }
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">Show captions by default</span>
+                    <span className="block text-sm text-muted-foreground">
+                      Orb, Dock, Guided, Companion, and Side panel captions only — Classic transcript
+                      layout is unchanged.
+                    </span>
+                  </span>
+                </label>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="voiceMotion">Motion</Label>
+                  <select
+                    id="voiceMotion"
+                    name="voiceMotion"
+                    value={voiceMotion}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        voiceAppearance: {
+                          ...current.voiceAppearance,
+                          motion: event.target.value as "system" | "reduced",
+                        },
+                      }))
+                    }
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                  >
+                    <option value="system">Follow system preference</option>
+                    <option value="reduced">Reduced motion</option>
+                  </select>
+                </div>
+              </fieldset>
+
+              <fieldset className="flex flex-col gap-3">
                 <legend className="text-sm font-medium">Suggested questions</legend>
                 <p className="text-sm text-muted-foreground">
                   Show up to five prompts before a visitor starts chatting.
@@ -209,7 +352,15 @@ export function CustomizeForm({
           </CardContent>
         </Card>
 
-        <WidgetPreview assistantId={assistant.publicId} apiUrl={apiUrl} settings={preview} />
+        <div className="order-1 lg:order-2">
+          <WidgetPreview
+            assistantId={assistant.publicId}
+            apiUrl={apiUrl}
+            settings={preview}
+            assistantName={assistant.name}
+            playgroundHref={`/dashboard/assistants/${assistant.id}/playground`}
+          />
+        </div>
       </div>
     </div>
   );

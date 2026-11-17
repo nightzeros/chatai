@@ -5,6 +5,7 @@ import {
   resolveVoiceSettings,
 } from "@chatai/database";
 
+import { normalizePublicAssistantSettings } from "@/lib/assistant-settings";
 import { corsHeaders, jsonWithCors } from "@/lib/cors";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -51,7 +52,7 @@ export async function GET(request: Request, context: { params: Promise<{ publicI
     assistantId: assistant.publicId,
     name: assistant.name,
     welcomeMessage: assistant.welcomeMessage,
-    settings: assistant.settings,
+    settings: normalizePublicAssistantSettings(assistant.settings),
     requireWidgetSigning: Boolean(assistant.securitySettings?.requireWidgetSigning),
     // Only the public switch and whether the recording disclosure applies; provider,
     // model, persistence and storage details stay server-side.

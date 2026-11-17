@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { VoiceMediaDeps } from "@nightzeros/chatai-widget-core";
+import type { VoiceAppearance, VoiceMediaDeps } from "@nightzeros/chatai-widget-core";
 
 import { mountWidget } from "./mount";
 
@@ -111,6 +111,8 @@ async function openWidget(
   options: {
     voiceEnabled?: boolean;
     voice?: boolean;
+    voiceAppearance?: VoiceAppearance;
+    settings?: Record<string, unknown>;
     micError?: Error;
     mint?: Record<string, unknown>;
     consentRequired?: boolean;
@@ -124,6 +126,25 @@ async function openWidget(
     endBody: options.endBody,
     heartbeat: options.heartbeat,
   });
+  if (options.settings) {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const previous = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/config")) {
+        return Response.json({
+          assistantId: "asst_pub",
+          name: "Demo assistant",
+          welcomeMessage: "Welcome",
+          settings: options.settings,
+          voice: {
+            enabled: options.voiceEnabled ?? true,
+            recording: { consentRequired: options.consentRequired ?? false },
+          },
+        });
+      }
+      return (previous as (input: string, init?: RequestInit) => Promise<Response>)(url, init);
+    });
+  }
   const { media, state } = fakeMedia({ micError: options.micError });
   const target = document.createElement("div");
   document.body.append(target);
@@ -132,6 +153,7 @@ async function openWidget(
     apiUrl: "https://chat.example.com",
     voiceMedia: media,
     ...(options.voice === false ? { voice: false } : {}),
+    ...(options.voiceAppearance ? { voiceAppearance: options.voiceAppearance } : {}),
   });
   await flush();
   const root = target.shadowRoot!;
@@ -389,6 +411,182 @@ describe("widget Voice UI", () => {
     } finally {
       vi.useRealTimers();
     }
+    instance.destroy();
+  });
+
+  it("Orb replaces transcript and composer while Voice is active", async () => {
+    const { root, instance, state } = await openWidget({
+      voiceAppearance: { experience: "orb" },
+    });
+    expect(root.querySelector(".chatai-transcript")).not.toBeNull();
+    expect(root.querySelector(".chatai-voice-stage")).toBeNull();
+
+    mic(root)!.click();
+    await flush();
+
+    expect(root.querySelector(".chatai-voice-stage")).not.toBeNull();
+    expect(root.querySelector(".chatai-orb")).not.toBeNull();
+    expect(root.querySelector(".chatai-transcript")).toBeNull();
+    expect(root.querySelector(".chatai-composer")).toBeNull();
+    expect(root.querySelector(".chatai-voice-bar")).toBeNull();
+    expect(root.querySelector(".chatai-voice-name")?.textContent).toBe("Demo assistant");
+    expect(root.querySelector(".chatai-voice-stage-status")?.textContent).toMatch(
+      /Allow microphone access|Connecting/,
+    );
+
+    state.peers[0]!.channel.dispatch("message", {
+      data: JSON.stringify({ type: "session.started" }),
+    });
+    await flush();
+    expect(root.querySelector(".chatai-voice-stage-status")?.textContent).toBe("I’m listening");
+    const controlLabels = Array.from(root.querySelectorAll(".chatai-voice-controls button")).map(
+      (b) => b.getAttribute("aria-label") ?? b.textContent ?? "",
+    );
+    expect(controlLabels).toEqual(
+      expect.arrayContaining(["End voice", "Mute microphone", "Hide captions"]),
+    );
+
+    (
+      Array.from(root.querySelectorAll(".chatai-voice-controls button")).find(
+        (b) => b.getAttribute("aria-label") === "End voice",
+      ) as HTMLButtonElement
+    ).click();
+    await flush();
+    expect(root.querySelector(".chatai-voice-stage")).not.toBeNull();
+    expect(root.querySelector(".chatai-voice-stage-status")?.textContent).toBe("Voice ended");
+
+    (
+      Array.from(root.querySelectorAll(".chatai-voice-controls button")).find(
+        (b) => (b.textContent ?? "").includes("Back to chat"),
+      ) as HTMLButtonElement
+    ).click();
+    await flush();
+    expect(root.querySelector(".chatai-voice-stage")).toBeNull();
+    expect(root.querySelector(".chatai-transcript")).not.toBeNull();
+    expect(root.querySelector(".chatai-composer")).not.toBeNull();
+    instance.destroy();
+  });
+
+  it("Orb mute toggles visitor mic without Classic waveform", async () => {
+    const { root, instance, state } = await openWidget({
+      settings: { voiceAppearance: { experience: "orb", captionsDefault: false } },
+    });
+    mic(root)!.click();
+    await flush();
+    state.peers[0]!.channel.dispatch("message", {
+      data: JSON.stringify({ type: "session.started" }),
+    });
+    await flush();
+
+    expect(root.querySelector(".chatai-voice-captions")).toBeNull();
+    const mute = Array.from(root.querySelectorAll(".chatai-voice-controls button")).find(
+      (b) => b.getAttribute("aria-label") === "Mute microphone",
+    ) as HTMLButtonElement;
+    mute.click();
+    await flush();
+    expect(root.querySelector(".chatai-voice-stage-status")?.textContent).toBe("Microphone muted");
+    expect(mute.getAttribute("aria-pressed")).toBe("true");
+    instance.destroy();
+  });
+
+  it("Guided shows the assistant welcome canvas and starts Voice from Start conversation", async () => {
+    const { root, instance, state } = await openWidget({
+      settings: {
+        voiceAppearance: { experience: "guided" },
+        suggestedQuestions: ["Where is my order?", "How do refunds work?"],
+      },
+    });
+    expect(root.querySelector(".chatai-guided")).not.toBeNull();
+    expect(root.querySelector(".chatai-guided-title")?.textContent).toBe("Demo assistant");
+    expect(root.querySelector(".chatai-guided-welcome")?.textContent).toBe("Welcome");
+    expect(
+      Array.from(root.querySelectorAll(".chatai-guided-choice")).map((n) => n.textContent),
+    ).toEqual(["Where is my order?↗", "How do refunds work?↗"]);
+    expect(mic(root)).toBeNull();
+
+    (
+      root.querySelector(".chatai-guided-start") as HTMLButtonElement
+    ).click();
+    await flush();
+    expect(root.querySelector(".chatai-guided-stage")).not.toBeNull();
+    expect(root.querySelector(".chatai-voice-stage")).not.toBeNull();
+    expect(state.tracks.length).toBeGreaterThan(0);
+    instance.destroy();
+  });
+
+  it("Side panel uses a tall edge shell and Orb stage while Voice is active", async () => {
+    const { root, instance } = await openWidget({
+      voiceAppearance: { experience: "side-panel" },
+    });
+    expect(root.querySelector(".chatai-widget.experience-side-panel")).not.toBeNull();
+    expect(root.querySelector(".chatai-kicker")?.textContent).toBe("Side panel");
+    expect(root.querySelector(".chatai-transcript")).not.toBeNull();
+    expect(root.textContent).not.toMatch(/Looking at:/i);
+    expect(mic(root)).not.toBeNull();
+
+    mic(root)!.click();
+    await flush();
+    expect(root.querySelector(".chatai-voice-stage")).not.toBeNull();
+    expect(root.querySelector(".chatai-orb")).not.toBeNull();
+    expect(root.querySelector(".chatai-transcript")).toBeNull();
+    expect(root.querySelector(".chatai-composer")).toBeNull();
+    instance.destroy();
+  });
+
+  it("Companion shows an abstract character canvas and starts Voice from Start conversation", async () => {
+    const { root, instance, state } = await openWidget({
+      settings: {
+        voiceAppearance: { experience: "companion" },
+      },
+    });
+    expect(root.querySelector(".chatai-companion")).not.toBeNull();
+    expect(root.querySelector(".chatai-companion-title")?.textContent).toBe("Demo assistant");
+    expect(root.querySelector(".chatai-companion-speech")?.textContent).toBe("Welcome");
+    expect(root.querySelector(".chatai-companion-character")).not.toBeNull();
+    expect(mic(root)).toBeNull();
+
+    (
+      root.querySelector(".chatai-companion-start") as HTMLButtonElement
+    ).click();
+    await flush();
+    expect(root.querySelector(".chatai-voice-stage.visual-companion")).not.toBeNull();
+    expect(root.querySelector(".chatai-companion-character")).not.toBeNull();
+    expect(root.querySelector(".chatai-orb")).toBeNull();
+    expect(state.tracks.length).toBeGreaterThan(0);
+    instance.destroy();
+  });
+
+  it("Dock Talk expands a compact surface without starting Voice, exclusive with chat", async () => {
+    const { root, instance, state } = await openWidget({
+      voiceAppearance: { experience: "dock" },
+    });
+    // Dock has no composer mic; Talk sits beside the chat launcher.
+    expect(mic(root)).toBeNull();
+    const talk = root.querySelector(".chatai-dock-talk") as HTMLButtonElement;
+    expect(talk?.textContent).toMatch(/Talk/);
+
+    talk.click();
+    await flush();
+    expect(root.querySelector(".chatai-dock-surface")).not.toBeNull();
+    expect(root.querySelector(".chatai-voice-stage.layout-compact")).not.toBeNull();
+    expect(root.querySelector(".chatai-panel")).toBeNull();
+    expect(root.querySelector(".chatai-voice-stage-status")?.textContent).toBe("Ready when you are");
+    expect(state.tracks).toHaveLength(0);
+
+    (
+      Array.from(root.querySelectorAll(".chatai-voice-controls button")).find(
+        (b) => b.getAttribute("aria-label") === "Start conversation",
+      ) as HTMLButtonElement
+    ).click();
+    await flush();
+    expect(state.tracks.length).toBeGreaterThan(0);
+
+    // Opening chat ends Dock voice and closes Talk.
+    (root.querySelector('[aria-label="Open chat"]') as HTMLButtonElement).click();
+    await flush();
+    expect(root.querySelector(".chatai-dock-surface")).toBeNull();
+    expect(root.querySelector(".chatai-panel")).not.toBeNull();
+    expect(state.tracks[0]?.stopped).toBe(true);
     instance.destroy();
   });
 });
