@@ -83,20 +83,26 @@ Appearance (colors, position, suggested questions, Voice experience) is controll
 
 When the assistant owner turns on **Offer Voice in the public widget** (assistant **Settings → Privacy**) and the instance has a Voice provider configured, the widget shows a microphone button next to the message box. Visitors can switch between typing and speaking in the same conversation.
 
-- **Classic** (default): mic toggle in the composer and a waveform status strip.
-- **Orb**: while Voice is active, a centered stage replaces the transcript and composer (identity → orb → status → optional captions → mute / End / Back to chat).
-- **Dock**: a **Talk** control beside the chat launcher expands into a compact voice card (not the full Orb scene). Opening Talk never starts the mic; Start inside the card does. Talk and the text chat panel are mutually exclusive — opening chat ends an active Dock call.
-- **Guided**: a welcome canvas with the assistant’s configured name, welcome text, and real suggested questions. Tap a question to ask by text, or Start conversation for the shared voice stage (with “Try saying…” hints while live). No fabricated product cards or booking flows.
-- **Companion**: an abstract character canvas with the assistant’s configured name and welcome speech, then the shared voice stage with the character (instead of the orb) during the call. No invented persona names or commerce actions.
-- **Side panel**: a tall edge sheet beside the host page (transcript + composer when idle; shared Orb stage while Voice is active). Layout only — ChatAI does not scrape the page or claim “looking at” product context.
-- Choose the experience under **Customize → Voice experience**.
+Choose the layout under **Customize → Voice experience** (ChatAI **1.4+**):
+
+| Experience | Behavior |
+| --- | --- |
+| **Classic** (default) | Mic toggle and waveform strip — the pre-1.4 layout. |
+| **Orb** | Centered stage replaces the transcript and composer while Voice is active. |
+| **Dock** | **Talk** beside the launcher opens a compact voice card. Opening Talk never starts the mic; **Start** does. Talk and text chat are mutually exclusive. |
+| **Guided** | Welcome canvas with the assistant name, welcome text, and real suggested questions, then the shared stage. |
+| **Companion** | Abstract character stage with the assistant name and welcome speech. |
+| **Side panel** | Tall edge sheet beside the page; shared Orb stage while Voice is live. Layout only — no page scraping. |
+
+Also:
+
 - Answers come from the same Purpose, instructions and Knowledge as text chat; provider keys never reach the browser.
 - Voice needs HTTPS (or `localhost`), microphone permission and WebRTC. Otherwise the widget explains why and text chat keeps working.
-- The Voice bar / Orb meta shows **Not saved**, **Voice transcript not saved** or **Recording** depending on the assistant's privacy settings. Recording always asks the visitor to **Agree and start** first.
+- The Voice bar / stage meta shows **Not saved**, **Voice transcript not saved** or **Recording** depending on privacy settings. Recording always asks **Agree and start** first.
 - Hide Voice on a page with `data-voice="off"`.
-- Voice plays only speech ChatAI has approved (the playback gate). The hosted `chat.js` supports it; the npm `@nightzeros/chatai-widget` needs 1.2.0 or later, and older versions get **Voice needs an updated chat widget**.
+- Voice plays only speech ChatAI has approved (the playback gate). Hosted `chat.js` updates with the server; npm `@nightzeros/chatai-widget` needs **1.2.0+** for Voice and **1.4.0+** for stage experiences.
 
-Setup, recordings, consent, usage minutes and troubleshooting: **[Voice (preview)](/docs/voice)**.
+Setup, recordings, consent, usage minutes and troubleshooting: **[Voice (preview)](/docs/voice)**. npm upgrade notes: **[Upgrading to 1.4](/docs/self-hosting/upgrade-1-4)**.
 
 ## Auth model
 
@@ -105,5 +111,7 @@ Widget chat uses `publicId` in the request body and **no API key**. REST SDK acc
 ## Related
 
 - [React](/docs/react)
+- [Voice (preview)](/docs/voice)
+- [Upgrading to 1.4](/docs/self-hosting/upgrade-1-4)
 - [Examples](/docs/examples)
 - [Assistants](/docs/assistants)

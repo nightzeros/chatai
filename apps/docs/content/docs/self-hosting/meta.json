@@ -9,6 +9,7 @@
     "ollama",
     "backup-upgrade",
     "upgrade-1-1",
+    "upgrade-1-4",
     "versioning"
   ]
 }

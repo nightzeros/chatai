@@ -41,6 +41,7 @@ export function SupportChat() {
 | `showSources`         | `boolean`                         | Show citation chips                                                   |
 | `layout`              | `"fixed" \| "contained"`          | `contained` renders inside the wrapper instead of floating            |
 | `voice`               | `boolean`                         | Set `false` to hide Voice (preview) even when the assistant offers it |
+| `voiceAppearance`     | object                            | Optional Voice experience override (`experience`, `accentColor`, `captionsDefault`, `motion`) — **1.4.0+** |
 | `signEndpoint`        | `string`                          | Your signing endpoint when the assistant requires signed widgets      |
 | `className`           | `string`                          | Wrapper class                                                         |
 | `onReady` / `onError` | callbacks                         | Called after mount or on mount failure                                |
@@ -51,7 +52,12 @@ Low-level API: `mountChatWidget(element, options)` mounts the widget into any el
 
 ## Voice (preview)
 
-When the assistant owner turns on Voice and the ChatAI instance has a Voice provider configured, the widget shows a microphone button. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC; otherwise the widget explains why and text chat keeps working. Voice is a preview feature and may change in minor releases. It requires version 1.2.0 or later of this package; ChatAI refuses Voice to older versions, which show "Voice needs an updated chat widget" (ChatAI 1.3.0 and later) and keep text chat working.
+When the assistant owner turns on Voice and the ChatAI instance has a Voice provider configured, the widget shows a microphone button. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC; otherwise the widget explains why and text chat keeps working. Voice is a preview feature and may change in minor releases.
+
+- **Playback gate:** requires this package **1.2.0+**. Older versions are refused with "Voice needs an updated chat widget" and keep text chat working.
+- **Experiences (Classic, Orb, Dock, Guided, Companion, Side panel):** require **1.4.0+**. Configure under Customize, or pass `voiceAppearance`. Sites still on 1.3.0 stay on Classic until they upgrade.
+
+Docs: [React](https://docs.nightzeros.com/docs/react) · [Voice](https://docs.nightzeros.com/docs/voice) · [Upgrading to 1.4](https://docs.nightzeros.com/docs/self-hosting/upgrade-1-4).
 
 ## Compatibility
 

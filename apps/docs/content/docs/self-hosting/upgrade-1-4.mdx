@@ -1,0 +1,101 @@
+---
+title: Upgrading to 1.4
+description: Upgrade ChatAI 1.3 (or earlier 1.x) to 1.4 for Voice experiences, and refresh npm embeds so Orb and related stages appear on your sites.
+---
+
+ChatAI 1.4 adds configurable **Voice experiences** (Classic, Orb, Dock, Guided, Companion, Side panel) for the public widget. The `/api/v1` API stays backward compatible. Assistants without a saved Voice experience keep **Classic**. See the [changelog](https://github.com/nightzeros/chatai/blob/main/CHANGELOG.md).
+
+## Who needs this guide
+
+| Surface | What changes in 1.4 |
+| --- | --- |
+| Hosted / self-hosted app + `/widget/chat.js` | Deploy `v1.4.0` (or later). Hosted `chat.js` picks up the new stages after cache (at most 5 minutes). |
+| npm `@nightzeros/chatai-react` / `@nightzeros/chatai-widget` | **Must upgrade to 1.4.0+**. 1.3.0 and earlier keep the Classic mic/waveform UI even when Customize selects Orb. |
+| Dashboard Customize / Playground | Available after the server deploy; no database migration required for Voice appearance. |
+
+## 1. Back up (self-hosted)
+
+Back up Postgres and uploads before upgrading. There are no down migrations. See [Backup and upgrades](/docs/self-hosting/backup-upgrade).
+
+## 2. Deploy the server
+
+```bash
+# Production VPS (immutable image)
+CHATAI_IMAGE_TAG=v1.4.0 ./scripts/deploy.sh
+
+# Or Docker Compose from the tag
+git fetch --tags
+git checkout v1.4.0
+docker compose pull   # if you publish images
+docker compose up -d
+curl -s http://localhost:3000/api/health
+# {"status":"ok","db":"ok"}
+```
+
+Confirm OpenAPI reports the new product version:
+
+```bash
+curl -s https://your-chatai-origin/api/v1/openapi.json | jq -r .info.version
+# 1.4.0
+```
+
+## 3. Turn on a Voice experience
+
+1. Open the assistant → **Widget** (Customize).
+2. Under **Voice experience**, choose Classic, Orb, Dock, Guided, Companion, or Side panel.
+3. Optionally set captions default and motion preference.
+4. **Save** — drafts do not reach public embeds until saved.
+5. Use **Design** preview for simulated stages, or **Live microphone** / Playground visitor widget for a real mic test.
+
+Privacy and provider setup are unchanged: **Settings → Privacy → Offer Voice in the public widget**, plus a configured Voice provider. Details: [Voice (preview)](/docs/voice).
+
+## 4. Upgrade npm embeds (required for React / widget packages)
+
+Sites that install the packages from the registry keep the old UI until they bump:
+
+```bash
+pnpm add @nightzeros/chatai-react@1.4.0
+# or
+pnpm add @nightzeros/chatai-widget@1.4.0
+```
+
+Then rebuild and redeploy that site. Optional per-mount override:
+
+```tsx
+<ChatWidget
+  assistantId="asst_your_public_id"
+  apiUrl="https://app.nightzeros.com"
+  voiceAppearance={{ experience: "orb", captionsDefault: true }}
+/>
+```
+
+Script-tag embeds that load hosted `chat.js` do not need an npm bump; optional overrides:
+
+```html
+<script
+  src="https://app.nightzeros.com/widget/chat.js"
+  data-assistant-id="asst_your_public_id"
+  data-voice-experience="orb"
+  data-voice-captions="on"
+  async
+></script>
+```
+
+## 5. Compatibility notes
+
+- Unknown or future experience strings in stored settings are ignored by public config; the widget resolves to Classic.
+- Changing `voiceAppearance` while a call is active updates presentation without remounting the Voice session.
+- Playback-gate rules from 1.2 / 1.3 are unchanged. npm Voice still requires **1.2.0+**; stage experiences require **1.4.0+**.
+- No new required environment variables for this release.
+
+## Rollback
+
+- **App**: deploy the previous image tag (`CHATAI_IMAGE_TAG=v1.3.0 ./scripts/rollback.sh` on the VPS). Saved `voiceAppearance` values remain in assistant settings and are ignored by older widgets.
+- **npm**: pin embeds back to `@nightzeros/chatai-react@1.3.0` (or earlier). Do not unpublish 1.4.0.
+
+## Related
+
+- [Voice (preview)](/docs/voice)
+- [Widget](/docs/widget) / [React](/docs/react)
+- [Versioning and migrations](/docs/self-hosting/versioning)
+- [Backup and upgrades](/docs/self-hosting/backup-upgrade)
