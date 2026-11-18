@@ -84,7 +84,7 @@ jobs:
         run: node scripts/check-publish-npm-workflow.mjs
 
       - name: Upload packed tarballs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-pack-${{ github.sha }}
           path: /tmp/chatai-npm-pack/*.tgz
