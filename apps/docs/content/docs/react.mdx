@@ -1,6 +1,6 @@
 ---
 title: React
-description: Use the ChatWidget React package in your app.
+description: Embed ChatAI with the @nightzeros/chatai-react ChatWidget component.
 ---
 
 Install from npm:
@@ -9,7 +9,7 @@ Install from npm:
 pnpm add @nightzeros/chatai-react
 ```
 
-Peer dependency: React 18 or 19. The package entry includes `"use client"` for Next.js App Router.
+Use **1.4.0 or later** for Voice experiences (Orb, Dock, Guided, Companion, Side panel). Voice itself (playback gate) needs **1.2.0+**. Peer dependency: React 18 or 19. The package entry includes `"use client"` for Next.js App Router.
 
 Inside this monorepo during development, use `workspace:*` instead of the public registry.
 
@@ -38,7 +38,34 @@ export function SupportChat() {
 }
 ```
 
-`apiUrl` must be the absolute ChatAI origin (same as `BETTER_AUTH_URL` / widget API host).
+`apiUrl` must be the absolute ChatAI origin (same as `BETTER_AUTH_URL` / widget API host). Appearance and Voice experience normally come from the assistant’s saved **Customize** settings.
+
+## Voice appearance
+
+Optional mount-level override (does not remount an active Voice session when only presentation changes):
+
+```tsx
+<ChatWidget
+  assistantId="asst_your_public_id"
+  apiUrl="https://app.nightzeros.com"
+  voiceAppearance={{
+    experience: "orb",
+    captionsDefault: true,
+    motion: "system",
+  }}
+/>
+```
+
+| `experience` | Layout |
+| --- | --- |
+| `classic` | Mic in composer + waveform (default) |
+| `orb` | Full voice stage inside the chat panel |
+| `dock` | Talk control + compact card beside the launcher |
+| `guided` | Welcome + suggested questions, then stage |
+| `companion` | Character stage with assistant name / welcome |
+| `side-panel` | Tall edge sheet beside the page |
+
+Prefer saving the experience in **Customize** so every embed stays consistent. Hide Voice on a page with `voice={false}`. Full setup: [Voice (preview)](/docs/voice). Upgrade from 1.3: [Upgrading to 1.4](/docs/self-hosting/upgrade-1-4).
 
 ## Props
 
@@ -54,8 +81,8 @@ export function SupportChat() {
 | `suggestedQuestions` | `string[]` | Optional |
 | `showSources` | `boolean` | Optional |
 | `layout` | `"fixed" \| "contained"` | Optional |
-| `voice` | `boolean` | Optional — `false` hides the Voice button even when the assistant offers Voice. Voice requires 1.2.0 or later for the playback gate; 1.1.0 is refused with "Voice needs an updated chat widget" ([Voice (preview)](/docs/voice)) |
-| `voiceAppearance` | `{ experience?: "classic" \| "orb" \| "dock" \| "guided" \| "companion" \| "side-panel"; accentColor?: string; captionsDefault?: boolean; motion?: "system" \| "reduced" }` | Optional — overrides Customize for this mount. Presentation updates do not remount an active Voice session. See [Widget](/docs/widget). |
+| `voice` | `boolean` | Optional — `false` hides the Voice button even when the assistant offers Voice. Voice requires 1.2.0+ ([Voice (preview)](/docs/voice)) |
+| `voiceAppearance` | `{ experience?: "classic" \| "orb" \| "dock" \| "guided" \| "companion" \| "side-panel"; accentColor?: string; captionsDefault?: boolean; motion?: "system" \| "reduced" }` | Optional — overrides Customize for this mount (1.4.0+). See [Widget](/docs/widget). |
 | `onReady` / `onError` | callbacks | Optional |
 
 Low-level: `mountChatWidget(element, options)` from the same package.
@@ -75,4 +102,6 @@ See [Examples](/docs/examples).
 ## Related
 
 - [Widget](/docs/widget) — script tag path
+- [Voice (preview)](/docs/voice)
+- [Upgrading to 1.4](/docs/self-hosting/upgrade-1-4)
 - [Assistants](/docs/assistants)

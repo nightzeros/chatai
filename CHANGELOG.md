@@ -2,6 +2,28 @@
 
 All notable changes to ChatAI are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-11-17
+
+Voice (preview) gets configurable visitor experiences — Classic, Orb, Dock, Guided, Companion, and Side panel — with owner Customize controls, design preview, and matching npm / hosted widget surfaces. The `/api/v1` contract stays backward compatible; existing embeds keep Classic until you opt in.
+
+### Added
+
+- **Voice experiences (preview):** Classic (waveform), Orb (centered stage), Dock (Talk card beside the launcher), Guided (welcome + real suggested questions), Companion (abstract character stage), and Side panel (tall edge sheet). Choose under **Customize → Voice experience**.
+- Public assistant config returns a normalized `settings.voiceAppearance` (`experience`, `accentColor`, `captionsDefault`, `motion`). Unknown experience strings are dropped so older servers stay safe.
+- Embed overrides: script `data-voice-experience` / `data-voice-captions`; React `voiceAppearance` prop (does not remount an active Voice session when only presentation changes).
+- Owner **Design** / **Live microphone** draft preview and a Playground visitor-widget panel for verifying the visitor surface without mixing in diagnostics.
+- Mobile-first Voice stage polish: near-fullscreen phone panel, safe-area insets, compact control labels.
+
+### Changed
+
+- Nested `voiceAppearance` settings merge leaf-wise on save so a partial update does not wipe other appearance fields.
+- npm packages `@nightzeros/chatai-widget-core`, `@nightzeros/chatai-widget`, `@nightzeros/chatai-react`, and `@nightzeros/chatai-sdk` are **1.4.0**. Sites using the React or widget packages must upgrade to see Orb and the other stage experiences; hosted `chat.js` updates with the server deploy.
+- Voice stays a preview.
+
+### Fixed
+
+- React package lint no longer references an undefined `react-hooks/exhaustive-deps` rule.
+
 ## [1.3.0] - 2026-10-11
 
 Voice (preview) rollout fixes: every ChatAI Voice client now shares one client contract, so the Playground works again and an outdated widget gets a clear message. The `/api/v1` contract stays backward compatible.
@@ -144,6 +166,7 @@ Read [Upgrading to 1.1](https://docs.nightzeros.com/docs/self-hosting/upgrade-1-
 
 Security, privacy, and UI refresh work landed on the `feat/v0.8-*` branches before the 1.0 freeze.
 
+[1.4.0]: https://github.com/nightzeros/chatai/releases/tag/v1.4.0
 [1.3.0]: https://github.com/nightzeros/chatai/releases/tag/v1.3.0
 [1.2.0]: https://github.com/nightzeros/chatai/releases/tag/v1.2.0
 [1.1.0]: https://github.com/nightzeros/chatai/releases/tag/v1.1.0

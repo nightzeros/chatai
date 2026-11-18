@@ -39,14 +39,20 @@ instance.destroy();
 | `showSources`                  | `boolean`                         | Show citation chips                                                               |
 | `layout`                       | `"fixed" \| "contained"`          | `contained` renders inside the target element                                     |
 | `voice`                        | `boolean`                         | Set `false` to hide Voice (preview)                                               |
+| `voiceAppearance`              | object                            | Optional Voice experience override — **1.4.0+** (`experience`, captions, motion)  |
 | `signEndpoint`                 | `string`                          | Signing endpoint for assistants that require signed widgets                       |
 | `fetch`, `storage`, `createId` | advanced                          | Inject `fetch`, a `localStorage`-like store, or an ID generator (useful in tests) |
 
-`optionsFromScript(scriptElement)` reads the same options from `data-*` attributes (`data-assistant-id`, `data-api-url`, `data-theme`, `data-position`, `data-sign-endpoint`, `data-voice="off"`).
+`optionsFromScript(scriptElement)` reads the same options from `data-*` attributes (`data-assistant-id`, `data-api-url`, `data-theme`, `data-position`, `data-sign-endpoint`, `data-voice="off"`, `data-voice-experience`, `data-voice-captions`).
 
 ## Voice (preview)
 
-When the assistant offers Voice and the server has a Voice provider configured, the widget adds a microphone button with a live transcript and, when recording is enabled, a consent prompt before the microphone turns on. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC. It is a preview feature and requires version 1.2.0 or later; ChatAI refuses Voice to older versions, which show "Voice needs an updated chat widget" (ChatAI 1.3.0 and later) and keep text chat working.
+When the assistant offers Voice and the server has a Voice provider configured, the widget adds a microphone button with a live transcript and, when recording is enabled, a consent prompt before the microphone turns on. Voice needs HTTPS (or `localhost`), microphone permission and WebRTC. It is a preview feature.
+
+- **1.2.0+** for the playback gate (older packages are refused with "Voice needs an updated chat widget").
+- **1.4.0+** for Orb, Dock, Guided, Companion, and Side panel. Without it, Customize can select a stage but the npm embed stays Classic.
+
+Docs: [Widget](https://docs.nightzeros.com/docs/widget) · [Upgrading to 1.4](https://docs.nightzeros.com/docs/self-hosting/upgrade-1-4).
 
 ## Compatibility
 

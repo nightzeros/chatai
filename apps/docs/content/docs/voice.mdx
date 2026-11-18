@@ -3,7 +3,7 @@ title: Voice (preview)
 description: Let visitors talk to an assistant in the same widget. Setup, recordings, consent, usage minutes, limits and troubleshooting.
 ---
 
-> **Preview.** Voice is available in ChatAI 1.1 as a preview. It is usable in production, but its behavior, settings and client APIs may change in minor releases, and it is not yet covered by the same stability guarantees as text chat.
+> **Preview.** Voice is available in ChatAI 1.1 as a preview. ChatAI 1.4 adds configurable Voice experiences (Classic, Orb, Dock, Guided, Companion, Side panel). Voice is usable in production, but its behavior, settings and client APIs may change in minor releases, and it is not yet covered by the same stability guarantees as text chat.
 
 Voice (preview) lets visitors speak to an assistant from the same widget they type in. Answers come from the same Purpose, Instructions and Knowledge as text chat, and the conversation continues seamlessly when the visitor switches between typing and speaking.
 
@@ -65,6 +65,25 @@ If **Store visitor conversations** is off, Voice stays ephemeral: nothing is sav
 
 Try it first from the assistant **Playground**.
 
+## Voice experiences (1.4)
+
+Choose how Voice looks under the assistant **Widget** page → **Customize → Voice experience**, then **Save**. Existing assistants keep **Classic** until you change them.
+
+| Experience | What visitors see |
+| --- | --- |
+| **Classic** | Microphone in the composer and a waveform status strip (default, pre-1.4 layout). |
+| **Orb** | While Voice is active, a centered stage replaces the transcript and composer (identity, orb, status, optional captions, mute / End / Back to chat). |
+| **Dock** | A **Talk** control beside the chat launcher opens a compact voice card. Opening Talk never starts the mic; **Start** inside the card does. Talk and the text chat panel are mutually exclusive. |
+| **Guided** | Welcome canvas with the assistant name, welcome text, and real suggested questions; then the shared voice stage with “Try saying…” hints. |
+| **Companion** | Abstract character canvas with the assistant name and welcome speech, then the shared stage with the character instead of the orb. |
+| **Side panel** | Tall edge sheet beside the host page (transcript + composer when idle; shared Orb stage while Voice is live). Layout only — ChatAI does not scrape the page. |
+
+Also configurable: **Show captions by default** (stage experiences only) and **Motion** (follow system or reduced).
+
+Owners can preview stages without a microphone (**Design**), or test with a real mic (**Live microphone** / Playground visitor widget). Per-page overrides: script `data-voice-experience` / `data-voice-captions`, or React `voiceAppearance` — see [Widget](/docs/widget) and [React](/docs/react).
+
+**npm embeds:** stage experiences ship in `@nightzeros/chatai-react` and `@nightzeros/chatai-widget` **1.4.0+**. Older package versions stay on Classic even when Customize selects Orb. Upgrade guide: [Upgrading to 1.4](/docs/self-hosting/upgrade-1-4).
+
 ## Recordings and consent
 
 Recording needs S3-compatible object storage (AWS S3, Cloudflare R2, MinIO) configured with the `OBJECT_STORAGE_*` variables. Without it, **Record Voice audio** is disabled and Voice works normally.
@@ -112,7 +131,7 @@ Voice appears automatically when the assistant offers it. To hide it on a specif
 <ChatWidget assistantId="asst_your_public_id" apiUrl="https://app.nightzeros.com" voice={false} />
 ```
 
-Voice needs a widget that supports the playback gate. The hosted `chat.js` always does once the browser has loaded the current copy; it is cached for at most 5 minutes after a deploy. npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.2.0 or later**. ChatAI refuses Voice to older widgets, which show **Voice needs an updated chat widget. Reload the page, or ask the site owner to update it.** and keep text chat working.
+Voice needs a widget that supports the playback gate. The hosted `chat.js` always does once the browser has loaded the current copy; it is cached for at most 5 minutes after a deploy. npm users need `@nightzeros/chatai-react` or `@nightzeros/chatai-widget` **1.2.0 or later** for Voice, and **1.4.0 or later** for Orb and the other stage experiences. ChatAI refuses Voice to widgets without the playback gate, which show **Voice needs an updated chat widget. Reload the page, or ask the site owner to update it.** and keep text chat working.
 
 The Playground uses the same playback gate as the widget: what you hear while testing is what visitors hear.
 
@@ -129,6 +148,7 @@ The Playground uses the same playback gate as the widget: what you hear while te
 | No microphone button              | Voice not offered in **Settings → Privacy**; no `VOICE_OPENAI_API_KEY` on the server; `data-voice="off"` / `voice={false}`; or an npm widget older than 1.1.0 |
 | "Voice isn't available right now" | Minutes exhausted, concurrent-call limit reached, provider error, or a serverless deployment. The server logs the cause as `[voice] mint.refused`             |
 | "Voice needs an updated chat widget" | The page runs a widget without the playback gate: a cached `chat.js` from before a deploy (reload the page) or an npm widget older than 1.2.0 (update it) |
+| Customize shows Orb but the site still looks Classic | npm embed is still on 1.3.0 or earlier — upgrade to **1.4.0+** and redeploy the host site. Hosted `chat.js` updates with the ChatAI deploy. |
 | A short pause before replies      | Expected for anything other than small talk: the visitor hears ChatAI's answer, not the voice model's first guess                                            |
 | Microphone blocked                | Page not on HTTPS, permission denied, `Permissions-Policy` or iframe `allow` missing                                                                          |
 | Calls drop during deploys         | Expected: the call ends with "Voice disconnected. You can keep typing here." Set `stop_grace_period` so calls drain cleanly                                   |
