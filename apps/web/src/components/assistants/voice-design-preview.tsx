@@ -45,10 +45,28 @@ export function VoiceDesignPreview({
   const [phase, setPhase] = useState<SimPhase>(guided || companion ? "idle" : "listening");
   const [captionsOpen, setCaptionsOpen] = useState(captionsDefault);
   const [muted, setMuted] = useState(false);
+  const [companionBlink, setCompanionBlink] = useState(false);
 
   useEffect(() => {
     setCaptionsOpen(captionsDefault);
   }, [captionsDefault]);
+
+  useEffect(() => {
+    if (!companion) return;
+    setCompanionBlink(true);
+    const close = window.setTimeout(() => setCompanionBlink(false), 120);
+    return () => window.clearTimeout(close);
+  }, [companion, phase]);
+
+  useEffect(() => {
+    if (!companion || phase !== "listening") return;
+    const id = window.setInterval(() => {
+      setCompanionBlink(true);
+      window.setTimeout(() => setCompanionBlink(false), 120);
+    }, 3600);
+    return () => window.clearInterval(id);
+  }, [companion, phase]);
+
   const current = PHASES.find((entry) => entry.id === phase) ?? PHASES[1]!;
   const status = muted && phase !== "idle" && phase !== "error" ? "Microphone muted" : current.status;
   const questions = suggestedQuestions.filter(Boolean).slice(0, 3);
@@ -62,6 +80,10 @@ export function VoiceDesignPreview({
         : phase === "listening"
           ? "48% 52% 42% 40%"
           : "52% 48% 38% 42%";
+  const companionMouth =
+    phase === "speaking" ? 0.85 : phase === "hearing" ? 0.22 : phase === "processing" ? 0.06 : 0;
+  const companionEnergy =
+    phase === "speaking" || phase === "hearing" ? 0.7 : phase === "processing" ? 0.28 : 0.1;
   const kicker = guided
     ? "Live voice guide"
     : companion
@@ -126,23 +148,56 @@ export function VoiceDesignPreview({
                 background: `radial-gradient(ellipse at 27% 25%, color-mix(in srgb, ${accentColor}, #fff 62%) 0%, ${accentColor} 52%, color-mix(in srgb, ${accentColor}, #1a1a12 45%) 88%)`,
                 boxShadow:
                   "inset -10px -12px 18px rgb(20 36 30 / 28%), inset 4px 6px 14px rgb(255 255 255 / 35%), 0 14px 16px rgb(20 36 30 / 14%)",
-                transform:
-                  phase === "hearing" || phase === "speaking"
-                    ? "rotate(6deg) translateY(-6px) scale(1.05)"
-                    : "rotate(-6deg)",
+                transform: `rotate(${-6 + companionEnergy * 14}deg) translateY(${companionEnergy * -8}px) scale(${0.96 + companionEnergy * 0.1})`,
                 transition: "transform 180ms ease, border-radius 480ms ease",
               }}
             />
-            <span className="absolute left-[34%] top-[38%] h-2.5 w-2.5 rounded-full bg-[#1a1a12]" />
-            <span className="absolute right-[34%] top-[38%] h-2.5 w-2.5 rounded-full bg-[#1a1a12]" />
-            <span className="absolute left-1/2 top-[52%] ml-[-11px] h-2.5 w-[22px] rounded-b-[14px] border-2 border-t-0 border-[#1a1a12] opacity-85" />
+            <span
+              className="absolute left-[34%] top-[38%] h-2.5 w-2.5 rounded-full bg-[#1a1a12]"
+              style={{
+                transform: `scaleY(${companionBlink ? 0.08 : 1})`,
+                transformOrigin: "center 55%",
+                transition: "transform 90ms ease",
+              }}
+            />
+            <span
+              className="absolute right-[34%] top-[38%] h-2.5 w-2.5 rounded-full bg-[#1a1a12]"
+              style={{
+                transform: `scaleY(${companionBlink ? 0.08 : 1})`,
+                transformOrigin: "center 55%",
+                transition: "transform 90ms ease",
+              }}
+            />
+            {companionMouth > 0.05 ? (
+              <span
+                className="absolute left-1/2 top-[52%] border-2 border-[#1a1a12] opacity-90"
+                style={{
+                  width: `${18 + companionMouth * 8}px`,
+                  height: `${3 + companionMouth * 14}px`,
+                  marginLeft: `${-(9 + companionMouth * 4)}px`,
+                  borderRadius: `${2 + companionMouth * 12}px`,
+                  background: `color-mix(in srgb, #1a1a12, transparent ${100 - companionMouth * 72}%)`,
+                  transition: "width 160ms ease, height 160ms ease",
+                }}
+              />
+            ) : (
+              <span className="absolute left-1/2 top-[52%] ml-[-11px] h-2.5 w-[22px] rounded-b-[14px] border-2 border-t-0 border-[#1a1a12] opacity-85" />
+            )}
             <span
               className="absolute bottom-[4%] left-[28%] h-3.5 w-[22px] rounded-[40%_40%_50%_50%]"
-              style={{ background: `color-mix(in srgb, ${accentColor}, #1a1a12 35%)` }}
+              style={{
+                background: `color-mix(in srgb, ${accentColor}, #1a1a12 35%)`,
+                transform: `translateY(${companionEnergy * -5}px)`,
+                transition: "transform 180ms ease",
+              }}
             />
             <span
               className="absolute bottom-[4%] right-[28%] h-3.5 w-[22px] rounded-[40%_40%_50%_50%]"
-              style={{ background: `color-mix(in srgb, ${accentColor}, #1a1a12 35%)` }}
+              style={{
+                background: `color-mix(in srgb, ${accentColor}, #1a1a12 35%)`,
+                transform: `translateY(${companionEnergy * -5}px)`,
+                transition: "transform 180ms ease",
+              }}
             />
           </div>
         ) : (
