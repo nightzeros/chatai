@@ -2,6 +2,16 @@
 
 All notable changes to ChatAI are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.1] - 2026-11-22
+
+Companion Voice feels more alive: mouth, eyes, and feet react to live audio energy alongside the existing body motion. CSS-only richer motion (not phoneme lip-sync); reduced motion stays calm. Design preview mirrors the language. Hosted `chat.js` and npm packages **1.4.1**.
+
+### Changed
+
+- Companion character drives `--chatai-companion-mouth`, blink, and peak CSS vars from Voice motion phase and analyser levels.
+- Dashboard Companion Design preview animates mouth/blink by simulated phase.
+- npm `@nightzeros/chatai-widget-core`, `@nightzeros/chatai-widget`, `@nightzeros/chatai-react`, and `@nightzeros/chatai-sdk` are **1.4.1**.
+
 ## [1.4.0] - 2026-11-17
 
 Voice (preview) gets configurable visitor experiences — Classic, Orb, Dock, Guided, Companion, and Side panel — with owner Customize controls, design preview, and matching npm / hosted widget surfaces. The `/api/v1` contract stays backward compatible; existing embeds keep Classic until you opt in.
@@ -166,6 +176,7 @@ Read [Upgrading to 1.1](https://docs.nightzeros.com/docs/self-hosting/upgrade-1-
 
 Security, privacy, and UI refresh work landed on the `feat/v0.8-*` branches before the 1.0 freeze.
 
+[1.4.1]: https://github.com/nightzeros/chatai/releases/tag/v1.4.1
 [1.4.0]: https://github.com/nightzeros/chatai/releases/tag/v1.4.0
 [1.3.0]: https://github.com/nightzeros/chatai/releases/tag/v1.3.0
 [1.2.0]: https://github.com/nightzeros/chatai/releases/tag/v1.2.0

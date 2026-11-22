@@ -10,9 +10,16 @@ function prefersReducedMotion() {
   );
 }
 
+function clearCompanionVars(el: HTMLDivElement) {
+  el.style.removeProperty("--chatai-companion-energy");
+  el.style.removeProperty("--chatai-companion-mouth");
+  el.style.removeProperty("--chatai-companion-blink");
+  el.style.removeProperty("--chatai-companion-peak");
+}
+
 /**
- * Abstract CSS companion character. Energy from `levels()` drives a small scale/tilt
- * when motion is hearing/speaking; reduced-motion stays static.
+ * Abstract CSS companion character. Energy from `levels()` drives body, mouth,
+ * eyes, and feet when motion is hearing/speaking; reduced-motion stays static.
  */
 export function VoiceCompanionCharacter({
   motion,
@@ -32,30 +39,76 @@ export function VoiceCompanionCharacter({
     if (!el) return;
     const reduced = reducedMotion || prefersReducedMotion();
     if (reduced || typeof requestAnimationFrame === "undefined") {
-      el.style.removeProperty("--chatai-companion-energy");
+      clearCompanionVars(el);
       return;
     }
 
     let frame = 0;
-    const draw = () => {
+    let smoothed = 0;
+    let peak = 0;
+    let blink = 0;
+    let blinkUntil = 0;
+    let nextBlinkAt = performance.now() + 2800 + Math.random() * 2200;
+
+    const draw = (now: number) => {
       const current = motionRef.current;
-      let energy = 0;
+      let target = 0;
+      let mouth = 0;
+
       if (current === "hearing") {
-        energy = Math.min(1, levels().input * 8);
+        target = Math.min(1, levels().input * 8);
+        mouth = 0.08 + target * 0.18;
       } else if (current === "speaking") {
-        energy = Math.min(1, levels().output * 8);
+        target = Math.min(1, levels().output * 8);
+        // Flutter open amount with energy so speech reads as talking, not a fixed oval.
+        const flutter = 0.55 + 0.45 * Math.sin(now / 55);
+        mouth = Math.min(1, 0.22 + target * 0.78 * flutter);
       } else if (current === "processing" || current === "pending") {
-        energy = 0.35;
+        target = 0.28 + 0.08 * Math.sin(now / 520);
+        mouth = 0.04;
       } else if (current === "listening") {
-        energy = 0.12;
+        target = 0.1 + 0.04 * Math.sin(now / 900);
+        mouth = 0;
+      } else if (current === "settle") {
+        target = 0.06;
+        mouth = 0;
       }
-      el.style.setProperty("--chatai-companion-energy", energy.toFixed(3));
+
+      smoothed += (target - smoothed) * 0.22;
+      const instantPeak = Math.max(0, target - smoothed);
+      peak += (instantPeak - peak) * 0.35;
+
+      const canBlink =
+        current === "listening" ||
+        current === "hearing" ||
+        current === "speaking" ||
+        current === "processing" ||
+        current === "pending";
+
+      if (canBlink) {
+        if (blink > 0 && now >= blinkUntil) {
+          blink = 0;
+          nextBlinkAt = now + 2800 + Math.random() * 3200;
+        } else if (blink === 0 && now >= nextBlinkAt) {
+          blink = 1;
+          blinkUntil = now + 110 + Math.random() * 50;
+        }
+      } else {
+        blink = 0;
+        nextBlinkAt = now + 3000;
+      }
+
+      el.style.setProperty("--chatai-companion-energy", smoothed.toFixed(3));
+      el.style.setProperty("--chatai-companion-mouth", mouth.toFixed(3));
+      el.style.setProperty("--chatai-companion-blink", blink.toFixed(3));
+      el.style.setProperty("--chatai-companion-peak", Math.min(1, peak * 4).toFixed(3));
       frame = requestAnimationFrame(draw);
     };
+
     frame = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(frame);
-      el.style.removeProperty("--chatai-companion-energy");
+      clearCompanionVars(el);
     };
   }, [levels, reducedMotion]);
 
@@ -69,7 +122,7 @@ export function VoiceCompanionCharacter({
       <span className="chatai-companion-body" />
       <span className="chatai-companion-eye chatai-companion-eye-left" />
       <span className="chatai-companion-eye chatai-companion-eye-right" />
-      <span className="chatai-companion-smile" />
+      <span className="chatai-companion-mouth" />
       <span className="chatai-companion-foot chatai-companion-foot-left" />
       <span className="chatai-companion-foot chatai-companion-foot-right" />
     </div>

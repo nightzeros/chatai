@@ -1305,6 +1305,9 @@
 
 .chatai-companion-character {
   --chatai-companion-energy: 0;
+  --chatai-companion-mouth: 0;
+  --chatai-companion-blink: 0;
+  --chatai-companion-peak: 0;
   --chatai-companion-accent: var(--chatai-voice-accent, var(--chatai-accent));
   position: relative;
   width: 132px;
@@ -1326,10 +1329,14 @@
     inset -10px -12px 18px rgb(20 36 30 / 28%),
     inset 4px 6px 14px rgb(255 255 255 / 35%),
     0 14px 16px rgb(20 36 30 / 14%);
-  transform: rotate(calc(-6deg + var(--chatai-companion-energy) * 12deg))
-    translateY(calc(var(--chatai-companion-energy) * -6px))
-    scale(calc(0.97 + var(--chatai-companion-energy) * 0.08));
-  transition: transform 180ms ease, border-radius 480ms ease;
+  transform: rotate(calc(-6deg + var(--chatai-companion-energy) * 14deg))
+    translateY(calc(var(--chatai-companion-energy) * -8px))
+    scale(
+      calc(0.96 + var(--chatai-companion-energy) * 0.1),
+      calc(0.97 + var(--chatai-companion-energy) * 0.06 - var(--chatai-companion-peak) * 0.04)
+    );
+  transition: border-radius 480ms ease;
+  will-change: transform;
 }
 
 .chatai-companion-eye {
@@ -1340,6 +1347,12 @@
   border-radius: 50%;
   background: #1a1a12;
   box-shadow: inset 0 -1px 0 rgb(255 255 255 / 35%);
+  transform: scale(
+      calc(1 + var(--chatai-companion-peak) * 0.22),
+      calc((1 - var(--chatai-companion-blink) * 0.92) * (1 + var(--chatai-companion-peak) * 0.08))
+    );
+  transform-origin: center 55%;
+  will-change: transform;
 }
 
 .chatai-companion-eye-left {
@@ -1350,17 +1363,39 @@
   right: 34%;
 }
 
-.chatai-companion-smile {
+.chatai-companion-mouth {
   position: absolute;
   top: 52%;
   left: 50%;
-  width: 22px;
-  height: 10px;
-  margin-left: -11px;
+  width: calc(18px + var(--chatai-companion-mouth) * 8px);
+  height: calc(3px + var(--chatai-companion-mouth) * 14px);
+  margin-left: calc(-1 * (9px + var(--chatai-companion-mouth) * 4px));
   border: 2px solid #1a1a12;
+  border-radius: calc(2px + var(--chatai-companion-mouth) * 12px);
+  background: color-mix(
+    in srgb,
+    #1a1a12,
+    transparent calc(100% - var(--chatai-companion-mouth) * 72%)
+  );
+  opacity: 0.9;
+  box-sizing: border-box;
+  /* Closed smile arc when mouth ≈ 0; filled oval when speaking. */
+  clip-path: inset(
+    calc((1 - var(--chatai-companion-mouth)) * 45%) 0 0 0
+  );
+  will-change: width, height, background, clip-path;
+}
+
+.chatai-companion-character[data-motion="static"] .chatai-companion-mouth,
+.chatai-companion-character[data-motion="listening"] .chatai-companion-mouth,
+.chatai-companion-character[data-motion="settle"] .chatai-companion-mouth {
   border-top: 0;
   border-radius: 0 0 14px 14px;
-  opacity: 0.85;
+  background: transparent;
+  clip-path: none;
+  height: 10px;
+  width: 22px;
+  margin-left: -11px;
 }
 
 .chatai-companion-foot {
@@ -1371,6 +1406,8 @@
   border-radius: 40% 40% 50% 50%;
   background: color-mix(in srgb, var(--chatai-companion-accent), #1a1a12 35%);
   box-shadow: 0 3px 4px rgb(20 36 30 / 18%);
+  transform: translateY(calc(var(--chatai-companion-energy) * -5px - var(--chatai-companion-peak) * 3px));
+  will-change: transform;
 }
 
 .chatai-companion-foot-left {
@@ -1667,8 +1704,19 @@
   }
 
   .chatai-orb-core,
-  .chatai-companion-body {
+  .chatai-companion-body,
+  .chatai-companion-eye,
+  .chatai-companion-mouth,
+  .chatai-companion-foot {
     transition: none;
     transform: none;
+    will-change: auto;
+  }
+
+  .chatai-companion-character {
+    --chatai-companion-energy: 0 !important;
+    --chatai-companion-mouth: 0 !important;
+    --chatai-companion-blink: 0 !important;
+    --chatai-companion-peak: 0 !important;
   }
 }

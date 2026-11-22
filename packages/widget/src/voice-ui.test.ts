@@ -550,9 +550,31 @@ describe("widget Voice UI", () => {
     ).click();
     await flush();
     expect(root.querySelector(".chatai-voice-stage.visual-companion")).not.toBeNull();
-    expect(root.querySelector(".chatai-companion-character")).not.toBeNull();
+    const character = root.querySelector(".chatai-companion-character") as HTMLElement;
+    expect(character).not.toBeNull();
+    expect(character.querySelector(".chatai-companion-mouth")).not.toBeNull();
+    expect(character.querySelector(".chatai-companion-eye-left")).not.toBeNull();
     expect(root.querySelector(".chatai-orb")).toBeNull();
     expect(state.tracks.length).toBeGreaterThan(0);
+
+    state.peers[0]!.channel.dispatch("message", {
+      data: JSON.stringify({ type: "session.started" }),
+    });
+    await flush();
+    // Grounded assistant speech → speaking motion opens the mouth (even without analyser levels).
+    state.peers[0]!.channel.dispatch("message", {
+      data: JSON.stringify({
+        type: "session.output_transcript.delta",
+        delta: "Hello there.",
+        start_ms: 0,
+        end_ms: 800,
+      }),
+    });
+    await flush();
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    expect(character.getAttribute("data-motion")).toBe("speaking");
+    expect(Number(character.style.getPropertyValue("--chatai-companion-mouth"))).toBeGreaterThan(0.1);
     instance.destroy();
   });
 
