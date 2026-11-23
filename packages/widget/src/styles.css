@@ -1363,39 +1363,43 @@
   right: 34%;
 }
 
+/* Resting smile (closed). Speaking/hearing swap to a soft elliptical jaw below. */
 .chatai-companion-mouth {
   position: absolute;
   top: 52%;
   left: 50%;
-  width: calc(18px + var(--chatai-companion-mouth) * 8px);
-  height: calc(3px + var(--chatai-companion-mouth) * 14px);
-  margin-left: calc(-1 * (9px + var(--chatai-companion-mouth) * 4px));
+  width: 22px;
+  height: 10px;
+  margin-left: -11px;
   border: 2px solid #1a1a12;
-  border-radius: calc(2px + var(--chatai-companion-mouth) * 12px);
-  background: color-mix(
-    in srgb,
-    #1a1a12,
-    transparent calc(100% - var(--chatai-companion-mouth) * 72%)
-  );
-  opacity: 0.9;
-  box-sizing: border-box;
-  /* Closed smile arc when mouth ≈ 0; filled oval when speaking. */
-  clip-path: inset(
-    calc((1 - var(--chatai-companion-mouth)) * 45%) 0 0 0
-  );
-  will-change: width, height, background, clip-path;
-}
-
-.chatai-companion-character[data-motion="static"] .chatai-companion-mouth,
-.chatai-companion-character[data-motion="listening"] .chatai-companion-mouth,
-.chatai-companion-character[data-motion="settle"] .chatai-companion-mouth {
   border-top: 0;
   border-radius: 0 0 14px 14px;
   background: transparent;
-  clip-path: none;
-  height: 10px;
-  width: 22px;
-  margin-left: -11px;
+  opacity: 0.88;
+  box-sizing: border-box;
+  transform-origin: center top;
+  will-change: transform, height, border-radius, background;
+}
+
+.chatai-companion-character[data-motion="hearing"] .chatai-companion-mouth,
+.chatai-companion-character[data-motion="speaking"] .chatai-companion-mouth {
+  top: 51%;
+  width: 16px;
+  height: calc(4px + var(--chatai-companion-mouth) * 10px);
+  margin-left: -8px;
+  border: 0;
+  border-radius: 50%;
+  background: #1a1a12;
+  opacity: 0.92;
+  transform: scaleY(calc(0.55 + var(--chatai-companion-mouth) * 0.7));
+}
+
+.chatai-companion-character[data-motion="hearing"] .chatai-companion-mouth {
+  width: 14px;
+  margin-left: -7px;
+  height: calc(3px + var(--chatai-companion-mouth) * 6px);
+  opacity: 0.75;
+  transform: scaleY(calc(0.4 + var(--chatai-companion-mouth) * 0.55));
 }
 
 .chatai-companion-foot {

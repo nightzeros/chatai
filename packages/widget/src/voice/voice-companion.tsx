@@ -45,6 +45,7 @@ export function VoiceCompanionCharacter({
 
     let frame = 0;
     let smoothed = 0;
+    let mouthSmoothed = 0;
     let peak = 0;
     let blink = 0;
     let blinkUntil = 0;
@@ -53,30 +54,36 @@ export function VoiceCompanionCharacter({
     const draw = (now: number) => {
       const current = motionRef.current;
       let target = 0;
-      let mouth = 0;
+      let mouthTarget = 0;
 
       if (current === "hearing") {
         target = Math.min(1, levels().input * 8);
-        mouth = 0.08 + target * 0.18;
+        // Soft attentive parting — never a full talk oval.
+        mouthTarget = 0.12 + target * 0.16;
       } else if (current === "speaking") {
         target = Math.min(1, levels().output * 8);
-        // Flutter open amount with energy so speech reads as talking, not a fixed oval.
-        const flutter = 0.55 + 0.45 * Math.sin(now / 55);
-        mouth = Math.min(1, 0.22 + target * 0.78 * flutter);
+        // Slow jaw cycle + energy: reads as talking without a frantic blink-oval.
+        const jaw =
+          0.42 +
+          0.28 * Math.sin(now / 165) +
+          0.18 * Math.sin(now / 97 + 1.1);
+        mouthTarget = Math.min(0.92, 0.18 + target * 0.55 * Math.max(0.25, jaw));
       } else if (current === "processing" || current === "pending") {
         target = 0.28 + 0.08 * Math.sin(now / 520);
-        mouth = 0.04;
+        mouthTarget = 0;
       } else if (current === "listening") {
         target = 0.1 + 0.04 * Math.sin(now / 900);
-        mouth = 0;
+        mouthTarget = 0;
       } else if (current === "settle") {
         target = 0.06;
-        mouth = 0;
+        mouthTarget = 0;
       }
 
       smoothed += (target - smoothed) * 0.22;
+      mouthSmoothed += (mouthTarget - mouthSmoothed) * 0.28;
       const instantPeak = Math.max(0, target - smoothed);
       peak += (instantPeak - peak) * 0.35;
+      const mouth = mouthSmoothed;
 
       const canBlink =
         current === "listening" ||

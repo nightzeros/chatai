@@ -2,6 +2,18 @@
 
 All notable changes to ChatAI are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.2] - 2026-11-23
+
+Companion speaking mouth: replace the clipped bordered oval with a soft elliptical jaw and slower open/close so talk looks natural instead of glitchy.
+
+### Fixed
+
+- Companion mouth no longer uses `clip-path` + fast flutter while speaking; jaw motion is smoothed and capped.
+
+### Changed
+
+- npm packages and hosted `chat.js` are **1.4.2**.
+
 ## [1.4.1] - 2026-11-22
 
 Companion Voice feels more alive: mouth, eyes, and feet react to live audio energy alongside the existing body motion. CSS-only richer motion (not phoneme lip-sync); reduced motion stays calm. Design preview mirrors the language. Hosted `chat.js` and npm packages **1.4.1**.
@@ -176,6 +188,7 @@ Read [Upgrading to 1.1](https://docs.nightzeros.com/docs/self-hosting/upgrade-1-
 
 Security, privacy, and UI refresh work landed on the `feat/v0.8-*` branches before the 1.0 freeze.
 
+[1.4.2]: https://github.com/nightzeros/chatai/releases/tag/v1.4.2
 [1.4.1]: https://github.com/nightzeros/chatai/releases/tag/v1.4.1
 [1.4.0]: https://github.com/nightzeros/chatai/releases/tag/v1.4.0
 [1.3.0]: https://github.com/nightzeros/chatai/releases/tag/v1.3.0

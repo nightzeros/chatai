@@ -170,14 +170,15 @@ export function VoiceDesignPreview({
             />
             {companionMouth > 0.05 ? (
               <span
-                className="absolute left-1/2 top-[52%] border-2 border-[#1a1a12] opacity-90"
+                className="absolute left-1/2 top-[51%] rounded-full bg-[#1a1a12]"
                 style={{
-                  width: `${18 + companionMouth * 8}px`,
-                  height: `${3 + companionMouth * 14}px`,
-                  marginLeft: `${-(9 + companionMouth * 4)}px`,
-                  borderRadius: `${2 + companionMouth * 12}px`,
-                  background: `color-mix(in srgb, #1a1a12, transparent ${100 - companionMouth * 72}%)`,
-                  transition: "width 160ms ease, height 160ms ease",
+                  width: phase === "hearing" ? 14 : 16,
+                  height: 4 + companionMouth * (phase === "hearing" ? 6 : 10),
+                  marginLeft: phase === "hearing" ? -7 : -8,
+                  opacity: phase === "hearing" ? 0.75 : 0.92,
+                  transform: `scaleY(${0.55 + companionMouth * 0.7})`,
+                  transformOrigin: "center top",
+                  transition: "height 160ms ease, transform 160ms ease",
                 }}
               />
             ) : (
